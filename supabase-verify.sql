@@ -1,4 +1,4 @@
-﻿-- ============================================================
+-- ============================================================
 --  CAMINO — Supabase verification SQL
 --  Ejecutar en SQL Editor para confirmar que todo está.
 --  No modifica datos; solo consulta metadata y funciones.
@@ -18,7 +18,8 @@ where table_schema = 'public'
     'profiles','garden_events','garden_waterings','daily_liturgy',
     'devotions','sessions','participants','progress','candles',
     'intentions','chat','voice_notes','spiritual_tasks','fruits',
-    'fruit_history','assets','daily_prayer_presence'
+    'fruit_history','assets','daily_prayer_presence','push_subscriptions',
+    'notification_preferences'
   )
 order by table_name, ordinal_position;
 
@@ -41,7 +42,8 @@ where schemaname = 'public'
     'profiles','garden_events','garden_waterings','daily_liturgy',
     'devotions','sessions','participants','progress','candles',
     'intentions','chat','voice_notes','spiritual_tasks','fruits',
-    'fruit_history','assets','daily_prayer_presence'
+    'fruit_history','assets','daily_prayer_presence','push_subscriptions',
+    'notification_preferences'
   );
 
 -- 5) POLÍTICAS RLS
@@ -52,7 +54,8 @@ where schemaname = 'public'
     'profiles','garden_events','garden_waterings','daily_liturgy',
     'devotions','sessions','participants','progress','candles',
     'intentions','chat','voice_notes','spiritual_tasks','fruits',
-    'fruit_history','assets','daily_prayer_presence'
+    'fruit_history','assets','daily_prayer_presence','push_subscriptions',
+    'notification_preferences'
   )
 order by tablename, policyname;
 
@@ -64,7 +67,8 @@ where pubname = 'supabase_realtime'
     'profiles','garden_events','garden_waterings','daily_liturgy',
     'devotions','sessions','participants','progress','candles',
     'intentions','chat','voice_notes','spiritual_tasks','fruits',
-    'fruit_history','assets','daily_prayer_presence'
+    'fruit_history','assets','daily_prayer_presence','push_subscriptions',
+    'notification_preferences'
   )
 order by tablename;
 
@@ -81,6 +85,7 @@ where tc.constraint_type = 'FOREIGN KEY'
     'profiles','garden_events','garden_waterings','daily_liturgy',
     'devotions','sessions','participants','progress','candles',
     'intentions','chat','voice_notes','spiritual_tasks','fruits',
-    'fruit_history','assets','daily_prayer_presence'
+    'fruit_history','assets','daily_prayer_presence','push_subscriptions',
+    'notification_preferences'
   )
 order by tc.table_name, kcu.column_name;
