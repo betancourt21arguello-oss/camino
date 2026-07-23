@@ -1,0 +1,17 @@
+name = "camino-api"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[triggers]
+crons = ["0 8 * * *"]
+
+[[kv_namespaces]]
+binding = "DAILY_CACHE"
+id = "1391c3a3d0fa470bba4d461221a61499"
+
+[[r2_buckets]]
+binding = "CAMINO_AUDIO"
+bucket_name = "camino-audio"
+
+[vars]
+SUPABASE_URL = "https://asfqkirsogozshlzcfpe.supabase.co"
