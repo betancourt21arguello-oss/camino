@@ -210,12 +210,26 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
 
   const prayForCandle = useCallback(
     (id: string) => {
+      // Regalar una vela requiere tener al menos 1 en inventario
+      let allowed = false;
+      setBalance((b) => {
+        if (b.vela <= 0) return b;
+        allowed = true;
+        return { ...b, vela: b.vela - 1 };
+      });
+      if (!allowed) return;
+
       setCandles((cs) =>
         cs.map((c) => (c.id === id && !c.prayedBy.includes("me") ? { ...c, prayedBy: [...c.prayedBy, "me"] } : c)),
       );
       emit({ type: "pray-for-other" });
       if (supabase && user) {
         void supabase.from("intentions").insert({ candle_id: id, pray_for_id: user.id });
+        // Opcional RPC para transferir vela al dueño: gift_candle(p_candle_id, p_amount)
+        (supabase.rpc("gift_candle", { p_candle_id: id, p_amount: 1 }) as any)?.then?.(
+          () => {},
+          () => {},
+        );
       }
     },
     [emit, user],

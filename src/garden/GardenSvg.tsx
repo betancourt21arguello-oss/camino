@@ -150,15 +150,26 @@ export const GardenSvg = memo(function GardenSvg({
       {model.particles
         .filter((p) => p.x != null && p.y != null && isFinite(p.x) && isFinite(p.y))
         .map((particle) => (
-          <motion.circle
+          <motion.g
             key={particle.id}
-            cx={particle.x}
-            cy={particle.y}
-            r={0.7 + particle.scale * 0.8}
-            fill="#d4af6a"
-            animate={{ opacity: [0.08, 0.42, 0.08], cy: [particle.y, particle.y - 8, particle.y] }}
-            transition={{ duration: 7 + particle.delay, delay: particle.delay, repeat: Infinity }}
-          />
+            initial={{ opacity: 0 }}
+            style={{ x: particle.x, y: particle.y }}
+            animate={{
+              opacity: [0.08, 0.42, 0.08],
+              y: [particle.y, particle.y - 8, particle.y],
+            }}
+            transition={{
+              opacity: { duration: 7 + particle.delay, repeat: Infinity },
+              y: {
+                duration: 7 + particle.delay,
+                delay: particle.delay,
+                repeat: Infinity,
+                ease: "easeInOut",
+              },
+            }}
+          >
+            <circle cx={0} cy={0} r={0.7 + particle.scale * 0.8} fill="#d4af6a" />
+          </motion.g>
         ))}
 
       {showRain && (

@@ -3,8 +3,9 @@ import { assetsByTag } from "../media/registry";
 import type { WhatsAppAsset } from "../media/types";
 import type { DailyLiturgy, LiturgicalEvent } from "../liturgy/types";
 import { todayDayFromLiturgy } from "../liturgy/useDailyLiturgy";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useDailyPrayerPresence } from "../prayer/useDailyPrayerPresence";
+import { resolveDailyImage, resolveSaintImage } from "../media/imageResolver";
 
 export type ReaderTarget = "gospel" | "psalm" | "laudes" | "angelus" | "first" | "second";
 
@@ -34,9 +35,28 @@ export function CaminoScreen({
   generatingDaily,
 }: Props) {
   const [saintOpen, setSaintOpen] = useState(false);
+  const [resolvedSaint, setResolvedSaint] = useState<string | null>(null);
+  const [resolvedDaily, setResolvedDaily] = useState<string>("/images/daily.jpg");
   const laudesAudio = assetsByTag("laudes", assets)[0];
   const angelusAudio = assetsByTag("angelus", assets)[0];
   const todayDay = todayDayFromLiturgy(L);
+
+  // Resolver imágenes públicas gratuitas (Wikimedia/Wikipedia), sin generar.
+  useEffect(() => {
+    let active = true;
+    const run = async () => {
+      if (L?.saint?.name) {
+        const r = await resolveSaintImage(L.saint.name, L.saint.imageUrl);
+        if (active && r.url) setResolvedSaint(r.url);
+      }
+      const daily = await resolveDailyImage(L?.imageUrl, L?.gospel?.ref, L?.quote?.text);
+      if (active) setResolvedDaily(daily);
+    };
+    void run();
+    return () => {
+      active = false;
+    };
+  }, [L?.saint?.name, L?.saint?.imageUrl, L?.imageUrl, L?.gospel?.ref, L?.quote?.text]);
   const currentDate = L?.date ? new Date(`${L.date}T00:00:00`) : new Date();
   const monthName = currentDate.toLocaleDateString("es", { month: "long" });
   const year = currentDate.getFullYear();
@@ -84,15 +104,13 @@ export function CaminoScreen({
       {/* Calendar strip: past progress ← today → future liturgical events */}
       <CalendarStrip events={monthEvents} pastProgress={pastProgress} todayDay={todayDay} />
 
-      {/* Verse card */}
+      {/* Verse card - imagen pública encontrada por Gemini + Wikimedia */}
       <div className="mt-6 px-6">
         <div className="overflow-hidden rounded-3xl bg-[#141c2e] shadow-sm">
           <div
             className="h-40 bg-cover bg-center"
             style={{
-              backgroundImage: L?.imageUrl
-                ? `linear-gradient(180deg, rgba(20,28,46,0.15), rgba(20,28,46,0.55)), url(${L.imageUrl})`
-                : "radial-gradient(120% 120% at 30% 10%, #2b3a5c, #0e1626)",
+              backgroundImage: `linear-gradient(180deg, rgba(20,28,46,0.15), rgba(20,28,46,0.55)), url(${resolvedDaily})`,
             }}
           />
           <div className="p-6">
@@ -104,16 +122,20 @@ export function CaminoScreen({
         </div>
       </div>
 
-      {/* Saint of the day */}
+      {/* Saint of the day - imagen pública gratuita resuelta */}
       <div className="mt-4 px-6">
         <button
           onClick={() => L?.saint && setSaintOpen(true)}
           className="flex w-full items-center gap-4 rounded-2xl border border-[#e6e3db] bg-white p-4 text-left"
         >
-          {L?.saint?.imageUrl ? (
+          {resolvedSaint ? (
+            <img src={resolvedSaint} alt={L?.saint?.name} className="h-12 w-12 rounded-full object-cover" />
+          ) : L?.saint?.imageUrl && /^https?:\/\//i.test(L.saint.imageUrl) ? (
             <img src={L.saint.imageUrl} alt={L.saint.name} className="h-12 w-12 rounded-full object-cover" />
           ) : (
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#e9ede0] font-serif-holy text-lg text-[#5c6b3f]">?</div>
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#e9ede0] font-serif-holy text-lg text-[#5c6b3f]">
+              {L?.saint?.name?.charAt(0) ?? "?"}
+            </div>
           )}
           <div>
             <div className="text-[10px] tracking-[0.2em] text-[#9a9a9f]">
@@ -271,8 +293,12 @@ export function CaminoScreen({
       {saintOpen && L?.saint && (
         <div className="absolute inset-0 z-50 flex items-end bg-black/45 p-4 backdrop-blur-sm">
           <div className="no-scrollbar max-h-[82dvh] w-full overflow-y-auto rounded-3xl bg-[#faf9f6] p-6">
-            {L.saint.imageUrl && (
-              <img src={L.saint.imageUrl} alt={L.saint.name} className="mx-auto h-40 w-40 rounded-full object-cover" />
+            {(resolvedSaint || (L.saint.imageUrl && /^https?:\/\//i.test(L.saint.imageUrl))) && (
+              <img
+                src={resolvedSaint || L.saint.imageUrl}
+                alt={L.saint.name}
+                className="mx-auto h-40 w-40 rounded-full object-cover"
+              />
             )}
             <h2 className="mt-4 text-center font-serif-holy text-2xl font-semibold">{L.saint.name}</h2>
             <p className="text-center text-sm text-[#8a8a90]">{L.saint.title}</p>

@@ -52,8 +52,9 @@ export function useWhatsAppAssets() {
       .select("id,tag,title,author,duration_seconds,created_at,public_url,status")
       .eq("status", "published")
       .order("created_at", { ascending: false })
-      .then(({ data }) => {
-        if (!active || !data) return;
+      .then(({ data, error }) => {
+        if (!active || error) return;
+        if (!data) return;
         const mapped = (data as AssetRow[])
           .map(fromRow)
           .filter((asset): asset is WhatsAppAsset => asset !== null);
