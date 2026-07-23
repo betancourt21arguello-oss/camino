@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { WORKER_API_BASE } from "../config";
 import type { DailyLiturgy, LiturgicalEvent } from "./types";
 
@@ -16,33 +16,52 @@ export function useDailyLiturgy() {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+
+  const date = new Date().toISOString().slice(0, 10);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${WORKER_API_BASE}/daily?date=${date}`);
+      if (!res.ok) throw new Error(`Daily API ${res.status}`);
+      const data = await res.json();
+      setPayload({
+        liturgy: data.liturgy ?? data.daily ?? data,
+        monthEvents: data.monthEvents ?? [],
+        pastProgress: data.pastProgress ?? {},
+      });
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo cargar Gemini Daily");
+    } finally {
+      setLoading(false);
+    }
+  }, [date]);
 
   useEffect(() => {
-    let active = true;
-    const date = new Date().toISOString().slice(0, 10);
-    fetch(`${WORKER_API_BASE}/daily?date=${date}`)
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`Daily API ${res.status}`);
-        return res.json();
-      })
-      .then((data) => {
-        if (!active) return;
-        setPayload({
-          liturgy: data.liturgy ?? data.daily ?? data,
-          monthEvents: data.monthEvents ?? [],
-          pastProgress: data.pastProgress ?? {},
-        });
-      })
-      .catch((err) => {
-        if (active) setError(err instanceof Error ? err.message : "No se pudo cargar Gemini Daily");
-      })
-      .finally(() => active && setLoading(false));
-    return () => {
-      active = false;
-    };
-  }, []);
+    void load();
+  }, [load]);
 
-  return { ...payload, loading, error };
+  const generateNow = useCallback(async () => {
+    setGenerating(true);
+    try {
+      const res = await fetch(`${WORKER_API_BASE}/daily/generate`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ date }),
+      });
+      if (!res.ok) throw new Error(`Generate Daily ${res.status}`);
+      await load();
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo generar el contenido del día.");
+    } finally {
+      setGenerating(false);
+    }
+  }, [date, load]);
+
+  return { ...payload, loading, error, generating, generateNow };
 }
 
 export function todayDayFromLiturgy(liturgy: DailyLiturgy | null) {

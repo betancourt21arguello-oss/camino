@@ -13,5 +13,12 @@ id = "1391c3a3d0fa470bba4d461221a61499"
 binding = "CAMINO_AUDIO"
 bucket_name = "camino-audio"
 
+[[r2_buckets]]
+binding = "CAMINO_IMAGES"
+bucket_name = "camino-images"
+# Si configuraste un dominio personalizado en Cloudflare R2:
+# custom_domain = 'images.camino.app'
+
 [vars]
 SUPABASE_URL = "https://asfqkirsogozshlzcfpe.supabase.co"
+R2_IMAGES_BASE_URL = "https://images.camino.app"

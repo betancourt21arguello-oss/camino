@@ -426,11 +426,19 @@ hay fuente verificable usa relevant=false y la UI ocultará esa sección.`;
     const data = await res.json();
     const liturgy = JSON.parse(data.candidates[0].content.parts[0].text);
 
-    // 2) Imagen del día (Gemini/Imagen o servicio de imágenes) → sube a R2
-    const imageUrl = await generateAndStoreImage(liturgy.imagePrompt, env);
-    liturgy.imageUrl = imageUrl;
+    // 2) Imagen del Evangelio → Vertex AI Imagen o servicio externo → R2
+    const dailyImageUrl = await generateAndStoreImage(liturgy.imagePrompt, env);
+    liturgy.imageUrl = dailyImageUrl;
 
-    // 3) Cachear en KV + Supabase (upsert por fecha)
+    // 3) Imagen del Santo del día → búsqueda en Wikipedia/Commons o generación
+    if (liturgy.saint?.name) {
+      // Opción A: buscar en Wikimedia Commons API
+      // Opción B: generar con Imagen API usando liturgy.saint.name como prompt
+      const saintImageUrl = await findOrGenerateSaintImage(liturgy.saint.name, env);
+      liturgy.saint.imageUrl = saintImageUrl;
+    }
+
+    // 4) Cachear en KV + Supabase (upsert por fecha)
     await env.DAILY_CACHE.put(today, JSON.stringify(liturgy), { expirationTtl: 172800 });
     await supabaseUpsert(env, "daily_liturgy", { date: today, ...liturgy });
   }

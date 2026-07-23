@@ -118,6 +118,8 @@ function Shell() {
                 monthEvents={daily.monthEvents}
                 pastProgress={daily.pastProgress}
                 loadingDaily={daily.loading}
+                onGenerateDaily={daily.generateNow}
+                generatingDaily={daily.generating}
               />
             )}
             {tab === "regla" && (
@@ -145,8 +147,10 @@ function Shell() {
 
           {jornadaOpen && (
             <JornadaScreen
+              liturgy={daily.liturgy}
               onClose={() => setJornadaOpen(false)}
               onComplete={() => {
+                emit({ type: "task-complete" });
                 setJornadaOpen(false);
                 setTab("camino");
               }}

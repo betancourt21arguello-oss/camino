@@ -105,12 +105,16 @@ export const GardenSvg = memo(function GardenSvg({
         </motion.g>
       )}
 
-      {model.ambientPlants.map((plant) => (
-        <Plant key={plant.id} plant={plant} color={GREENS[plant.tone % GREENS.length]} />
-      ))}
-      {model.ambientFlowers.map((flower) => (
-        <Flower key={flower.id} flower={flower} color={flowers[flower.tone % flowers.length]} />
-      ))}
+      {model.ambientPlants
+        .filter((p) => isFinite(p.x) && isFinite(p.y))
+        .map((plant) => (
+          <Plant key={plant.id} plant={plant} color={GREENS[plant.tone % GREENS.length]} />
+        ))}
+      {model.ambientFlowers
+        .filter((f) => isFinite(f.x) && isFinite(f.y))
+        .map((flower) => (
+          <Flower key={flower.id} flower={flower} color={flowers[flower.tone % flowers.length]} />
+        ))}
 
       {model.lights.map((light) => (
         <motion.g
@@ -125,33 +129,37 @@ export const GardenSvg = memo(function GardenSvg({
 
       <CentralTree tree={model.tree} justWatered={justWatered} />
 
-      {model.butterflies.map((butterfly) => (
-        <motion.g
-          key={butterfly.id}
-          initial={{ opacity: 0 }}
-          animate={{
-            x: [butterfly.x, butterfly.x + 18, butterfly.x - 8, butterfly.x],
-            y: [butterfly.y, butterfly.y - 13, butterfly.y + 5, butterfly.y],
-            opacity: [0, 0.72, 0.6, 0],
-          }}
-          transition={{ duration: 14, delay: butterfly.delay * 2, repeat: Infinity, ease: "easeInOut" }}
-        >
-          <ellipse cx="-3" cy="0" rx="4" ry="2.5" fill="#b9a4b8" transform="rotate(28)" />
-          <ellipse cx="3" cy="0" rx="4" ry="2.5" fill="#c7b6c2" transform="rotate(-28)" />
-        </motion.g>
-      ))}
+      {model.butterflies
+        .filter((b) => isFinite(b.x) && isFinite(b.y))
+        .map((butterfly) => (
+          <motion.g
+            key={butterfly.id}
+            initial={{ opacity: 0 }}
+            animate={{
+              x: [butterfly.x, butterfly.x + 18, butterfly.x - 8, butterfly.x],
+              y: [butterfly.y, butterfly.y - 13, butterfly.y + 5, butterfly.y],
+              opacity: [0, 0.72, 0.6, 0],
+            }}
+            transition={{ duration: 14, delay: butterfly.delay * 2, repeat: Infinity, ease: "easeInOut" }}
+          >
+            <ellipse cx="-3" cy="0" rx="4" ry="2.5" fill="#b9a4b8" transform="rotate(28)" />
+            <ellipse cx="3" cy="0" rx="4" ry="2.5" fill="#c7b6c2" transform="rotate(-28)" />
+          </motion.g>
+        ))}
 
-      {model.particles.map((particle) => (
-        <motion.circle
-          key={particle.id}
-          cx={particle.x}
-          cy={particle.y}
-          r={0.7 + particle.scale * 0.8}
-          fill="#d4af6a"
-          animate={{ opacity: [0.08, 0.42, 0.08], cy: [particle.y, particle.y - 8, particle.y] }}
-          transition={{ duration: 7 + particle.delay, delay: particle.delay, repeat: Infinity }}
-        />
-      ))}
+      {model.particles
+        .filter((p) => p.x != null && p.y != null && isFinite(p.x) && isFinite(p.y))
+        .map((particle) => (
+          <motion.circle
+            key={particle.id}
+            cx={particle.x}
+            cy={particle.y}
+            r={0.7 + particle.scale * 0.8}
+            fill="#d4af6a"
+            animate={{ opacity: [0.08, 0.42, 0.08], cy: [particle.y, particle.y - 8, particle.y] }}
+            transition={{ duration: 7 + particle.delay, delay: particle.delay, repeat: Infinity }}
+          />
+        ))}
 
       {showRain && (
         <motion.g

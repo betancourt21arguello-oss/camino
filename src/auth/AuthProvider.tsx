@@ -51,6 +51,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
           : null,
       );
+      if (window.location.hash.includes("access_token") || window.location.hash.includes("refresh_token")) {
+        window.history.replaceState({}, document.title, FRONTEND_URL);
+      }
       setLoading(false);
     });
 
@@ -70,6 +73,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
           : null,
       );
+      if (window.location.hash.includes("access_token") || window.location.hash.includes("refresh_token")) {
+        window.history.replaceState({}, document.title, FRONTEND_URL);
+      }
     });
     return () => subscription.unsubscribe();
   }, []);

@@ -171,10 +171,61 @@ async function handleWhatsAppWebhook(env: any, body: any): Promise<Response> {
 function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
     "Access-Control-Max-Age": "86400",
   } as Record<string, string>;
+}
+
+async function generateImage(env: any, prompt: string): Promise<string> {
+  const apiKey = env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY not configured");
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        instances: [{ prompt }],
+        parameters: {
+          sampleCount: 1,
+          aspectRatio: "1:1",
+          personGeneration: "allow_all",
+        },
+      }),
+    }
+  );
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Imagen 3 failed: ${res.status} ${text}`);
+  }
+
+  const data = await res.json();
+  const prediction = data?.predictions?.[0] ?? data?.candidates?.[0];
+  const image = prediction?.image ?? prediction?.bytesBase64Encoded;
+  const mimeType = prediction?.image?.mimeType || "image/png";
+  const base64 = prediction?.image?.bytesBase64Encoded || prediction?.image?.base64;
+
+  if (!base64) {
+    throw new Error("Imagen 3 response missing image data");
+  }
+
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+
+  const today = getTodayKey();
+  const key = `generated/${today}/${Date.now()}.${mimeType.split("/")[1] || "png"}`;
+  await env.CAMINO_IMAGES.put(key, bytes, {
+    httpMetadata: { contentType: mimeType },
+  });
+
+  const baseUrl = env.R2_IMAGES_BASE_URL || "https://images.camino.app";
+  return `${baseUrl}/${key}`;
 }
 
 function jsonResponse(body: any, status = 200, extra: Record<string, string> = {}) {
@@ -216,6 +267,20 @@ export default {
         return jsonResponse(liturgy, 200, {
           "Cache-Control": "public, max-age=300",
         });
+      } catch (e: any) {
+        return jsonResponse({ error: e.message }, 500);
+      }
+    }
+
+    if (url.pathname === "/generate-image" && request.method === "POST") {
+      try {
+        const body = await request.json();
+        const prompt = typeof body === "string" ? body : body?.prompt;
+        if (!prompt || typeof prompt !== "string") {
+          return jsonResponse({ error: "Missing prompt" }, 400);
+        }
+        const imageUrl = await generateImage(env, prompt);
+        return jsonResponse({ url: imageUrl });
       } catch (e: any) {
         return jsonResponse({ error: e.message }, 500);
       }

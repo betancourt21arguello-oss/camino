@@ -17,6 +17,8 @@ type Props = {
   monthEvents: LiturgicalEvent[];
   pastProgress: Record<number, { rosaries: number; done: boolean }>;
   loadingDaily?: boolean;
+  onGenerateDaily: () => void;
+  generatingDaily?: boolean;
 };
 
 export function CaminoScreen({
@@ -28,6 +30,8 @@ export function CaminoScreen({
   monthEvents,
   pastProgress,
   loadingDaily,
+  onGenerateDaily,
+  generatingDaily,
 }: Props) {
   const [saintOpen, setSaintOpen] = useState(false);
   const laudesAudio = assetsByTag("laudes", assets)[0];
@@ -44,13 +48,24 @@ export function CaminoScreen({
       {/* Top bar */}
       <div className="flex items-center justify-between px-6 pt-8">
         <div className="text-sm font-semibold tracking-[0.35em]">CAMINO</div>
-        <div className="flex items-center gap-2 text-sm text-[#6b6b70]">
-          <span
-            className="h-2 w-2 rounded-full"
-            style={{ background: L?.liturgicalColor ?? "#b8b4a8" }}
-          />
-          {L?.season ?? (loadingDaily ? "Cargando Gemini…" : "Daily API")}
-        </div>
+        {!L?.quote?.text || L.quote.text === "Gemini aún no ha generado la frase de hoy." ? (
+          <button
+            onClick={onGenerateDaily}
+            disabled={generatingDaily}
+            className="flex h-9 items-center gap-2 rounded-full border border-[#d7d3c8] bg-white px-3 text-sm text-[#6b6b70] disabled:opacity-50"
+          >
+            <span className="h-2 w-2 rounded-full bg-[#a68b4e]" />
+            {generatingDaily ? "Generando…" : "Generar con Gemini"}
+          </button>
+        ) : (
+          <div className="flex items-center gap-2 text-sm text-[#6b6b70]">
+            <span
+              className="h-2 w-2 rounded-full"
+              style={{ background: L?.liturgicalColor ?? "#b8b4a8" }}
+            />
+            {L?.season ?? (loadingDaily ? "Cargando Gemini…" : "")}
+          </div>
+        )}
       </div>
 
       {/* Today's full date + weekday */}

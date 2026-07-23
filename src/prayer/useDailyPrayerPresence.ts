@@ -5,49 +5,53 @@ import { supabase } from "../lib/supabase";
 export type DailyPrayerKind = "laudes" | "angelus";
 
 /**
- * Presencia real de oraciones diarias. El contador proviene exclusivamente
- * de `daily_prayer_presence` en Supabase y se oculta cuando es cero.
- * Al entrar a un portal, `active=true` publica heartbeat cada 20 segundos.
+ * Presencia real de oraciones diarias. Si la tabla aún no existe o hay
+ * un error de permisos, se desactiva silenciosamente y el contador se oculta.
  */
 export function useDailyPrayerPresence(kind: DailyPrayerKind, active = false) {
   const { user } = useAuth();
   const [count, setCount] = useState(0);
+  const [available, setAvailable] = useState(true);
 
   useEffect(() => {
     const client = supabase;
-    if (!client) return;
+    if (!client || !available) return;
     let mounted = true;
     const date = new Date().toISOString().slice(0, 10);
 
-    const refresh = async () => {
-      try {
-        const { count: total } = await client
-          .from("daily_prayer_presence")
-          .select("profile_id", { count: "exact", head: true })
-          .eq("prayer_kind", kind)
-          .eq("prayer_date", date)
-          .gte("last_seen", new Date(Date.now() - 60_000).toISOString());
-        if (mounted) setCount(total ?? 0);
-      } catch {
-        if (mounted) setCount(0);
+    const disable = () => {
+      if (mounted) {
+        setCount(0);
+        setAvailable(false);
       }
+    };
+
+    const refresh = async () => {
+      const { count: total, error } = await client
+        .from("daily_prayer_presence")
+        .select("profile_id", { count: "exact", head: true })
+        .eq("prayer_kind", kind)
+        .eq("prayer_date", date)
+        .gte("last_seen", new Date(Date.now() - 60_000).toISOString());
+      if (error) {
+        disable();
+        return;
+      }
+      if (mounted) setCount(total ?? 0);
     };
 
     const heartbeat = async () => {
       if (!active || !user) return;
-      try {
-        await client.from("daily_prayer_presence").upsert(
-          {
-            profile_id: user.id,
-            prayer_kind: kind,
-            prayer_date: date,
-            last_seen: new Date().toISOString(),
-          },
-          { onConflict: "profile_id,prayer_kind,prayer_date" },
-        );
-      } catch {
-        // table may not exist yet — silently ignore
-      }
+      const { error } = await client.from("daily_prayer_presence").upsert(
+        {
+          profile_id: user.id,
+          prayer_kind: kind,
+          prayer_date: date,
+          last_seen: new Date().toISOString(),
+        },
+        { onConflict: "profile_id,prayer_kind,prayer_date" },
+      );
+      if (error) disable();
     };
 
     void heartbeat();
@@ -69,7 +73,7 @@ export function useDailyPrayerPresence(kind: DailyPrayerKind, active = false) {
       window.clearInterval(refreshId);
       void client.removeChannel(channel);
     };
-  }, [kind, active, user]);
+  }, [kind, active, user, available]);
 
-  return { count, hasPeople: count > 0 };
+  return { count, hasPeople: available && count > 0 };
 }
