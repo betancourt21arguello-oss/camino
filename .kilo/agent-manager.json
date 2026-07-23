@@ -1,11 +1,6 @@
 {
   "worktrees": {},
-  "sessions": {
-    "ses_0704d91d2ffe4m2fy0qiYNzxYC": {
-      "worktreeId": null,
-      "createdAt": "2026-07-23T15:57:43.395Z"
-    }
-  },
+  "sessions": {},
   "tabOrder": {
     "local": [
       "ses_0704d91d2ffe4m2fy0qiYNzxYC"

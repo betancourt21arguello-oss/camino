@@ -168,9 +168,32 @@ async function handleWhatsAppWebhook(env: any, body: any): Promise<Response> {
   return new Response("ok");
 }
 
+function corsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Max-Age": "86400",
+  } as Record<string, string>;
+}
+
+function jsonResponse(body: any, status = 200, extra: Record<string, string> = {}) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+      ...corsHeaders(),
+      ...extra,
+    },
+  });
+}
 export default {
   async fetch(request: Request, env: any, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+
+    if (request.method === "OPTIONS") {
+      return new Response(null, { headers: corsHeaders() });
+    }
 
     if (url.pathname === "/whatsapp") {
       if (request.method === "GET") return handleWhatsAppVerify(request);
@@ -185,23 +208,20 @@ export default {
       }
     }
 
-    if (url.pathname === "/api/daily" && request.method === "GET") {
+    if (url.pathname === "/daily" && request.method === "GET") {
       try {
         const today = getTodayKey();
         let liturgy = await supabaseFetchDaily(env, today);
         if (!liturgy) liturgy = await cachedOrGenerate(env);
-        return new Response(JSON.stringify(liturgy), {
-          headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=300" },
+        return jsonResponse(liturgy, 200, {
+          "Cache-Control": "public, max-age=300",
         });
       } catch (e: any) {
-        return new Response(JSON.stringify({ error: e.message }), {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        });
+        return jsonResponse({ error: e.message }, 500);
       }
     }
 
-    return new Response("Not Found", { status: 404 });
+    return new Response("Not Found", { status: 404, headers: corsHeaders() });
   },
 
   async scheduled(_event: any, env: any, _ctx: ExecutionContext): Promise<void> {
