@@ -1,0 +1,95 @@
+@import "tailwindcss";
+
+:root {
+  --gold: #d4af6a;
+  --gold-soft: #c9a86a;
+}
+
+* {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+    "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: #0a0a0b;
+}
+
+.font-serif-holy {
+  font-family: "New York", "Times New Roman", Georgia, "Iowan Old Style", serif;
+}
+
+/* hide scrollbars but keep scroll */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(212, 175, 106, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(212, 175, 106, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(212, 175, 106, 0);
+  }
+}
+.pulse-ring {
+  animation: pulse-ring 2.4s infinite;
+}
+
+@keyframes flame {
+  0%,
+  100% {
+    transform: scale(1) translateY(0);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scale(1.08) translateY(-1px);
+    opacity: 1;
+  }
+}
+.flame {
+  animation: flame 1.6s ease-in-out infinite;
+  transform-origin: center bottom;
+}
+
+@keyframes prayer-glow {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 5px rgba(212, 175, 106, 0.38));
+  }
+  50% {
+    filter: drop-shadow(0 0 14px rgba(212, 175, 106, 0.78));
+  }
+}
+.candle-praying {
+  animation: prayer-glow 3.8s ease-in-out infinite;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.fade-up {
+  animation: fade-up 0.4s ease both;
+}
