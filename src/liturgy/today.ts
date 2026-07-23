@@ -1,59 +1,27 @@
+import { useEffect, useState } from "react";
 import type { DailyLiturgy, LiturgicalEvent } from "./types";
 
-// Datos de ejemplo con la MISMA forma que devuelve Gemini (1 llamada/día).
-// En producción esto llega de /api/daily (Cloudflare Worker + KV cache).
-export const todayLiturgy: DailyLiturgy = {
-  date: "2026-07-21",
-  weekday: "Martes",
+const API_BASE = import.meta.env.VITE_API_BASE as string | undefined;
+
+export const FALLBACK_LITURGY: DailyLiturgy = {
+  date: "2026-07-23",
+  weekday: "Jueves",
   season: "Tiempo Ordinario",
-  liturgicalColor: "#7a8a5c",
-  saint: {
-    name: "San Lorenzo de Brindis",
-    title: "Presbítero y Doctor de la Iglesia",
-    initial: "L",
-  },
-  quote: {
-    text:
-      "Que brille así vuestra luz delante de los hombres, para que vean vuestras buenas obras.",
-    ref: "Mateo 5, 16",
-  },
-  gospel: {
-    ref: "Mateo 12, 46-50",
-    title: "Evangelio de hoy",
-    body:
-      "Todavía estaba hablando Jesús a la gente, cuando su madre y sus hermanos se presentaron fuera y trataban de hablar con él. Uno le dijo: «Mira, tu madre y tus hermanos están fuera y quieren hablar contigo.» Pero él contestó: «¿Quién es mi madre y quiénes son mis hermanos?» Y, extendiendo su mano hacia sus discípulos, dijo: «Estos son mi madre y mis hermanos. El que haga la voluntad de mi Padre del cielo, ese es mi hermano, y mi hermana, y mi madre.»",
-  },
-  psalm: {
-    ref: "Salmo 84 (85)",
-    title: "Salmo del día",
-    body:
-      "R. Muéstranos, Señor, tu misericordia.\n\nSeñor, has sido bueno con tu tierra, has restaurado la suerte de Jacob, has perdonado la culpa de tu pueblo, has sepultado todos sus pecados.\n\nR. Muéstranos, Señor, tu misericordia.\n\n¿No volverás a darnos la vida, para que tu pueblo se alegre contigo? Muéstranos, Señor, tu misericordia y danos tu salvación.",
-  },
-  firstReading: {
-    ref: "Miqueas 7, 14-15. 18-20",
-    title: "Primera lectura",
-    body:
-      "Apacienta a tu pueblo con tu cayado, al rebaño de tu heredad. ¿Qué Dios hay como tú, que perdonas la maldad y olvidas el pecado? Volverá a compadecerse de nosotros y arrojará al fondo del mar todos nuestros pecados.",
-  },
-  laudes: {
-    title: "Laudes",
-    body:
-      "Señor, abre mis labios, y mi boca proclamará tu alabanza. Bendito seas, Señor, Dios de Israel, porque has visitado y redimido a tu pueblo. Gloria al Padre, y al Hijo, y al Espíritu Santo.",
-  },
-  reflection:
-    "Jesús redefine la familia en torno a la voluntad del Padre. Hoy la Iglesia te invita a pertenecer a esa casa: no por la sangre, sino por la escucha y la obediencia amorosa. ¿Dónde te pide el Padre hacer su voluntad hoy?",
-  imagePrompt:
-    "Serene sacred art, Jesus teaching a crowd, warm golden light, soft renaissance style",
+  liturgicalColor: "Verde",
+  saint: { name: "Santa Brígida de Suecia", title: "Religiosa, Patrona de Europa", initial: "B" },
+  quote: { text: "Bienaventurados vuestros ojos, porque ven, y vuestros oídos, porque oyen.", ref: "Mt 13,16" },
+  gospel: { ref: "Mateo 13,10-17", title: "¿Por qué les hablas en parábolas?", body: "En aquel tiempo, se acercaron los discípulos a Jesús y le preguntaron: «¿Por qué les hablas en parábolas?». Él les respondió: «A vosotros se os ha concedido conocer los misterios del reino de los cielos, pero a ellos no.»" },
+  psalm: { ref: "Salmo 36(35),6-7ab.8-9.10-11", title: "Tú, Señor, eres mi esperanza.", body: "Señor, tu misericordia llega hasta el cielo, tu fidelidad hasta las nubes." },
+  firstReading: { ref: "Jeremías 2,1-3.7-8.12-13", title: "Me abandonaron a mí, manantial de aguas vivas.", body: "La palabra del Señor vino a mí: «Ve y proclama a los oídos de Jerusalén...»" },
+  laudes: { title: "Laudes del día", body: "Señor, abre mis labios, y mi boca proclamará tu alabanza." },
+  reflection: "Jesús invita a cultivar una escucha interior que transforme la vida.",
+  imagePrompt: "Sacred art scene, gentle light",
   imageUrl: "/images/daily.jpg",
-  marian: {
-    source: "Medjugorje",
-    text:
-      "Queridos hijos, hoy os invito a la oración con el corazón. Que la oración sea para vosotros alegría.",
-    relevant: true,
-  },
+  marian: { source: "Medjugorje", text: "Queridos hijos, hoy os invito a la oración con el corazón.", relevant: true },
 };
 
-// Días del mes con su estado litúrgico (para la tira del calendario).
+export const TODAY_DAY = 23;
+
 export const monthEvents: LiturgicalEvent[] = [
   { date: "2026-07-16", day: 16, label: "Ntra. Sra. del Carmen", rank: "memoria" },
   { date: "2026-07-17", day: 17, label: "Feria", rank: "feria" },
@@ -69,9 +37,6 @@ export const monthEvents: LiturgicalEvent[] = [
   { date: "2026-07-27", day: 27, label: "Feria", rank: "feria" },
 ];
 
-export const TODAY_DAY = 21;
-
-/** Progreso ficticio de días pasados (para ver logros previos). */
 export const pastProgress: Record<number, { rosaries: number; done: boolean }> = {
   16: { rosaries: 1, done: true },
   17: { rosaries: 1, done: true },
@@ -79,3 +44,28 @@ export const pastProgress: Record<number, { rosaries: number; done: boolean }> =
   19: { rosaries: 2, done: true },
   20: { rosaries: 1, done: true },
 };
+
+export function useTodayLiturgy() {
+  const [liturgy, setLiturgy] = useState<DailyLiturgy>(FALLBACK_LITURGY);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!API_BASE) return;
+    let active = true;
+    setLoading(true);
+    fetch(`${API_BASE}/api/daily`)
+      .then((r) => (r.ok ? r.json() : Promise.resolve(null)))
+      .then((data) => {
+        if (active && data?.date) setLiturgy(data as DailyLiturgy);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  return { liturgy, loading };
+}

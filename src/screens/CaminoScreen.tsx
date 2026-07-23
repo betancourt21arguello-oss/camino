@@ -1,5 +1,5 @@
 import { CalendarStrip } from "../components/CalendarStrip";
-import { todayLiturgy, TODAY_DAY } from "../liturgy/today";
+import { useTodayLiturgy, TODAY_DAY } from "../liturgy/today";
 import { useSpiritual } from "../fruits/store";
 import { FRUITS } from "../fruits/types";
 import { assetsByTag } from "../media/registry";
@@ -20,7 +20,8 @@ export function CaminoScreen({
   onOpenAsset,
   assets,
 }: Props) {
-  const L = todayLiturgy;
+  const { liturgy } = useTodayLiturgy();
+  const L = liturgy;
   const { balance } = useSpiritual();
   const laudesAudio = assetsByTag("laudes", assets)[0];
   const angelusAudio = assetsByTag("angelus", assets)[0];

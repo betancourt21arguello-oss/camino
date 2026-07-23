@@ -8,46 +8,13 @@ import { ReglaScreen } from "./screens/ReglaScreen";
 import { JornadaScreen } from "./screens/JornadaScreen";
 import { ReaderScreen } from "./screens/ReaderScreen";
 import { SpiritualProvider, useSpiritual } from "./fruits/store";
-import { todayLiturgy } from "./liturgy/today";
+import { useTodayLiturgy } from "./liturgy/today";
 import { DailyPrayerPortal } from "./screens/DailyPrayerPortal";
 import { AudioAssetScreen } from "./screens/AudioAssetScreen";
 import { AuthPortal } from "./screens/AuthPortal";
 import { GalleryScreen } from "./screens/GalleryScreen";
 import { AuthProvider } from "./auth/AuthProvider";
 import { useWhatsAppAssets } from "./media/useWhatsAppAssets";
-
-function readerContent(target: ReaderTarget) {
-  const L = todayLiturgy;
-  switch (target) {
-    case "gospel":
-      return { eyebrow: "EVANGELIO", ...L.gospel, complete: "Marcar como leído" };
-    case "psalm":
-      return { eyebrow: "SALMO", ...L.psalm, complete: "Marcar como rezado" };
-    case "first":
-      return {
-        eyebrow: "PRIMERA LECTURA",
-        ...L.firstReading,
-        complete: "Marcar como leído",
-      };
-    case "laudes":
-      return {
-        eyebrow: "LAUDES",
-        title: L.laudes.title,
-        ref: "Liturgia de las Horas · en comunidad",
-        body: L.laudes.body,
-        complete: "He rezado los Laudes",
-      };
-    case "angelus":
-      return {
-        eyebrow: "ÁNGELUS",
-        title: "Ángelus",
-        ref: "Oración del mediodía · en comunidad",
-        body:
-          "El Ángel del Señor anunció a María. Y concibió por obra del Espíritu Santo. Dios te salve, María…\n\nHe aquí la esclava del Señor. Hágase en mí según tu palabra. Dios te salve, María…\n\nY el Verbo se hizo carne. Y habitó entre nosotros. Dios te salve, María…\n\nRuega por nosotros, Santa Madre de Dios, para que seamos dignos de alcanzar las promesas de Cristo. Amén.",
-        complete: "He rezado el Ángelus",
-      };
-  }
-}
 
 function Shell() {
   const [tab, setTab] = useState<Tab>("camino");
@@ -60,11 +27,35 @@ function Shell() {
   const [prayerActive, setPrayerActive] = useState(false);
   const { emit } = useSpiritual();
   const assets = useWhatsAppAssets();
+  const { liturgy } = useTodayLiturgy();
 
   const overlay = Boolean(
     jornadaOpen || reader || prayerPortal || assetId || authOpen || galleryOpen,
   );
   const dark = tab === "rosario" && !overlay;
+
+  function readerContent(target: ReaderTarget) {
+    const L = liturgy;
+    if (!L) return null;
+    switch (target) {
+      case "gospel":
+        return { eyebrow: "EVANGELIO", ...L.gospel, complete: "Marcar como leído" };
+      case "psalm":
+        return { eyebrow: "SALMO", ...L.psalm, complete: "Marcar como rezado" };
+      case "first":
+        return { eyebrow: "PRIMERA LECTURA", ...L.firstReading, complete: "Marcar como leído" };
+      case "laudes":
+        return { eyebrow: "LAUDES", title: L.laudes.title, ref: "Liturgia de las Horas · en comunidad", body: L.laudes.body, complete: "He rezado los Laudes" };
+      case "angelus":
+        return {
+          eyebrow: "ÁNGELUS",
+          title: "Ángelus",
+          ref: "Oración del mediodía · en comunidad",
+          body: "El Ángel del Señor anunció a María. Y concibió por obra del Espíritu Santo. Dios te salve, María…\n\nHe aquí la esclava del Señor. Hágase en mí según tu palabra. Dios te salve, María…\n\nY el Verbo se hizo carne. Y habitó entre nosotros. Dios te salve, María…\n\nRuega por nosotros, Santa Madre de Dios, para que seamos dignos de alcanzar las promesas de Cristo. Amén.",
+          complete: "He rezado el Ángelus",
+        };
+    }
+  }
 
   const rc = reader ? readerContent(reader) : null;
   const selectedAsset = assets.find((asset) => asset.id === assetId);
