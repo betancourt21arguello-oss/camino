@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { RosaryRing } from "../../components/RosaryRing";
+import { DEVOTION_LIST } from "../../engine/devotions";
 
 type Props = {
   meta: { title: string; subtitle: string };
@@ -10,6 +12,8 @@ type Props = {
   onStartSolo: () => void;
   onJoin: () => void;
   onOpenGallery?: () => void;
+  selectedDevotionId: string;
+  onSelectDevotion: (id: string) => void;
 };
 
 export function Lobby({
@@ -22,7 +26,10 @@ export function Lobby({
   onStartSolo,
   onJoin,
   onOpenGallery,
+  selectedDevotionId,
+  onSelectDevotion,
 }: Props) {
+  const [menuOpen, setMenuOpen] = useState(false);
   return (
     <div className="min-h-full bg-[#0a0a0b] pb-28 text-white">
       <section className="relative overflow-hidden px-5 pt-10">
@@ -37,9 +44,38 @@ export function Lobby({
           <div className="text-[11px] font-medium tracking-[0.25em] text-[var(--gold)]">
             ORACIÓN PERPETUA
           </div>
-          <h1 className="mt-1 font-serif-holy text-3xl font-bold">{meta.title}</h1>
+          <button onClick={() => setMenuOpen(true)} className="mt-1 flex items-center justify-center gap-2 w-full">
+            <h1 className="font-serif-holy text-3xl font-bold">{meta.title}</h1>
+            <svg viewBox="0 0 24 24" className="h-5 w-5 text-white/50" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
           <div className="text-sm text-white/45">{meta.subtitle}</div>
         </div>
+        
+        {menuOpen && (
+          <div className="absolute inset-0 z-50 flex items-end bg-black/60 backdrop-blur-sm p-4">
+            <div className="w-full max-w-md bg-[#141416] rounded-3xl p-6 border border-white/10 mb-20 fade-up">
+              <h3 className="text-xl font-serif-holy font-semibold text-white mb-4">Elige una devoción</h3>
+              <div className="space-y-2 max-h-60 overflow-y-auto no-scrollbar">
+                {DEVOTION_LIST.map(d => (
+                  <button
+                    key={d.id}
+                    onClick={() => {
+                      onSelectDevotion(d.id);
+                      setMenuOpen(false);
+                    }}
+                    className={`w-full text-left p-4 rounded-2xl border transition ${selectedDevotionId === d.id ? 'border-[var(--gold)] bg-[var(--gold)]/10' : 'border-white/10 bg-white/5'}`}
+                  >
+                    <div className={`font-semibold ${selectedDevotionId === d.id ? 'text-[var(--gold)]' : 'text-white'}`}>{d.title}</div>
+                    <div className="text-xs text-white/50 mt-1">{d.subtitle}</div>
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => setMenuOpen(false)} className="w-full h-12 mt-4 text-white/50 rounded-full border border-white/10">Cerrar</button>
+            </div>
+          </div>
+        )}
 
         <div className="relative mt-8">
           <RosaryRing

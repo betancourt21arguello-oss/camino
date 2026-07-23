@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { PrayerEngine } from "./PrayerEngine";
-import { rosarioDolorosos } from "./devotions/rosarioDolorosos";
 import type { EngineState, FlatStep, Role } from "./types";
 
 export interface RosarioApi {
@@ -20,9 +19,17 @@ export interface RosarioApi {
   leave: () => void;
 }
 
-export function useRosario(): RosarioApi {
+import { DEVOTIONS } from "./devotions";
+
+export function useRosario(devotionId: string = "rosario-dolorosos"): RosarioApi {
   const ref = useRef<PrayerEngine | null>(null);
-  if (!ref.current) ref.current = new PrayerEngine(rosarioDolorosos);
+  const prevDevotionId = useRef(devotionId);
+
+  if (!ref.current || prevDevotionId.current !== devotionId) {
+    const devotion = DEVOTIONS[devotionId] ?? DEVOTIONS["rosario-dolorosos"];
+    ref.current = new PrayerEngine(devotion);
+    prevDevotionId.current = devotionId;
+  }
   const engine = ref.current;
 
   const [, force] = useState(0);

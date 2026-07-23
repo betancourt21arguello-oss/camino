@@ -53,6 +53,7 @@ export interface DailyLiturgy {
   reflection: string;
   imagePrompt: string; // usado para generar la imagen del día
   imageUrl?: string;
+  suggestedNovenas?: { title: string; reason: string }[];
   messages?: {
     betania?: RelevantMessage;
     medjugorje?: RelevantMessage;

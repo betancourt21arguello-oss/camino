@@ -44,7 +44,9 @@ npm run build
 npm run preview
 ```
 
-> **Nota:** El repositorio actual funciona **100% con datos de ejemplo** (`src/liturgy/today.ts`, `src/fruits/store.tsx`). No necesitas ninguna llave para ver la UI. Las llaves solo son necesarias para conectar los motores reales (Gemini/WhatsApp/Supabase).
+> **Nota:** los datos mock fueron retirados. El contenido diario llega desde
+> `https://camino-api.byp.workers.dev/daily`, los assets desde Supabase/R2 y
+> el estado espiritual desde tablas reales o estado vacío inicial.
 
 ---
 
@@ -82,19 +84,19 @@ wrangler kv namespace create DAILY_CACHE
 2. Copia `Project URL` y `publishable key` → van al `.env.local` del frontend.
 3. Copia el `service_role key` → va **solo** al Worker (nunca al cliente).
 
-### 4.1.1 Supabase Auth (magic link + Google)
+### 4.1.1 Supabase Auth (social login + magic link)
 1. En `Authentication → URL Configuration`, configura:
    - Site URL local: `http://localhost:5173`
    - Redirect URL local: `http://localhost:5173/**`
-   - Site URL producción: `https://tu-dominio.com`
-   - Redirect URL producción: `https://tu-dominio.com/**`
+   - Site URL producción: `https://camino-6vx.pages.dev`
+   - Redirect URL producción: `https://camino-6vx.pages.dev/**`
 2. En `Authentication → Providers → Email`, activa Email y Magic Link.
-3. Para Google: crea credenciales OAuth Web en Google Cloud, copia Client ID y
-   Secret en `Authentication → Providers → Google` y añade como redirect URI la
-   URL callback que muestra Supabase.
-4. La app usa `signInWithOtp`, `getSession` y `onAuthStateChange`. No pide
-   contraseña. Sin variables de Supabase, se activa un modo de cuenta local para
-   poder probar la interfaz; no lo uses como identidad de producción.
+3. Activa proveedores sociales en Supabase: Google, Apple y Facebook. En cada
+   proveedor configura el Client ID/Secret y añade la URL callback que muestra
+   Supabase en el panel del proveedor correspondiente.
+4. La app usa `signInWithOAuth`, `signInWithOtp`, `getSession` y
+   `onAuthStateChange`. No hay cuenta local ni datos demo; si Supabase no está
+   configurado, el portal muestra error de configuración.
 
 ### 4.2 Esquema de base de datos
 Ejecuta esto en el **SQL Editor** (no uses una sola tabla gigante — separa responsabilidades):
@@ -146,8 +148,8 @@ create table daily_liturgy (
   weekday text, season text, liturgical_color text,
   saint jsonb, quote jsonb,
   gospel jsonb, psalm jsonb, first_reading jsonb, second_reading jsonb,
-  laudes jsonb, reflection text,
-  image_url text, marian jsonb,
+  laudes jsonb, angelus jsonb, reflection text,
+  image_url text, messages jsonb,
   generated_at timestamptz default now()
 );
 
@@ -228,9 +230,22 @@ create table spiritual_tasks (
   cadence text not null,                  -- daily | weekly
   time text,                              -- "HH:MM" para tareas ancladas
   required boolean default false,         -- Laudes/Ángelus/Rosario NO se pueden borrar
+  task_date date not null default current_date,
   done boolean default false,
   completed_at timestamptz
 );
+
+create unique index spiritual_tasks_daily_unique
+  on spiritual_tasks(profile_id, category, task_date)
+  where category <> 'custom';
+
+-- RPC idempotente llamada por useSpiritualTasks al iniciar sesión.
+-- Debe insertar para auth.uid() / current_date usando ON CONFLICT DO NOTHING:
+-- Laudes, Ángelus, Evangelio, Salmo, Primera Lectura, Segunda Lectura,
+-- Santo Rosario y Examen de conciencia cada día; Confesión una vez al mes;
+-- e Ir a Misa solo en domingo o si p_is_solemnity=true (dato de Gemini).
+-- Nombre esperado:
+-- ensure_daily_spiritual_tasks(p_date date, p_is_sunday boolean, p_is_solemnity boolean)
 
 -- Frutos espirituales (balance por usuario) — desacoplado del Rosario
 create table fruits (
@@ -261,6 +276,34 @@ create table assets (
   status text default 'published',
   created_at timestamptz default now()
 );
+
+-- Suscripciones Web Push por dispositivo.
+create table push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid references profiles(id) on delete cascade,
+  endpoint text not null unique,
+  subscription jsonb not null,
+  user_agent text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- Preferencias de recordatorios por correo vía Supabase/Worker.
+create table notification_preferences (
+  profile_id uuid primary key references profiles(id) on delete cascade,
+  email_reminders boolean default true,
+  push_reminders boolean default true,
+  laudes_time text default '07:00',
+  angelus_time text default '12:00',
+  rosary_time text default '20:00',
+  updated_at timestamptz default now()
+);
+
+-- Vista/RPC del lobby. La UI no contiene cifras por defecto.
+-- Debe devolver una fila:
+-- room_active boolean, people_now bigint, rosaries_today bigint,
+-- users_today bigint, ave_marias_today bigint.
+-- Nombre esperado: rosary_lobby_metrics()
 ```
 
 ### 4.2.1 RLS mínimo
@@ -289,6 +332,41 @@ Programa (Supabase → Database → Cron, o el Worker) la **inserción automáti
 - `Ángelus` a las 12:00 (required)
 - `Rosario` a las 20:00 (required · mínimo 1/día)
 
+El frontend usa `useSpiritualTasks`: primero ejecuta
+`ensure_daily_spiritual_tasks(current_date, isSunday, isSolemnity)`, consulta exclusivamente
+`spiritual_tasks` filtrado por `auth.uid()` y se suscribe por Supabase Realtime.
+Marcar una tarea actualiza `done` + `completed_at`; el estado se sincroniza en
+todos los dispositivos y nunca depende de `useState` como fuente de verdad.
+
+### 4.5 Avance interactivo del Rosario
+
+El `PrayerEngine` **no usa tiempo para avanzar**. `tick()` solo mantiene
+presencia y detecta inactividad. Un Step cambia exclusivamente por interacción
+`🙏`/voz reconocida:
+- En solitario: el usuario debe responder.
+- En comunidad: líder terminado o consenso activo ≥70%.
+- Un participante sin interacción durante 10 segundos queda fuera del
+  denominador de consenso para no detener a la sala; no recibe avance ficticio.
+- No existe `Math.random()`, simulación de respuestas ni timeout que complete
+  oraciones/reflexiones automáticamente.
+
+### 4.6 Presencia de Laudes y Ángelus
+
+```sql
+create table daily_prayer_presence (
+  profile_id uuid not null references profiles(id) on delete cascade,
+  prayer_kind text not null check (prayer_kind in ('laudes','angelus')),
+  prayer_date date not null default current_date,
+  last_seen timestamptz not null default now(),
+  primary key (profile_id, prayer_kind, prayer_date)
+);
+```
+
+`useDailyPrayerPresence` publica heartbeat mientras el usuario está dentro del
+portal y cuenta perfiles con `last_seen` menor a 60 segundos. La dashboard y
+los portales solo muestran el indicador si el contador real es mayor que cero;
+nunca muestran “0 personas rezando”. Activa Realtime en esta tabla.
+
 ---
 
 ## 5. Motor principal: Gemini API
@@ -306,21 +384,35 @@ export default {
     const today = new Date().toISOString().slice(0, 10);
 
     const prompt = `
-Eres un asistente litúrgico católico. Devuelve SOLO JSON válido con esta forma:
-{ "date","weekday","season","liturgicalColor",
-  "saint": {"name","title","initial"},
+Eres un asistente litúrgico católico con contexto pastoral de Venezuela.
+Usa Google Search grounding/fuentes verificables. Devuelve SOLO JSON válido:
+{ "date","weekday","season","liturgicalColor","isSolemnity","liturgicalRank",
+  "saint": {"name","title","imageUrl","story","exampleToday",
+    "gospelConnection","venezuelaRelevance"},
   "quote": {"text","ref"},
   "gospel": {"ref","title","body"},
   "psalm": {"ref","title","body"},
   "firstReading": {"ref","title","body"},
   "secondReading": {"ref","title","body"} | null,
   "laudes": {"title","body"},
+  "angelus": {"title","body"},
   "reflection": "...",
   "imagePrompt": "...",
-  "marian": {"source":"Betania"|"Medjugorje","text","relevant":true|false} }
-Para la fecha ${today}. Incluye Evangelio, Salmo, 1ª y 2ª lectura (si aplica),
-Laudes, reflexión, santo del día y —si es relevante ese día— un mensaje de la
-Virgen de Betania o de Medjugorje. Marca "relevant": false si no aplica.`;
+  "messages": {
+    "betania": {"text","relevant","date","sourceUrl"} | null,
+    "medjugorje": {"text","relevant","date","sourceUrl"} | null,
+    "popeLeoXiv": {"text","relevant","date","sourceUrl"} | null } }
+  "suggestedNovenas": [{"title", "reason"}] | null } }
+Para ${today}: identifica explícitamente si es domingo, solemnidad, fiesta,
+memoria o feria (isSolemnity=true solo para solemnidades). Busca todos los santos celebrados y elige el más destacado con
+relación pastoral o devocional con Venezuela. Resume su vida con interés,
+explica su ejemplo actual y conexión con el Evangelio. Genera una imagen del
+santo y publica su URL en imageUrl. Incluye Evangelio, Salmo, primera y segunda
+lectura si corresponde, Laudes y Ángelus completos. Busca mensajes auténticos
+de la Virgen de Betania, Medjugorje y del Papa León XIV relacionados con la
+fecha o Evangelio. Identifica también si en o cerca de esta fecha comienza
+alguna Novena importante y sugierela en suggestedNovenas. No inventes: si no
+hay fuente verificable usa relevant=false y la UI ocultará esa sección.`;
 
     // 1) Texto litúrgico
     const res = await fetch(
@@ -346,9 +438,9 @@ Virgen de Betania o de Medjugorje. Marca "relevant": false si no aplica.`;
 ```
 
 ### 5.3 Consumo desde el frontend
-`GET /api/daily` → devuelve la fila de `daily_liturgy` (o el KV). El frontend
-lo mapea a `DailyLiturgy` (`src/liturgy/types.ts`). Hoy usa el mock
-`src/liturgy/today.ts`; solo hay que sustituir la fuente por el `fetch`.
+`GET https://camino-api.byp.workers.dev/daily?date=YYYY-MM-DD` devuelve la fila
+de `daily_liturgy` (o KV). El frontend lo consume con
+`src/liturgy/useDailyLiturgy.ts` y lo mapea a `DailyLiturgy`.
 
 > **Regla de oro:** el modelo se llama **una vez** y se cachea. Ningún cliente
 > llama a Gemini directamente.
@@ -377,7 +469,7 @@ propio. Todo asset publicado también aparece en “Acompañamiento recibido hoy
 2. Obtén: `WHATSAPP_TOKEN`, `PHONE_NUMBER_ID`, `WABA_ID` y define un
    `VERIFY_TOKEN` propio.
 3. Configura el **Webhook** apuntando a tu Worker:
-   `https://camino-api.tudominio.workers.dev/whatsapp` y suscríbete a `messages`.
+   `https://camino-api.byp.workers.dev/whatsapp` y suscríbete a `messages`.
 
 ### 6.2 Webhook en el Worker (pseudocódigo)
 ```ts
@@ -419,7 +511,8 @@ if (msg.type === "audio") {
 El frontend consulta `assets where status = 'published'` y se suscribe a INSERT
 por Supabase Realtime. `tag` es el router de contenido; no se necesita publicar
 una nueva versión del frontend. La música/audio vive **en R2**, nunca en
-Supabase Storage. `src/media/registry.ts` es el mock local del mismo contrato.
+Supabase Storage. `src/media/registry.ts` ya no trae datos de ejemplo; el hook
+`useWhatsAppAssets` consulta Supabase y escucha Realtime.
 
 ---
 
@@ -429,7 +522,9 @@ Supabase Storage. `src/media/registry.ts` es el mock local del mismo contrato.
 ```
 VITE_SUPABASE_URL=https://xxxx.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
-VITE_API_BASE=https://camino-api.tudominio.workers.dev
+VITE_API_BASE=https://camino-api.byp.workers.dev
+VITE_FRONTEND_URL=https://camino-6vx.pages.dev
+VITE_VAPID_PUBLIC_KEY=...
 ```
 
 ### Worker (`wrangler.toml` → [vars] / secrets)
@@ -443,6 +538,26 @@ VERIFY_TOKEN=...
 ADMIN_PHONE=52155XXXXXXXX        # número admin autorizado
 ```
 Sube secretos con: `wrangler secret put GEMINI_API_KEY` (etc.).
+
+### 7.1 Notificaciones push y correo
+
+El frontend registra `/sw.js` y envía la suscripción Web Push al Worker:
+
+- `POST https://camino-api.byp.workers.dev/notifications/subscribe`
+- `POST https://camino-api.byp.workers.dev/notifications/email/reminders`
+
+Variables Worker recomendadas:
+```bash
+VAPID_PUBLIC_KEY=...
+VAPID_PRIVATE_KEY=...
+RESEND_API_KEY=...              # o proveedor SMTP/Email elegido
+FRONTEND_URL=https://camino-6vx.pages.dev
+```
+
+El Worker debe consultar `spiritual_tasks` y enviar recordatorios para tareas
+pendientes: Laudes, Ángelus, Rosario y compromisos diarios. Para push usa la
+tabla `push_subscriptions`; para correo usa `notification_preferences` y el
+email de `auth.users`/`profiles`.
 
 ---
 
@@ -636,7 +751,7 @@ Pantalla `src/screens/rosario/LiveSession.tsx`, reescrita con
 ## 9. Checklist de puesta en marcha
 
 - [ ] Proyecto Supabase creado y esquema SQL aplicado (sección 4.2)
-- [ ] Site URL, redirect URLs, Email Magic Link y Google Provider configurados
+- [ ] Site URL, redirect URLs, Email Magic Link y social login (Google/Apple/Facebook) configurados
 - [ ] RLS activo, especialmente candles y garden_events/garden_waterings sin UPDATE/DELETE
 - [ ] Confirmado que NO existe columna `garden_dna`: el ADN se deriva en el
       cliente vía SHA-256(auth.uid()) (sección 8.1)
@@ -645,6 +760,8 @@ Pantalla `src/screens/rosario/LiveSession.tsx`, reescrita con
 - [ ] Cron diario que inserta Laudes/Ángelus/Rosario en `spiritual_tasks`
 - [ ] Worker `daily-generate` con `GEMINI_API_KEY` y cron 1×/día
 - [ ] Bucket R2 `camino-audio` + Webhook de WhatsApp verificado
+- [ ] VAPID keys configuradas y tablas `push_subscriptions`/`notification_preferences` creadas
+- [ ] Endpoints `/notifications/subscribe` y `/notifications/email/reminders` funcionando
 - [ ] `ADMIN_PHONE` configurado (solo ese número puede subir audios)
 - [ ] Frontend desplegado en Cloudflare Pages apuntando a `VITE_API_BASE`
-- [ ] `GET /api/daily` devolviendo la liturgia del día
+- [ ] `GET /daily` devolviendo la liturgia del día generada por Gemini

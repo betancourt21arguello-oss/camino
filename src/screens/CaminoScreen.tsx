@@ -124,6 +124,26 @@ export function CaminoScreen({
       </div>
 
       {/* Marian message (if relevant) */}
+      {L?.suggestedNovenas && L.suggestedNovenas.length > 0 && (
+        <div className="mt-4 px-6">
+          <div className="rounded-2xl border border-[#e6e3db] bg-[#f8f5ed] p-4">
+            <div className="text-[10px] tracking-[0.2em] text-[#a68b4e]">
+              NOVENA SUGERIDA
+            </div>
+            <div className="mt-1 font-medium">{L.suggestedNovenas[0].title}</div>
+            <p className="mt-1 text-sm text-[#8a8a90]">{L.suggestedNovenas[0].reason}</p>
+            <div className="mt-3 flex gap-2">
+              <button className="flex-1 h-10 rounded-xl bg-[#1c1c1e] text-xs font-medium text-white">
+                Comenzar novena
+              </button>
+              <button className="flex-1 h-10 rounded-xl border border-[#c4a35a] text-[#a68b4e] text-xs font-medium">
+                Compartir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {L?.marian?.relevant && (
         <div className="mt-4 px-6">
           <div className="rounded-2xl border border-[#e4dcef] bg-[#f5f1fb] p-4">

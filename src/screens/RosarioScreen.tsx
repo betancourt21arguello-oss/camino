@@ -13,7 +13,8 @@ export function RosarioScreen({
   onOpenGallery?: () => void;
   onActiveChange?: (active: boolean) => void;
 }) {
-  const rosario = useRosario();
+  const [selectedDevotionId, setSelectedDevotionId] = useState("rosario-dolorosos");
+  const rosario = useRosario(selectedDevotionId);
   const { emit, lightCandle, activeIntentions, candles } = useSpiritual();
   const lobby = useRosaryLobbyData();
   const [pendingStart, setPendingStart] = useState<
@@ -78,6 +79,8 @@ export function RosarioScreen({
           onStartSolo={() => requestStart("solo")}
           onJoin={() => requestStart("join")}
           onOpenGallery={onOpenGallery}
+          selectedDevotionId={selectedDevotionId}
+          onSelectDevotion={setSelectedDevotionId}
         />
         {pendingStart && (
           <IntentionPrompt
