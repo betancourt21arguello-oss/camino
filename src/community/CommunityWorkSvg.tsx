@@ -133,7 +133,7 @@ function SignatureMark({ shape, hue }: { shape: SignatureShape; hue: number }) {
               transform={`rotate(${i * 72})`}
             />
           ))}
-          <circle r="1.8" fill="#c4a35a" />
+          <circle cx="0" cy="0" r="1.8" fill="#c4a35a" />
         </g>
       );
     case "branch":

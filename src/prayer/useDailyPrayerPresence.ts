@@ -20,26 +20,34 @@ export function useDailyPrayerPresence(kind: DailyPrayerKind, active = false) {
     const date = new Date().toISOString().slice(0, 10);
 
     const refresh = async () => {
-      const { count: total } = await client
-        .from("daily_prayer_presence")
-        .select("profile_id", { count: "exact", head: true })
-        .eq("prayer_kind", kind)
-        .eq("prayer_date", date)
-        .gte("last_seen", new Date(Date.now() - 60_000).toISOString());
-      if (mounted) setCount(total ?? 0);
+      try {
+        const { count: total } = await client
+          .from("daily_prayer_presence")
+          .select("profile_id", { count: "exact", head: true })
+          .eq("prayer_kind", kind)
+          .eq("prayer_date", date)
+          .gte("last_seen", new Date(Date.now() - 60_000).toISOString());
+        if (mounted) setCount(total ?? 0);
+      } catch {
+        if (mounted) setCount(0);
+      }
     };
 
     const heartbeat = async () => {
       if (!active || !user) return;
-      await client.from("daily_prayer_presence").upsert(
-        {
-          profile_id: user.id,
-          prayer_kind: kind,
-          prayer_date: date,
-          last_seen: new Date().toISOString(),
-        },
-        { onConflict: "profile_id,prayer_kind,prayer_date" },
-      );
+      try {
+        await client.from("daily_prayer_presence").upsert(
+          {
+            profile_id: user.id,
+            prayer_kind: kind,
+            prayer_date: date,
+            last_seen: new Date().toISOString(),
+          },
+          { onConflict: "profile_id,prayer_kind,prayer_date" },
+        );
+      } catch {
+        // table may not exist yet — silently ignore
+      }
     };
 
     void heartbeat();

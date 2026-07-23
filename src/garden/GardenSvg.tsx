@@ -349,7 +349,7 @@ export function GardenSignatureGlyph({ signature }: { signature: GardenSignature
         {Array.from({ length: signature.petals }, (_, i) => (
           <ellipse key={i} cy="-7" rx="3" ry="7" fill={`hsl(${signature.hue} 28% 64%)`} transform={`rotate(${(360 / signature.petals) * i})`} />
         ))}
-        <circle r="2.5" fill="#c4a35a" />
+        <circle cx="0" cy="0" r="2.5" fill="#c4a35a" />
       </g>
     );
   }

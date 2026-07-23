@@ -58,9 +58,21 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
     }
     let active = true;
     const load = async () => {
-      const [fruitRes, candleRes, eventRes, prayedRes] = await Promise.all([
+      let candleRows: any[] = [];
+      try {
+        const candleRes = await client
+          .from("candles")
+          .select("id,intention,lit_at,expires_at,owner_id,profiles(name)")
+          .gt("expires_at", new Date().toISOString());
+        if (!candleRes.error) {
+          candleRows = candleRes.data ?? [];
+        }
+      } catch {
+        candleRows = [];
+      }
+      if (!active) return;
+      const [fruitRes, eventRes, prayedRes] = await Promise.all([
         client.from("fruits").select("vela,semilla,agua").eq("profile_id", user.id).maybeSingle(),
-        client.from("candles").select("id,intention,lit_at,expires_at,owner_id,profiles(name)").gt("expires_at", new Date().toISOString()),
         client.from("garden_events").select("id,event_type,value,created_at,intention").eq("user_id", user.id).order("created_at"),
         client.from("intentions").select("candle_id").eq("pray_for_id", user.id).gt("expires_at", new Date().toISOString()),
       ]);
@@ -68,7 +80,7 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
       const f = fruitRes.data;
       setBalance({ vela: f?.vela ?? 0, semilla: f?.semilla ?? 0, agua: f?.agua ?? 0 });
       const prayed = new Set((prayedRes.data ?? []).map((row) => row.candle_id));
-      setCandles((candleRes.data ?? []).map((row: any) => ({
+      setCandles(candleRows.map((row: any) => ({
         id: row.id,
         intention: row.intention,
         ownerName: row.profiles?.name ?? "Comunidad",

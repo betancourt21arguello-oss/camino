@@ -53,7 +53,7 @@ export function useTodayLiturgy() {
     if (!API_BASE) return;
     let active = true;
     setLoading(true);
-    fetch(`${API_BASE}/api/daily`)
+    fetch(`${API_BASE}/daily`)
       .then((r) => (r.ok ? r.json() : Promise.resolve(null)))
       .then((data) => {
         if (active && data?.date) setLiturgy(data as DailyLiturgy);
