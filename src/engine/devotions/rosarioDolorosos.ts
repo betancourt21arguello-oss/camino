@@ -132,7 +132,7 @@ function mysterySection(index: number): Section {
         type: "reflection",
         title: "Interludio Espiritual",
         role: "all",
-        duration: 30, // 120s en producción; reducido para la demo
+        duration: 120,
         transitions: ["time"],
         reflection: true,
         chat: true,

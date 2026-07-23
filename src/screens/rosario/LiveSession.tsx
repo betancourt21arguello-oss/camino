@@ -9,12 +9,6 @@ import { PrayerNavBar } from "./PrayerNavBar";
 import { usePrayerVoiceControl } from "../../engine/usePrayerVoiceControl";
 import { keywordsForStep } from "../../engine/keywords";
 
-function fmt(s: number) {
-  const m = Math.floor(s / 60);
-  const ss = Math.max(0, Math.floor(s % 60));
-  return `${String(m).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
-}
-
 export function LiveSession({
   rosario,
   intentions = [],
@@ -66,12 +60,10 @@ export function LiveSession({
   if (!current || !step) return null;
 
   const isRepeat = !!step.repeat;
-  const remaining = Math.max(0, step.duration - state.stepElapsed);
-
   const centerLabel = isRepeat
     ? `${step.title} · ${state.repeatIndex + 1}/${step.repeat}`
     : isReflection
-      ? `Interludio · ${fmt(remaining)}`
+      ? "Interludio espiritual"
       : current.sectionTitle;
 
   const releasePrayer = () => {
@@ -158,7 +150,7 @@ export function LiveSession({
       {/* ===== Tarjeta central: única con overflow-y-auto ===== */}
       <main className="min-h-0 flex-1 px-4 py-3">
         {isReflection ? (
-          <ReflectionCard rosario={rosario} remaining={remaining} />
+          <ReflectionCard rosario={rosario} />
         ) : (
           <ConsolidatedPrayerCard step={step} myRole={myRole} holding={holding} />
         )}
@@ -180,7 +172,7 @@ export function LiveSession({
       <PrayerNavBar
         holding={holding}
         completedRatio={state.mode === "community" ? state.completedRatio : holding ? 1 : 0}
-        disabled={isReflection}
+        disabled={false}
         onHoldStart={() => setHolding(true)}
         onHoldEnd={releasePrayer}
         onExit={rosario.leave}
@@ -271,17 +263,12 @@ type ChatMsg = { id: number; user: string; hue: number; text: string };
 
 function ReflectionCard({
   rosario,
-  remaining,
 }: {
   rosario: RosarioApi;
-  remaining: number;
 }) {
   const { current } = rosario;
   const [playing, setPlaying] = useState(true);
-  const [messages, setMessages] = useState<ChatMsg[]>([
-    { id: 1, user: "MaríaP", hue: 340, text: "Oremos por los enfermos." },
-    { id: 2, user: "PedroJ", hue: 210, text: "Qué paz este interludio." },
-  ]);
+  const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [draft, setDraft] = useState("");
   const end = useRef<HTMLDivElement>(null);
 
@@ -299,7 +286,7 @@ function ReflectionCard({
     <div className="flex h-full flex-col rounded-3xl border border-[#7a1f22]/40 bg-[#1a0e10] p-4">
       <div className="flex shrink-0 items-center justify-between">
         <span className="text-[11px] font-semibold tracking-[0.16em] text-[#e0a0a2]">
-          INTERLUDIO · {fmt(remaining)}
+          INTERLUDIO ESPIRITUAL
         </span>
         <button
           onClick={() => setPlaying((p) => !p)}

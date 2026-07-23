@@ -25,7 +25,7 @@ interface MemberLite {
 /**
  * Orquesta la obra comunitaria viva.
  * - Arranca vacía (solo una luz).
- * - Cada 🙏 añade la firma del usuario (y, en mock, algunas firmas compañeras).
+ * - Cada 🙏 añade la firma del usuario. En producción, las firmas ajenas llegan por Realtime.
  * - El progreso NO avanza por tiempo: avanza por respuestas de la comunidad.
  * - Al completar, guarda CommunitySeed + metadatos (nunca SVG) en la Galería.
  */
@@ -108,25 +108,6 @@ export function useCommunityWork({
     );
     addSignature(payload);
 
-    // Mock de comunidad: otras personas también "responden" con su firma.
-    // En producción esto llegaría por Realtime al marcar done.
-    const others = members.filter((m) => !m.isMe).slice(0, 3);
-    others.forEach((m, i) => {
-      window.setTimeout(() => {
-        // Synthetic companion signatures derived from member id (stable).
-        addSignature({
-          sessionId: sessionKey,
-          memberId: String(m.id),
-          signatureSeed: `m${m.id}`.padEnd(16, "0").slice(0, 16),
-          primaryShape: (["leaf", "flower", "branch", "star", "arc", "petal"] as const)[
-            m.id % 6
-          ],
-          palette: m.id % 3,
-          countryColor: m.id % 12,
-          growthFactor: 0.7 + (i % 3) * 0.15,
-        });
-      }, 180 + i * 220);
-    });
   }, [traits, members, sessionKey, identity, addSignature]);
 
   // Soft ambient contributions as more people join (still response-driven, not clock).

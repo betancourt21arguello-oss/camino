@@ -1,11 +1,7 @@
 // ============================================================
 //  PRAYER ENGINE  —  Única máquina de estados.
 //  La UI NUNCA modifica Steps. Solo envía eventos y refleja estado.
-//  El avance ocurre SOLO cuando una transición se cumple:
-//    A) tiempo esperado alcanzado
-//    B) consenso > 70% de participantes terminaron
-//    C) el líder terminó + pequeño tiempo de gracia
-//    D) (solo) gesto de "he terminado"
+//  El avance ocurre SOLO por interacción real de usuarios.
 //  Nunca por un contador que simplemente aumenta.
 // ============================================================
 
@@ -13,8 +9,6 @@ import type { Devotion, EngineState, FlatStep, Mode, Role } from "./types";
 import { CommunityEngine, ME_ID } from "./CommunityEngine";
 
 type Listener = () => void;
-
-const GRACE_AFTER_LEADER = 2; // segundos de gracia tras terminar el líder
 
 export class PrayerEngine {
   private devotion: Devotion;
@@ -29,7 +23,6 @@ export class PrayerEngine {
   private repeatIndex = 0;
   private stepElapsed = 0;
   private soloDone = false;
-  private simJoinTick = 0;
 
   constructor(devotion: Devotion) {
     this.devotion = devotion;
@@ -80,9 +73,8 @@ export class PrayerEngine {
   }
 
   /** Unirse a un Rosario ya en curso (sala con gente). */
-  joinExisting(seedParticipants = 42, startAtFlat = 12) {
+  joinExisting(startAtFlat = 0) {
     this.community.reset();
-    for (let i = 0; i < seedParticipants; i++) this.community.join(false, i);
     this.community.join(true); // yo entro también
     this.mode = "community";
     this.flatIndex = Math.min(startAtFlat, this.flat.length - 1);
@@ -137,8 +129,6 @@ export class PrayerEngine {
     if (this.status !== "running") return;
     const cur = this.currentFlat();
     if (!cur) return;
-    if (cur.step.type === "reflection") return; // reflexión es por tiempo
-
     if (this.mode === "solo") {
       this.soloDone = true; // el motor decidirá en el próximo tick
     } else {
@@ -149,47 +139,32 @@ export class PrayerEngine {
     else this.emit();
   }
 
-  // ---- Time engine: el tiempo manda --------------------------------
+  // El reloj solo detecta inactividad/presencia. JAMÁS avanza Steps.
   tick(dt = 1) {
     if (this.status !== "running") return;
     this.stepElapsed += dt;
 
     if (this.mode === "community") {
-      this.simulateCommunity();
       this.community.pruneAndKeepLeaderAlive();
       this.community.heartbeat(ME_ID);
     }
-
-    if (this.shouldAdvance()) this.advance();
-    else this.emit();
+    this.emit();
   }
 
   // ---- Transition decision (LA MÁQUINA DECIDE) ---------------------
   private shouldAdvance(): boolean {
     const cur = this.currentFlat();
     if (!cur) return false;
-    const s = cur.step;
-
-    if (s.type === "reflection") {
-      return this.stepElapsed >= s.duration; // solo por tiempo
-    }
 
     if (this.mode === "solo") {
-      return (
-        (s.transitions.includes("gesture") && this.soloDone) ||
-        this.stepElapsed >= s.duration
-      );
+      return this.soloDone;
     }
 
     // community
-    const byTime = this.stepElapsed >= s.duration;
     const byConsensus =
-      s.transitions.includes("consensus") && this.community.completedRatio() > 0.7;
-    const byLeader =
-      s.transitions.includes("leader") &&
-      this.community.leaderDone() &&
-      this.stepElapsed >= GRACE_AFTER_LEADER;
-    return byTime || byConsensus || byLeader;
+      this.community.completedRatio() >= 0.7;
+    const byLeader = this.community.leaderDone();
+    return byConsensus || byLeader;
   }
 
   // ---- Advance (repeat interno o siguiente Step) -------------------
@@ -224,23 +199,6 @@ export class PrayerEngine {
     this.stepElapsed = 0;
     this.soloDone = false;
     this.community.assignLeader();
-  }
-
-  // ---- Community simulation (mockup life) --------------------------
-  private simulateCommunity() {
-    // Otros van marcando "terminado" conforme avanza el tiempo.
-    const cur = this.currentFlat();
-    if (!cur || cur.step.type === "reflection") return;
-    this.community.members.forEach((m) => {
-      if (m.isMe || m.doneForStep) return;
-      const p = 0.12 + this.stepElapsed * 0.06;
-      if (Math.random() < p) m.doneForStep = true;
-    });
-    // De vez en cuando se une alguien (hasta 12 si iniciaste comunitario)
-    this.simJoinTick += 1;
-    if (this.simJoinTick % 4 === 0 && this.community.count < 12) {
-      this.community.join(false, this.community.count);
-    }
   }
 
   // ---- Snapshots for the UI ----------------------------------------

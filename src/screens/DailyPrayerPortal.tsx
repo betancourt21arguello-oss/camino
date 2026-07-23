@@ -1,29 +1,43 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AudioPlayer } from "../components/AudioPlayer";
 import { angelusSteps, laudesSteps } from "../devotions/daily";
 import { assetsByTag } from "../media/registry";
 import type { WhatsAppAsset } from "../media/types";
+import { useDailyPrayerPresence } from "../prayer/useDailyPrayerPresence";
 
 type PortalKind = "laudes" | "angelus";
 
 export function DailyPrayerPortal({
   kind,
   assets: allAssets,
+  generated,
   onClose,
   onComplete,
 }: {
   kind: PortalKind;
   assets: WhatsAppAsset[];
+  generated?: { title: string; body: string };
   onClose: () => void;
   onComplete: () => void;
 }) {
   const [index, setIndex] = useState(0);
-  const steps = kind === "laudes" ? laudesSteps : angelusSteps;
+  const steps = useMemo(() => {
+    if (!generated?.body) return kind === "laudes" ? laudesSteps : angelusSteps;
+    const parts = generated.body.split(/\n\s*\n/).filter(Boolean);
+    return parts.map((text, i) => ({
+      id: `gemini-${kind}-${i}`,
+      title: i === 0 ? generated.title : `${generated.title} · ${i + 1}`,
+      role: "todos" as const,
+      text,
+      response: undefined,
+    }));
+  }, [generated, kind]);
   const assets = assetsByTag(kind, allAssets);
   const step = steps[index];
   const last = index === steps.length - 1;
   const isLaudes = kind === "laudes";
+  const presence = useDailyPrayerPresence(kind, true);
 
   return (
     <div className="absolute inset-0 z-40 flex flex-col overflow-hidden bg-[#f8f6f0] text-[#1c1c1e]">
@@ -44,6 +58,12 @@ export function DailyPrayerPortal({
           <div className="font-serif-holy text-xl font-semibold">
             {isLaudes ? "Laudes del día" : "Ángelus del día"}
           </div>
+          {presence.hasPeople && (
+            <div className="mt-0.5 flex items-center justify-center gap-1 text-[10px] text-[#6e875e]">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#6e9f6f]" />
+              {presence.count} {presence.count === 1 ? "persona rezando" : "personas rezando"}
+            </div>
+          )}
         </div>
         <div className="w-11 text-right text-xs tabular-nums text-[#9a9a9f]">
           {index + 1}/{steps.length}

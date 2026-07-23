@@ -55,7 +55,7 @@ export function ComunidadScreen() {
 
   const active = candles.filter((c) => c.expiresAt > Date.now());
   const shown = active.slice(0, 40);
-  const extra = Math.max(0, 523); // muestra + "+523 más"
+  const extra = Math.max(0, active.length - shown.length);
 
   return (
     <div className="min-h-full bg-[#f7f6f3] pb-28 text-[#1c1c1e]">
@@ -110,22 +110,15 @@ export function ComunidadScreen() {
             ))}
           </div>
 
-          <p className="mt-6 text-center text-sm text-[#9a9a9f]">
-            + {extra} intenciones más encendidas por la comunidad
-          </p>
+          {extra > 0 && (
+            <p className="mt-6 text-center text-sm text-[#9a9a9f]">
+              + {extra} intenciones más encendidas por la comunidad
+            </p>
+          )}
         </div>
       ) : (
-        <div className="space-y-3 px-6 pt-6">
-          {[
-            { u: "Ana", t: "Hoy sentí mucha paz durante el segundo misterio." },
-            { u: "José", t: "Gracias a todos por rezar juntos esta mañana." },
-            { u: "Lucía", t: "Ofrezco este rosario por mi familia." },
-          ].map((r, i) => (
-            <div key={i} className="rounded-2xl border border-[#e6e3db] bg-white p-4">
-              <div className="text-sm font-medium text-[#5c6b3f]">{r.u}</div>
-              <p className="mt-1 text-sm text-[#3a3a3e]">{r.t}</p>
-            </div>
-          ))}
+        <div className="px-6 pt-8 text-center text-sm text-[#9a9a9f]">
+          Las reflexiones publicadas en Supabase aparecerán aquí.
         </div>
       )}
 

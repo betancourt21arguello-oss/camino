@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
-import { whatsappAssets } from "./registry";
 import type { WhatsAppAsset, WhatsAppTag } from "./types";
 
 interface AssetRow {
@@ -39,12 +38,9 @@ function fromRow(row: AssetRow): WhatsAppAsset | null {
   };
 }
 
-/**
- * En local usa el registro mock. En producción consulta Supabase y escucha
- * INSERT por Realtime, de modo que un audio del admin aparece sin redesplegar.
- */
+/** Consulta Supabase y escucha INSERT por Realtime, sin datos estáticos. */
 export function useWhatsAppAssets() {
-  const [assets, setAssets] = useState<WhatsAppAsset[]>(whatsappAssets);
+  const [assets, setAssets] = useState<WhatsAppAsset[]>([]);
 
   useEffect(() => {
     const client = supabase;

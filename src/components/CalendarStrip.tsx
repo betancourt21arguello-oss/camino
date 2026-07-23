@@ -1,4 +1,4 @@
-import { monthEvents, pastProgress, TODAY_DAY } from "../liturgy/today";
+import type { LiturgicalEvent } from "../liturgy/types";
 
 const rankTint: Record<string, string> = {
   solemnidad: "#c9302c",
@@ -7,7 +7,18 @@ const rankTint: Record<string, string> = {
   feria: "#b8b4a8",
 };
 
-export function CalendarStrip({ onOpenDay }: { onOpenDay?: (day: number) => void }) {
+export function CalendarStrip({
+  events,
+  pastProgress,
+  todayDay,
+  onOpenDay,
+}: {
+  events: LiturgicalEvent[];
+  pastProgress: Record<number, { rosaries: number; done: boolean }>;
+  todayDay: number;
+  onOpenDay?: (day: number) => void;
+}) {
+  if (events.length === 0) return null;
   return (
     <div className="mt-6">
       <div className="mb-2 flex items-center justify-between px-6 text-[11px] tracking-[0.15em] text-[#9a9a9f]">
@@ -15,9 +26,9 @@ export function CalendarStrip({ onOpenDay }: { onOpenDay?: (day: number) => void
         <span>CALENDARIO LITÚRGICO →</span>
       </div>
       <div className="no-scrollbar flex snap-x gap-2 overflow-x-auto px-6 pb-1">
-        {monthEvents.map((ev) => {
-          const isToday = ev.day === TODAY_DAY;
-          const isPast = ev.day < TODAY_DAY;
+        {events.map((ev) => {
+          const isToday = ev.day === todayDay;
+          const isPast = ev.day < todayDay;
           const prog = pastProgress[ev.day];
           return (
             <button

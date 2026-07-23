@@ -88,6 +88,28 @@ export function PerfilScreen({ onOpenAuth }: { onOpenAuth: () => void }) {
         </div>
       </header>
 
+      {!user && (
+        <div className="mx-6 mb-3 shrink-0 rounded-2xl border border-[#e5dcc3] bg-[#f6efdd] p-3.5">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-[#a68b4e]">
+              ↗
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold">Guarda tu progreso</div>
+              <p className="text-xs leading-relaxed text-[#766d5d]">
+                Inicia sesión o crea tu cuenta en segundos para sincronizar tu jardín, tareas e intenciones.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onOpenAuth}
+            className="mt-3 h-11 w-full rounded-full bg-[#1c1c1e] text-sm font-medium text-white"
+          >
+            Iniciar sesión o registrarme
+          </button>
+        </div>
+      )}
+
       {/* Tabs */}
       <div className="shrink-0 px-6">
         <div className="flex rounded-full bg-[#e9e7e0] p-1 text-xs">

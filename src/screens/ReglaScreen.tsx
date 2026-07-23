@@ -1,15 +1,21 @@
 import { useMemo, useState } from "react";
-import { defaultTasks, type SpiritualTask } from "../rule/tasks";
+import type { SpiritualTask } from "../rule/tasks";
 import { useSpiritual } from "../fruits/store";
+import { NotificationsPanel } from "../notifications/NotificationsPanel";
+import { useSpiritualTasks } from "../rule/useSpiritualTasks";
+import type { DailyLiturgy } from "../liturgy/types";
+import type { ReaderTarget } from "./CaminoScreen";
 
 type Props = {
-  onOpenReader?: (t: "laudes" | "angelus" | "gospel") => void;
+  onOpenReader?: (t: ReaderTarget) => void;
   onStartRosary?: () => void;
+  liturgy: DailyLiturgy | null;
 };
 
-export function ReglaScreen({ onOpenReader, onStartRosary }: Props) {
+export function ReglaScreen({ onOpenReader, onStartRosary, liturgy }: Props) {
   const { emit } = useSpiritual();
-  const [tasks, setTasks] = useState<SpiritualTask[]>(defaultTasks);
+  const taskStore = useSpiritualTasks(liturgy);
+  const tasks = taskStore.tasks;
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState("");
 
@@ -17,36 +23,26 @@ export function ReglaScreen({ onOpenReader, onStartRosary }: Props) {
   const weekly = useMemo(() => tasks.filter((t) => t.cadence === "weekly"), [tasks]);
   const doneCount = tasks.filter((t) => t.done).length;
 
-  const toggle = (id: string) => {
-    setTasks((ts) =>
-      ts.map((t) => {
-        if (t.id !== id) return t;
-        if (!t.done) emit({ type: "task-complete" });
-        return { ...t, done: !t.done };
-      }),
-    );
+  const toggle = async (id: string) => {
+    const task = tasks.find((item) => item.id === id);
+    if (!task) return;
+    const ok = await taskStore.toggle(id, !task.done);
+    if (ok && !task.done) emit({ type: "task-complete" });
   };
 
   const openTask = (t: SpiritualTask) => {
     if (t.category === "laudes") onOpenReader?.("laudes");
     else if (t.category === "angelus") onOpenReader?.("angelus");
     else if (t.category === "gospel") onOpenReader?.("gospel");
+    else if (t.category === "psalm") onOpenReader?.("psalm");
+    else if (t.category === "first_reading") onOpenReader?.("first");
+    else if (t.category === "second_reading") onOpenReader?.("second");
     else if (t.category === "rosary") onStartRosary?.();
   };
 
-  const addCustom = () => {
+  const addCustom = async () => {
     if (!draft.trim()) return;
-    setTasks((ts) => [
-      ...ts,
-      {
-        id: `custom-${Date.now()}`,
-        title: draft.trim(),
-        category: "custom",
-        cadence: "daily",
-        done: false,
-        icon: "✨",
-      },
-    ]);
+    await taskStore.add(draft);
     setDraft("");
     setAdding(false);
   };
@@ -58,6 +54,14 @@ export function ReglaScreen({ onOpenReader, onStartRosary }: Props) {
         <p className="mt-1 text-center text-sm text-[#8a8a90]">
           Tus propósitos espirituales de hoy
         </p>
+
+        <NotificationsPanel />
+
+        {!taskStore.authenticated && (
+          <p className="mt-4 rounded-2xl border border-[#e5dcc3] bg-[#f6efdd] p-4 text-center text-sm text-[#766d5d]">
+            Inicia sesión para crear y sincronizar tu Regla de Vida en todos tus dispositivos.
+          </p>
+        )}
 
         {/* Progress bar (semillas, no XP) */}
         <div className="mt-5 rounded-2xl border border-[#e6e3db] bg-white p-4">
@@ -100,14 +104,14 @@ export function ReglaScreen({ onOpenReader, onStartRosary }: Props) {
             <input
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && addCustom()}
+              onKeyDown={(e) => e.key === "Enter" && void addCustom()}
               autoFocus
               placeholder="Nuevo compromiso…"
               className="h-11 w-full bg-transparent px-2 text-sm focus:outline-none"
             />
             <div className="mt-2 flex gap-2">
               <button
-                onClick={addCustom}
+                onClick={() => void addCustom()}
                 className="h-10 flex-1 rounded-full bg-[#1c1c1e] text-sm font-medium text-white"
               >
                 Añadir

@@ -15,6 +15,15 @@ export interface MarianMessage {
   source: "Betania" | "Medjugorje";
   text: string;
   relevant: boolean;
+  date?: string;
+  sourceUrl?: string;
+}
+
+export interface RelevantMessage {
+  text: string;
+  relevant: boolean;
+  date?: string;
+  sourceUrl?: string;
 }
 
 export interface DailyLiturgy {
@@ -22,16 +31,34 @@ export interface DailyLiturgy {
   weekday: string; // "Martes"
   season: string; // "Tiempo Ordinario"
   liturgicalColor: string;
-  saint: { name: string; title: string; initial: string };
+  isSolemnity: boolean;
+  liturgicalRank?: "solemnidad" | "fiesta" | "memoria" | "feria";
+  saint: {
+    name: string;
+    title: string;
+    initial?: string;
+    imageUrl?: string;
+    story: string;
+    exampleToday: string;
+    gospelConnection: string;
+    venezuelaRelevance: string;
+  };
   quote: { text: string; ref: string };
   gospel: Reading;
   psalm: Reading;
   firstReading: Reading;
   secondReading?: Reading;
   laudes: { title: string; body: string };
+  angelus: { title: string; body: string };
   reflection: string;
   imagePrompt: string; // usado para generar la imagen del día
   imageUrl?: string;
+  messages?: {
+    betania?: RelevantMessage;
+    medjugorje?: RelevantMessage;
+    popeLeoXiv?: RelevantMessage;
+  };
+  /** compatibilidad temporal con payload anterior */
   marian?: MarianMessage;
 }
 

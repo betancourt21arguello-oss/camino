@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
 
 export function AuthPortal({ onClose }: { onClose: () => void }) {
-  const { signInWithEmail, signInWithGoogle, configured } = useAuth();
+  const { signInWithEmail, signInWithProvider, configured } = useAuth();
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
@@ -51,8 +51,8 @@ export function AuthPortal({ onClose }: { onClose: () => void }) {
           Guarda tu Camino
         </h1>
         <p className="mx-auto mt-3 max-w-sm text-center text-[15px] leading-relaxed text-[#77736b]">
-          Conserva tu Jardín Vivo, tu Regla de Vida y las intenciones que acompañas.
-          No necesitas crear una contraseña.
+          Entra rápido con Supabase Auth. Conserva tu Jardín Vivo, tu Regla de Vida
+          y tus intenciones sin crear contraseña.
         </p>
 
         <form onSubmit={submit} className="mt-8">
@@ -82,25 +82,45 @@ export function AuthPortal({ onClose }: { onClose: () => void }) {
           o
           <span className="h-px flex-1 bg-[#ddd8cc]" />
         </div>
-        <button
-          onClick={async () => {
-            const result = await signInWithGoogle();
-            if (result.error) setError(result.error);
-          }}
-          className="flex h-14 w-full items-center justify-center gap-3 rounded-2xl border border-[#ddd8cc] bg-white font-medium"
-        >
-          <span className="flex h-6 w-6 items-center justify-center rounded-full border border-[#ddd8cc] text-xs font-semibold">G</span>
-          Continuar con Google
-        </button>
+        <div className="grid grid-cols-3 gap-2">
+          <SocialButton label="Google" mark="G" onClick={() => signInWithProvider("google")} onError={setError} />
+          <SocialButton label="Apple" mark="" onClick={() => signInWithProvider("apple")} onError={setError} />
+          <SocialButton label="Facebook" mark="f" onClick={() => signInWithProvider("facebook")} onError={setError} />
+        </div>
 
         {notice && <p className="mt-5 text-center text-sm text-[#5f7657]">{notice}</p>}
         {error && <p className="mt-5 text-center text-sm text-[#a95353]">{error}</p>}
         {!configured && (
           <p className="mt-6 text-center text-[11px] leading-relaxed text-[#aaa69e]">
-            Modo local activo. Consulta instructivo.md para conectar Supabase Auth.
+            Supabase Auth no está configurado. Revisa las variables de entorno.
           </p>
         )}
       </div>
     </div>
+  );
+}
+
+function SocialButton({
+  label,
+  mark,
+  onClick,
+  onError,
+}: {
+  label: string;
+  mark: string;
+  onClick: () => Promise<{ error?: string }>;
+  onError: (v: string) => void;
+}) {
+  return (
+    <button
+      onClick={async () => {
+        const result = await onClick();
+        if (result.error) onError(result.error);
+      }}
+      className="flex h-14 flex-col items-center justify-center rounded-2xl border border-[#ddd8cc] bg-white text-xs font-medium"
+    >
+      <span className="text-lg font-semibold">{mark}</span>
+      {label}
+    </button>
   );
 }

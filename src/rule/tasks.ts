@@ -10,6 +10,12 @@ export type TaskCategory =
   | "angelus"
   | "rosary"
   | "gospel"
+  | "psalm"
+  | "first_reading"
+  | "second_reading"
+  | "mass"
+  | "examen"
+  | "confession"
   | "custom"
   | "vespers";
 
@@ -28,6 +34,7 @@ export interface SpiritualTask {
 
 // Compromisos que TODO laico debe rezar — siempre presentes a su hora,
 // para rezarlos en comunidad. Mínimo: 1 Rosario al día.
+/** Plantilla para la RPC ensure_daily_spiritual_tasks; no es estado local. */
 export const defaultTasks: SpiritualTask[] = [
   {
     id: "laudes",
@@ -60,6 +67,33 @@ export const defaultTasks: SpiritualTask[] = [
     icon: "📖",
   },
   {
+    id: "psalm",
+    title: "Leer el Salmo del día",
+    category: "psalm",
+    cadence: "daily",
+    time: "13:05",
+    done: false,
+    icon: "🎵",
+  },
+  {
+    id: "first-reading",
+    title: "Primera lectura",
+    category: "first_reading",
+    cadence: "daily",
+    time: "13:10",
+    done: false,
+    icon: "📜",
+  },
+  {
+    id: "second-reading",
+    title: "Segunda lectura",
+    category: "second_reading",
+    cadence: "daily",
+    time: "13:15",
+    done: false,
+    icon: "📜",
+  },
+  {
     id: "rosary",
     title: "Rezar el Santo Rosario",
     category: "rosary",
@@ -68,6 +102,16 @@ export const defaultTasks: SpiritualTask[] = [
     required: true,
     done: false,
     icon: "📿",
+  },
+  {
+    id: "mass",
+    title: "Ir a Misa",
+    category: "mass",
+    cadence: "daily",
+    time: "10:00",
+    required: true,
+    done: false,
+    icon: "⛪",
   },
   {
     id: "vespers",
@@ -80,9 +124,18 @@ export const defaultTasks: SpiritualTask[] = [
     icon: "🌇",
   },
   {
+    id: "examen",
+    title: "Examen de conciencia",
+    category: "examen",
+    cadence: "daily",
+    time: "21:00",
+    done: false,
+    icon: "🕯️",
+  },
+  {
     id: "confession",
     title: "Confesión mensual",
-    category: "custom",
+    category: "confession",
     cadence: "weekly",
     required: false,
     done: false,

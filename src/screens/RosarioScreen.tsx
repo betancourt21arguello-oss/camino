@@ -4,6 +4,7 @@ import { Lobby } from "./rosario/Lobby";
 import { LiveSession } from "./rosario/LiveSession";
 import { IntentionPrompt } from "./rosario/IntentionPrompt";
 import { useSpiritual } from "../fruits/store";
+import { useRosaryLobbyData } from "../rosary/useRosaryLobbyData";
 
 export function RosarioScreen({
   onOpenGallery,
@@ -14,8 +15,7 @@ export function RosarioScreen({
 }) {
   const rosario = useRosario();
   const { emit, lightCandle, activeIntentions, candles } = useSpiritual();
-  // Mockup: la sala está VACÍA. Toggle para previsualizar "unirse".
-  const [roomActive, setRoomActive] = useState(false);
+  const lobby = useRosaryLobbyData();
   const [pendingStart, setPendingStart] = useState<
     null | "community" | "solo" | "join"
   >(null);
@@ -70,8 +70,10 @@ export function RosarioScreen({
       <>
         <Lobby
           meta={rosario.meta}
-          roomActive={roomActive}
-          onToggleRoom={() => setRoomActive((v) => !v)}
+          roomActive={lobby.data.roomActive}
+          peopleNow={lobby.data.peopleNow}
+          metrics={lobby.data}
+          loading={lobby.loading}
           onStartCommunity={() => requestStart("community")}
           onStartSolo={() => requestStart("solo")}
           onJoin={() => requestStart("join")}

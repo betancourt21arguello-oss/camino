@@ -8,13 +8,58 @@ import { ReglaScreen } from "./screens/ReglaScreen";
 import { JornadaScreen } from "./screens/JornadaScreen";
 import { ReaderScreen } from "./screens/ReaderScreen";
 import { SpiritualProvider, useSpiritual } from "./fruits/store";
-import { useTodayLiturgy } from "./liturgy/today";
+import type { DailyLiturgy } from "./liturgy/types";
+import { useDailyLiturgy } from "./liturgy/useDailyLiturgy";
 import { DailyPrayerPortal } from "./screens/DailyPrayerPortal";
 import { AudioAssetScreen } from "./screens/AudioAssetScreen";
 import { AuthPortal } from "./screens/AuthPortal";
 import { GalleryScreen } from "./screens/GalleryScreen";
 import { AuthProvider } from "./auth/AuthProvider";
 import { useWhatsAppAssets } from "./media/useWhatsAppAssets";
+
+function readerContent(target: ReaderTarget, L: DailyLiturgy | null) {
+  if (!L) {
+    return {
+      eyebrow: "GEMINI DAILY",
+      title: "Contenido pendiente",
+      ref: "camino-api.byp.workers.dev",
+      body: "El contenido del día se genera con Gemini API una vez al día desde el Worker.",
+      complete: "Cerrar",
+    };
+  }
+  switch (target) {
+    case "gospel":
+      return { eyebrow: "EVANGELIO", ...L.gospel, complete: "Marcar como leído" };
+    case "psalm":
+      return { eyebrow: "SALMO", ...L.psalm, complete: "Marcar como rezado" };
+    case "first":
+      return {
+        eyebrow: "PRIMERA LECTURA",
+        ...L.firstReading,
+        complete: "Marcar como leído",
+      };
+    case "second":
+      return L.secondReading
+        ? { eyebrow: "SEGUNDA LECTURA", ...L.secondReading, complete: "Marcar como leído" }
+        : { eyebrow: "SEGUNDA LECTURA", title: "No corresponde hoy", ref: L.date, body: "La liturgia de hoy no incluye segunda lectura.", complete: "Cerrar" };
+    case "laudes":
+      return {
+        eyebrow: "LAUDES",
+        title: L.laudes.title,
+        ref: "Liturgia de las Horas · en comunidad",
+        body: L.laudes.body,
+        complete: "He rezado los Laudes",
+      };
+    case "angelus":
+      return {
+        eyebrow: "ÁNGELUS",
+        title: L.angelus.title,
+        ref: "Oración del mediodía · en comunidad",
+        body: L.angelus.body,
+        complete: "He rezado el Ángelus",
+      };
+  }
+}
 
 function Shell() {
   const [tab, setTab] = useState<Tab>("camino");
@@ -27,37 +72,14 @@ function Shell() {
   const [prayerActive, setPrayerActive] = useState(false);
   const { emit } = useSpiritual();
   const assets = useWhatsAppAssets();
-  const { liturgy } = useTodayLiturgy();
+  const daily = useDailyLiturgy();
 
   const overlay = Boolean(
     jornadaOpen || reader || prayerPortal || assetId || authOpen || galleryOpen,
   );
   const dark = tab === "rosario" && !overlay;
 
-  function readerContent(target: ReaderTarget) {
-    const L = liturgy;
-    if (!L) return null;
-    switch (target) {
-      case "gospel":
-        return { eyebrow: "EVANGELIO", ...L.gospel, complete: "Marcar como leído" };
-      case "psalm":
-        return { eyebrow: "SALMO", ...L.psalm, complete: "Marcar como rezado" };
-      case "first":
-        return { eyebrow: "PRIMERA LECTURA", ...L.firstReading, complete: "Marcar como leído" };
-      case "laudes":
-        return { eyebrow: "LAUDES", title: L.laudes.title, ref: "Liturgia de las Horas · en comunidad", body: L.laudes.body, complete: "He rezado los Laudes" };
-      case "angelus":
-        return {
-          eyebrow: "ÁNGELUS",
-          title: "Ángelus",
-          ref: "Oración del mediodía · en comunidad",
-          body: "El Ángel del Señor anunció a María. Y concibió por obra del Espíritu Santo. Dios te salve, María…\n\nHe aquí la esclava del Señor. Hágase en mí según tu palabra. Dios te salve, María…\n\nY el Verbo se hizo carne. Y habitó entre nosotros. Dios te salve, María…\n\nRuega por nosotros, Santa Madre de Dios, para que seamos dignos de alcanzar las promesas de Cristo. Amén.",
-          complete: "He rezado el Ángelus",
-        };
-    }
-  }
-
-  const rc = reader ? readerContent(reader) : null;
+  const rc = reader ? readerContent(reader, daily.liturgy) : null;
   const selectedAsset = assets.find((asset) => asset.id === assetId);
 
   const openReader = (target: ReaderTarget) => {
@@ -92,12 +114,17 @@ function Shell() {
                 onOpenReader={openReader}
                 onOpenAsset={setAssetId}
                 assets={assets}
+                liturgy={daily.liturgy}
+                monthEvents={daily.monthEvents}
+                pastProgress={daily.pastProgress}
+                loadingDaily={daily.loading}
               />
             )}
             {tab === "regla" && (
               <ReglaScreen
                 onOpenReader={openReader}
                 onStartRosary={() => setTab("rosario")}
+                liturgy={daily.liturgy}
               />
             )}
             {tab === "rosario" && (
@@ -145,6 +172,11 @@ function Shell() {
             <DailyPrayerPortal
               kind={prayerPortal}
               assets={assets}
+              generated={
+                prayerPortal === "laudes"
+                  ? daily.liturgy?.laudes
+                  : daily.liturgy?.angelus
+              }
               onClose={() => setPrayerPortal(null)}
               onComplete={() => {
                 emit({ type: "task-complete" });

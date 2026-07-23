@@ -8,12 +8,12 @@ import {
   type ReactNode,
 } from "react";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
+import { FRONTEND_URL } from "../config";
 
 export interface AuthIdentity {
   id: string;
   email: string;
   name: string;
-  demo?: boolean;
 }
 
 interface AuthState {
@@ -21,12 +21,11 @@ interface AuthState {
   loading: boolean;
   configured: boolean;
   signInWithEmail: (email: string) => Promise<{ error?: string; message?: string }>;
-  signInWithGoogle: () => Promise<{ error?: string }>;
+  signInWithProvider: (provider: "google" | "apple" | "facebook") => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
-const DEMO_KEY = "camino-local-account";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthIdentity | null>(null);
@@ -34,8 +33,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!supabase) {
-      const saved = window.localStorage.getItem(DEMO_KEY);
-      if (saved) setUser(JSON.parse(saved) as AuthIdentity);
       setLoading(false);
       return;
     }
@@ -79,40 +76,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithEmail = useCallback(async (email: string) => {
     if (!supabase) {
-      const local: AuthIdentity = {
-        id: `local-${email.toLowerCase()}`,
-        email,
-        name: email.split("@")[0],
-        demo: true,
-      };
-      window.localStorage.setItem(DEMO_KEY, JSON.stringify(local));
-      setUser(local);
-      return {
-        message:
-          "Cuenta local creada. Al configurar Supabase, recibirás un enlace seguro por email.",
-      };
+      return { error: "Supabase Auth no está configurado." };
     }
 
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: window.location.origin },
+      options: { emailRedirectTo: FRONTEND_URL },
     });
     if (error) return { error: error.message };
     return { message: "Te enviamos un enlace seguro. Revisa tu correo para entrar." };
   }, []);
 
-  const signInWithGoogle = useCallback(async () => {
-    if (!supabase) return { error: "Configura Supabase para activar Google." };
+  const signInWithProvider = useCallback(async (provider: "google" | "apple" | "facebook") => {
+    if (!supabase) return { error: "Supabase Auth no está configurado." };
     const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: window.location.origin },
+      provider,
+      options: { redirectTo: FRONTEND_URL },
     });
     return error ? { error: error.message } : {};
   }, []);
 
   const signOut = useCallback(async () => {
     if (supabase) await supabase.auth.signOut();
-    window.localStorage.removeItem(DEMO_KEY);
     setUser(null);
   }, []);
 
@@ -122,10 +107,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       configured: isSupabaseConfigured,
       signInWithEmail,
-      signInWithGoogle,
+      signInWithProvider,
       signOut,
     }),
-    [user, loading, signInWithEmail, signInWithGoogle, signOut],
+    [user, loading, signInWithEmail, signInWithProvider, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

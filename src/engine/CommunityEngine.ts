@@ -11,6 +11,7 @@ export interface Member {
   name: string;
   isMe: boolean;
   lastSeen: number; // heartbeat timestamp (ms)
+  lastInteractionAt: number; // 🙏 / respuesta real
   doneForStep: boolean;
 }
 
@@ -32,7 +33,8 @@ const NAMES = [
 ];
 
 export const ME_ID = 1;
-const LEADER_DROP_MS = 5000; // 5s sin latido → nuevo líder
+const LEADER_DROP_MS = 10000;
+const INACTIVE_MS = 10000;
 
 export class CommunityEngine {
   members: Member[] = [];
@@ -54,6 +56,7 @@ export class CommunityEngine {
       name: isMe ? "Tú" : NAMES[(id + seed) % NAMES.length],
       isMe,
       lastSeen: Date.now(),
+      lastInteractionAt: Date.now(),
       doneForStep: false,
     };
     this.members.push(m);
@@ -86,29 +89,40 @@ export class CommunityEngine {
     }
   }
 
+  /** Inactivos >10s no bloquean consenso ni liderazgo, pero siguen presentes. */
+  activeMembers() {
+    const threshold = Date.now() - INACTIVE_MS;
+    return this.members.filter((m) => m.lastInteractionAt >= threshold || m.doneForStep);
+  }
+
   /** Al empezar un Step nuevo, el turno rota. Nunca el mismo siempre. */
   assignLeader() {
-    if (this.members.length === 0) {
+    const eligible = this.activeMembers();
+    if (eligible.length === 0) {
       this.leaderId = null;
       return;
     }
-    this.rotation = (this.rotation + 1) % this.members.length;
-    this.leaderId = this.members[this.rotation].id;
+    this.rotation = (this.rotation + 1) % eligible.length;
+    this.leaderId = eligible[this.rotation].id;
     this.members.forEach((m) => (m.doneForStep = false));
   }
 
   reassignLeader() {
-    if (this.members.length === 0) {
+    const eligible = this.activeMembers();
+    if (eligible.length === 0) {
       this.leaderId = null;
       return;
     }
-    this.rotation = this.rotation % this.members.length;
-    this.leaderId = this.members[this.rotation].id;
+    this.rotation = this.rotation % eligible.length;
+    this.leaderId = eligible[this.rotation].id;
   }
 
   markDone(id: number) {
     const m = this.members.find((x) => x.id === id);
-    if (m) m.doneForStep = true;
+    if (m) {
+      m.doneForStep = true;
+      m.lastInteractionAt = Date.now();
+    }
   }
 
   clearDone() {
@@ -116,8 +130,9 @@ export class CommunityEngine {
   }
 
   completedRatio(): number {
-    if (this.members.length === 0) return 0;
-    return this.members.filter((m) => m.doneForStep).length / this.members.length;
+    const active = this.activeMembers();
+    if (active.length === 0) return 0;
+    return active.filter((m) => m.doneForStep).length / active.length;
   }
 
   leaderDone(): boolean {

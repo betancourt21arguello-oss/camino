@@ -3,7 +3,9 @@ import { RosaryRing } from "../../components/RosaryRing";
 type Props = {
   meta: { title: string; subtitle: string };
   roomActive: boolean;
-  onToggleRoom: () => void;
+  peopleNow: number;
+  metrics: { rosariesToday: number; usersToday: number; aveMariasToday: number };
+  loading?: boolean;
   onStartCommunity: () => void;
   onStartSolo: () => void;
   onJoin: () => void;
@@ -13,14 +15,14 @@ type Props = {
 export function Lobby({
   meta,
   roomActive,
-  onToggleRoom,
+  peopleNow,
+  metrics,
+  loading,
   onStartCommunity,
   onStartSolo,
   onJoin,
   onOpenGallery,
 }: Props) {
-  const peopleNow = roomActive ? 47 : 0;
-
   return (
     <div className="min-h-full bg-[#0a0a0b] pb-28 text-white">
       <section className="relative overflow-hidden px-5 pt-10">
@@ -117,26 +119,11 @@ export function Lobby({
             MURO DE CONTEMPLACIÓN
           </div>
           <div className="mt-4 grid grid-cols-3 divide-x divide-white/8 text-center">
-            <Stat value="157" label="Rosarios hoy" />
-            <Stat value="684" label="Usuarios hoy" />
-            <Stat value="15,700" label="Avemarías hoy" />
+            <Stat value={loading ? "…" : String(metrics.rosariesToday)} label="Rosarios hoy" />
+            <Stat value={loading ? "…" : String(metrics.usersToday)} label="Usuarios hoy" />
+            <Stat value={loading ? "…" : metrics.aveMariasToday.toLocaleString("es")} label="Avemarías hoy" />
           </div>
         </div>
-
-        {/* Dev preview toggle for requirement #4 */}
-        <button
-          onClick={onToggleRoom}
-          className="relative mx-auto mt-6 flex items-center gap-2 text-xs text-white/35"
-        >
-          <span
-            className={`h-2 w-2 rounded-full ${
-              roomActive ? "bg-[#5fce7e]" : "bg-white/30"
-            }`}
-          />
-          {roomActive
-            ? "Simulando: sala con gente (tocar para vaciar)"
-            : "Simular: sala con gente orando"}
-        </button>
       </section>
     </div>
   );

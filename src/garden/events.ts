@@ -17,16 +17,6 @@ export function gardenEventType(type: SpiritualEventType): GardenEventType {
   return EVENT_MAP[type];
 }
 
-export const INITIAL_GARDEN_EVENTS: GardenEvent[] = [
-  { id: "g1", type: "SEED_RECEIVED", value: 8, createdAt: 1 },
-  { id: "g2", type: "WATER_GARDEN", value: 2, createdAt: 2, meta: { intention: "Familia" } },
-  { id: "g3", type: "ROSARY_COMPLETED", value: 3, createdAt: 3 },
-  { id: "g4", type: "COMMUNITY_PRAYER", value: 2, createdAt: 4 },
-  { id: "g5", type: "STREAK_MAINTAINED", value: 12, createdAt: 5 },
-  { id: "g6", type: "NOVENA_COMPLETED", value: 1, createdAt: 6 },
-  { id: "g7", type: "SILENCE_TIME", value: 15, createdAt: 7 },
-];
-
 export function aggregateGardenState(
   events: GardenEvent[],
   activeCandles: number,

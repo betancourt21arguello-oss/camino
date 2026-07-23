@@ -2,18 +2,17 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react";
 import type { Candle, FruitBalance, SpiritualEvent } from "./types";
 import { rewardFor } from "./rewards";
-import {
-  aggregateGardenState,
-  gardenEventType,
-  INITIAL_GARDEN_EVENTS,
-} from "../garden/events";
+import { aggregateGardenState, gardenEventType } from "../garden/events";
 import type { GardenEvent, GardenState } from "../garden/types";
+import { useAuth } from "../auth/AuthProvider";
+import { supabase } from "../lib/supabase";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -40,60 +39,65 @@ interface SpiritualState {
 const Ctx = createContext<SpiritualState | null>(null);
 const now = () => Date.now();
 
-const seedCandles: Candle[] = [
-  {
-    id: "c-anna",
-    intention: "Por la salud de mi madre",
-    ownerName: "Ana",
-    ownerHue: 340,
-    litAt: now() - 3 * 3600_000,
-    expiresAt: now() - 3 * 3600_000 + DAY_MS,
-    prayedBy: ["u1", "u2", "u3"],
-    mine: false,
-  },
-  {
-    id: "c-jose",
-    intention: "Por la conversión de un ser querido",
-    ownerName: "José",
-    ownerHue: 210,
-    litAt: now() - 6 * 3600_000,
-    expiresAt: now() - 6 * 3600_000 + DAY_MS,
-    prayedBy: ["u4"],
-    mine: false,
-  },
-  {
-    id: "c-lucia",
-    intention: "En acción de gracias",
-    ownerName: "Lucía",
-    ownerHue: 30,
-    litAt: now() - 1 * 3600_000,
-    expiresAt: now() - 1 * 3600_000 + DAY_MS,
-    prayedBy: [],
-    mine: false,
-  },
-  {
-    id: "c-marta",
-    intention: "Por las almas del purgatorio",
-    ownerName: "Marta",
-    ownerHue: 280,
-    litAt: now() - 10 * 3600_000,
-    expiresAt: now() - 10 * 3600_000 + DAY_MS,
-    prayedBy: ["u5", "u6"],
-    mine: false,
-  },
-];
+const initialCandles: Candle[] = [];
 
 export function SpiritualProvider({ children }: { children: ReactNode }) {
-  const [balance, setBalance] = useState<FruitBalance>({
-    vela: 3,
-    semilla: 14,
-    agua: 8,
-  });
-  const [candles, setCandles] = useState<Candle[]>(seedCandles);
+  const { user } = useAuth();
+  const [balance, setBalance] = useState<FruitBalance>({ vela: 0, semilla: 0, agua: 0 });
+  const [candles, setCandles] = useState<Candle[]>(initialCandles);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
-  const [gardenEvents, setGardenEvents] = useState<GardenEvent[]>(
-    INITIAL_GARDEN_EVENTS,
-  );
+  const [gardenEvents, setGardenEvents] = useState<GardenEvent[]>([]);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !user) {
+      setBalance({ vela: 0, semilla: 0, agua: 0 });
+      setCandles([]);
+      setGardenEvents([]);
+      return;
+    }
+    let active = true;
+    const load = async () => {
+      const [fruitRes, candleRes, eventRes, prayedRes] = await Promise.all([
+        client.from("fruits").select("vela,semilla,agua").eq("profile_id", user.id).maybeSingle(),
+        client.from("candles").select("id,intention,lit_at,expires_at,owner_id,profiles(name)").gt("expires_at", new Date().toISOString()),
+        client.from("garden_events").select("id,event_type,value,created_at,intention").eq("user_id", user.id).order("created_at"),
+        client.from("intentions").select("candle_id").eq("pray_for_id", user.id).gt("expires_at", new Date().toISOString()),
+      ]);
+      if (!active) return;
+      const f = fruitRes.data;
+      setBalance({ vela: f?.vela ?? 0, semilla: f?.semilla ?? 0, agua: f?.agua ?? 0 });
+      const prayed = new Set((prayedRes.data ?? []).map((row) => row.candle_id));
+      setCandles((candleRes.data ?? []).map((row: any) => ({
+        id: row.id,
+        intention: row.intention,
+        ownerName: row.profiles?.name ?? "Comunidad",
+        ownerHue: 45,
+        litAt: new Date(row.lit_at).getTime(),
+        expiresAt: new Date(row.expires_at).getTime(),
+        prayedBy: prayed.has(row.id) ? ["me"] : [],
+        mine: row.owner_id === user.id,
+      })));
+      setGardenEvents((eventRes.data ?? []).map((row) => ({
+        id: row.id,
+        type: row.event_type,
+        value: row.value,
+        createdAt: new Date(row.created_at).getTime(),
+        meta: row.intention ? { intention: row.intention } : undefined,
+      })) as GardenEvent[]);
+    };
+    void load();
+    const channel = client
+      .channel(`spiritual-state-${user.id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "fruits", filter: `profile_id=eq.${user.id}` }, load)
+      .on("postgres_changes", { event: "*", schema: "public", table: "garden_events", filter: `user_id=eq.${user.id}` }, load)
+      .on("postgres_changes", { event: "*", schema: "public", table: "candles" }, load)
+      .subscribe();
+    return () => {
+      active = false;
+      void client.removeChannel(channel);
+    };
+  }, [user]);
 
   const applyFruits = useCallback(
     (fruits: Partial<FruitBalance>, note: string) => {
@@ -124,8 +128,15 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
           { id: `garden-${at}-${events.length}`, type: actionType, value: 1, createdAt: at },
         ];
       });
+      if (supabase && user) {
+        void supabase.rpc("record_spiritual_event", {
+          p_event_type: gardenEventType(e.type),
+          p_value: 1,
+          p_meta: e.meta ?? {},
+        });
+      }
     },
-    [applyFruits],
+    [applyFruits, user],
   );
 
   const lightCandle = useCallback((intention: string): Candle => {
@@ -144,8 +155,11 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
       ...events,
       { id: `garden-candle-${c.id}`, type: "CANDLE_LIT", value: 1, createdAt: c.litAt },
     ]);
+    if (supabase && user) {
+      void supabase.from("candles").insert({ owner_id: user.id, intention: c.intention });
+    }
     return c;
-  }, []);
+  }, [user]);
 
   const prayForCandle = useCallback(
     (id: string) => {
@@ -155,8 +169,11 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
         ),
       );
       emit({ type: "pray-for-other" });
+      if (supabase && user) {
+        void supabase.from("intentions").insert({ candle_id: id, pray_for_id: user.id });
+      }
     },
-    [emit],
+    [emit, user],
   );
 
   // Nueva mecánica: Riego con intención
@@ -188,9 +205,12 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
         },
         ...h,
       ]);
+      if (supabase && user) {
+        void supabase.rpc("water_garden", { p_intention: intention || "Paz" });
+      }
       return true;
     },
-    [],
+    [user],
   );
 
   const activeIntentions = useMemo(
