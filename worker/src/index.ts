@@ -123,7 +123,7 @@ async function generateLiturgy(env: any, targetDate?: string): Promise<any> {
   Virgen de Betania o de Medjugorje. Marca "relevant": false si no aplica.`;
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-001:generateContent?key=${env.GEMINI_API_KEY}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${env.GEMINI_API_KEY}`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },
