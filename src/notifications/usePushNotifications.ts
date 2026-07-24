@@ -50,8 +50,20 @@ export function usePushNotifications() {
       setError(detection.reason || "Este dispositivo no soporta push web.");
       return;
     }
-    if (!VAPID_PUBLIC_KEY) {
-      // Fallback: solo activar correo en vez de bloquear.
+    let vapidPublicKey = VAPID_PUBLIC_KEY;
+    if (!vapidPublicKey) {
+      try {
+        const res = await fetch(`${WORKER_API_BASE}/notifications/vapid-public-key`);
+        if (res.ok) {
+          const data = await res.json() as { vapidPublicKey?: string };
+          vapidPublicKey = data.vapidPublicKey || "";
+        }
+      } catch {
+        // No pudo obtener la clave desde el worker; continuar con error más abajo.
+      }
+    }
+
+    if (!vapidPublicKey) {
       setError(
         "Push web no configurado en este servidor. Activa recordatorios por correo.",
       );
@@ -68,12 +80,18 @@ export function usePushNotifications() {
         );
       }
 
-      const reg = await navigator.serviceWorker.register("/sw.js");
-      // Esperar a que el service worker esté activo
+      let reg: ServiceWorkerRegistration;
+      try {
+        reg = await navigator.serviceWorker.register("/sw.js");
+      } catch (swError) {
+        throw new Error(
+          `No se pudo registrar el Service Worker: ${swError instanceof Error ? swError.message : swError}`
+        );
+      }
       await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
       });
 
       const token = supabase
