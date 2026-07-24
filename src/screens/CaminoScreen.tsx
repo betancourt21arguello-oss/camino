@@ -109,7 +109,7 @@ export function CaminoScreen({
         >
           CAMINO
         </button>
-        {!L?.quote?.text || L.quote.text === "Gemini aún no ha generado la frase de hoy." ? (
+        {!L?.quote?.text ? (
           <button
             onClick={onGenerateDaily}
             disabled={generatingDaily}
@@ -161,7 +161,7 @@ export function CaminoScreen({
           />
           <div className="p-6">
             <p className="font-serif-holy text-2xl leading-snug text-white">
-              “{L?.quote?.text ?? "Gemini aún no ha generado la frase de hoy."}”
+              “{L?.quote?.text ?? ""}”
             </p>
             <p className="mt-3 text-sm text-white/50">{L?.quote?.ref ?? "camino-api.byp.workers.dev"}</p>
           </div>
@@ -188,7 +188,7 @@ export function CaminoScreen({
               SANTO DEL DÍA
             </div>
             <div className="font-medium">{L?.saint?.name ?? "Santo del día"}</div>
-            <div className="text-sm text-[#8a8a90]">{L?.saint?.title ?? "Pendiente de Gemini"}</div>
+            <div className="text-sm text-[#8a8a90]">{L?.saint?.title ?? ""}</div>
           </div>
           <span className="ml-auto text-[#b0b0b5]">›</span>
         </button>

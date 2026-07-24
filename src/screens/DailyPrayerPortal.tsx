@@ -259,7 +259,7 @@ function EmptyHour({ label }: { label: string }) {
   return (
     <div className="flex min-h-full flex-col items-center justify-center text-center">
       <p className="font-serif-holy text-[24px] leading-relaxed text-white/90">
-        Los {label} de hoy aún no están disponibles. Pulsa «Generar con Gemini» en el inicio.
+        Los {label} aún no están disponibles en este momento.
       </p>
     </div>
   );

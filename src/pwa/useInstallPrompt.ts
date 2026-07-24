@@ -37,7 +37,7 @@ export interface InstallController {
 export function useInstallPrompt(): InstallController {
   const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
   const [dismissed, setDismissed] = useState(false);
-  const [ios] = useState<boolean>(detectIOS);
+  const [ios] = useState<boolean>(detectIOS());
   const [standalone, setStandalone] = useState<boolean>(detectStandalone);
 
   useEffect(() => {
@@ -45,8 +45,13 @@ export function useInstallPrompt(): InstallController {
     if (saved && Date.now() - Number(saved) < DISMISS_TTL_MS) setDismissed(true);
 
     const onBeforeInstall = (e: Event) => {
-      e.preventDefault();
-      setDeferred(e as BeforeInstallPromptEvent);
+      const evt = e as BeforeInstallPromptEvent;
+      const isStandalone = detectStandalone();
+      const savedDismiss = window.localStorage.getItem(DISMISS_KEY);
+      const wasDismissed = Boolean(savedDismiss && Date.now() - Number(savedDismiss) < DISMISS_TTL_MS);
+      if (isStandalone || wasDismissed) return;
+      evt.preventDefault();
+      setDeferred(evt);
     };
     const onInstalled = () => {
       setStandalone(true);

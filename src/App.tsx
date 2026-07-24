@@ -39,10 +39,9 @@ interface ReaderPayload {
 function readerContent(target: ReaderTarget, L: DailyLiturgy | null): ReaderPayload {
   if (!L) {
     return {
-      eyebrow: "GEMINI DAILY",
-      title: "Contenido pendiente",
-      ref: "camino-api.byp.workers.dev",
-      body: "El contenido del día se genera con Gemini API una vez al día desde el Worker.",
+      eyebrow: "",
+      title: "",
+      body: "",
       complete: "Cerrar",
     };
   }
