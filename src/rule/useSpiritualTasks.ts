@@ -8,7 +8,7 @@ interface TaskRow {
   id: string;
   title: string;
   category: TaskCategory;
-  cadence: "daily" | "weekly";
+  cadence: "daily" | "weekly" | "monthly";
   time: string | null;
   required: boolean;
   done: boolean;
@@ -16,6 +16,7 @@ interface TaskRow {
 
 const iconFor = (category: TaskCategory) =>
   ({
+    ofrecimiento: "🌅",
     laudes: "☀️",
     angelus: "🕊️",
     rosary: "📿",
@@ -23,8 +24,10 @@ const iconFor = (category: TaskCategory) =>
     psalm: "🎵",
     first_reading: "📜",
     second_reading: "📜",
+    silence: "🤫",
     mass: "⛪",
     examen: "🕯️",
+    fasting: "🍞",
     confession: "🙏",
     vespers: "🌇",
     custom: "🙏",
@@ -58,11 +61,15 @@ export function useSpiritualTasks(liturgy: DailyLiturgy | null) {
 
     const load = async () => {
       // RPC idempotente: crea las tareas base del día si aún no existen.
-      const isSunday = new Date(`${today}T00:00:00`).getDay() === 0;
+      const dayOfWeek = new Date(`${today}T00:00:00`).getDay();
+      const isSunday = dayOfWeek === 0;
+      const isFastingDay = dayOfWeek === 3 || dayOfWeek === 5; // Wed, Fri
       await client.rpc("ensure_daily_spiritual_tasks", {
         p_date: today,
         p_is_sunday: isSunday,
         p_is_solemnity: Boolean(liturgy?.isSolemnity),
+        p_is_fasting_day: isFastingDay,
+        p_day_of_month: new Date(`${today}T00:00:00`).getDate(),
       });
       const { data } = await client
         .from("spiritual_tasks")

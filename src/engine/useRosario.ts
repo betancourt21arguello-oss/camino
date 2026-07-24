@@ -19,14 +19,15 @@ export interface RosarioApi {
   leave: () => void;
 }
 
-import { DEVOTIONS } from "./devotions";
+import { resolveDevotion } from "./devotions";
+import { devotionIdForToday } from "./devotions/rosarioMisterios";
 
-export function useRosario(devotionId: string = "rosario-dolorosos"): RosarioApi {
+export function useRosario(devotionId: string = devotionIdForToday()): RosarioApi {
   const ref = useRef<PrayerEngine | null>(null);
   const prevDevotionId = useRef(devotionId);
 
   if (!ref.current || prevDevotionId.current !== devotionId) {
-    const devotion = DEVOTIONS[devotionId] ?? DEVOTIONS["rosario-dolorosos"];
+    const devotion = resolveDevotion(devotionId);
     ref.current = new PrayerEngine(devotion);
     prevDevotionId.current = devotionId;
   }

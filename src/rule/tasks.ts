@@ -1,11 +1,11 @@
 // ============================================================
 //  REGLA DE VIDA  (gestor de compromisos espirituales)
 //  Tabla en Supabase: spiritual_tasks
-//  Vinculada al sistema de Frutos (semillas al completar).
 // ============================================================
 
-export type TaskCadence = "daily" | "weekly";
+export type TaskCadence = "daily" | "weekly" | "monthly";
 export type TaskCategory =
+  | "ofrecimiento"
   | "laudes"
   | "angelus"
   | "rosary"
@@ -13,8 +13,10 @@ export type TaskCategory =
   | "psalm"
   | "first_reading"
   | "second_reading"
+  | "silence"
   | "mass"
   | "examen"
+  | "fasting"
   | "confession"
   | "custom"
   | "vespers";
@@ -24,18 +26,31 @@ export interface SpiritualTask {
   title: string;
   category: TaskCategory;
   cadence: TaskCadence;
-  /** Hora sugerida "HH:MM" para tareas ancladas (Laudes, Ángelus...). */
   time?: string;
-  /** Compromiso obligatorio del laico (no se puede borrar). */
   required?: boolean;
   done: boolean;
   icon: string;
+  /** Días de la semana: 0=dom..6=sáb. Sin definir = todos los días. */
+  days?: number[];
 }
 
-// Compromisos que TODO laico debe rezar — siempre presentes a su hora,
-// para rezarlos en comunidad. Mínimo: 1 Rosario al día.
-/** Plantilla para la RPC ensure_daily_spiritual_tasks; no es estado local. */
+// ============================================================
+//  Plantilla para ensure_daily_spiritual_tasks
+//  La RPC en Supabase decidirá qué insertar según el día,
+//  isSunday e isSolemnity. El frontend usa esto como fallback.
+// ============================================================
 export const defaultTasks: SpiritualTask[] = [
+  // DIARIAS — todo laico
+  {
+    id: "ofrecimiento",
+    title: "Ofrecimiento matutino",
+    category: "ofrecimiento",
+    cadence: "daily",
+    time: "06:30",
+    required: true,
+    done: false,
+    icon: "🌅",
+  },
   {
     id: "laudes",
     title: "Laudes (oración de la mañana)",
@@ -47,7 +62,56 @@ export const defaultTasks: SpiritualTask[] = [
     icon: "☀️",
   },
   {
-    id: "angelus-am",
+    id: "gospel",
+    title: "Lectura del Evangelio del día",
+    category: "gospel",
+    cadence: "daily",
+    time: "08:00",
+    required: true,
+    done: false,
+    icon: "📖",
+  },
+  {
+    id: "psalm",
+    title: "Salmo del día",
+    category: "psalm",
+    cadence: "daily",
+    time: "08:10",
+    required: true,
+    done: false,
+    icon: "🎵",
+  },
+  {
+    id: "first-reading",
+    title: "Primera lectura",
+    category: "first_reading",
+    cadence: "daily",
+    time: "08:20",
+    required: true,
+    done: false,
+    icon: "📜",
+  },
+  {
+    id: "second-reading",
+    title: "Segunda lectura",
+    category: "second_reading",
+    cadence: "daily",
+    time: "08:30",
+    done: false,
+    icon: "📜",
+  },
+  {
+    id: "silence",
+    title: "Oración mental o silencio",
+    category: "silence",
+    cadence: "daily",
+    time: "09:00",
+    required: true,
+    done: false,
+    icon: "🤫",
+  },
+  {
+    id: "angelus",
     title: "Ángelus",
     category: "angelus",
     cadence: "daily",
@@ -57,45 +121,8 @@ export const defaultTasks: SpiritualTask[] = [
     icon: "🕊️",
   },
   {
-    id: "gospel",
-    title: "Leer el Evangelio del día",
-    category: "gospel",
-    cadence: "daily",
-    time: "13:00",
-    required: false,
-    done: false,
-    icon: "📖",
-  },
-  {
-    id: "psalm",
-    title: "Leer el Salmo del día",
-    category: "psalm",
-    cadence: "daily",
-    time: "13:05",
-    done: false,
-    icon: "🎵",
-  },
-  {
-    id: "first-reading",
-    title: "Primera lectura",
-    category: "first_reading",
-    cadence: "daily",
-    time: "13:10",
-    done: false,
-    icon: "📜",
-  },
-  {
-    id: "second-reading",
-    title: "Segunda lectura",
-    category: "second_reading",
-    cadence: "daily",
-    time: "13:15",
-    done: false,
-    icon: "📜",
-  },
-  {
     id: "rosary",
-    title: "Rezar el Santo Rosario",
+    title: "Santo Rosario",
     category: "rosary",
     cadence: "daily",
     time: "20:00",
@@ -104,40 +131,49 @@ export const defaultTasks: SpiritualTask[] = [
     icon: "📿",
   },
   {
-    id: "mass",
-    title: "Ir a Misa",
-    category: "mass",
-    cadence: "daily",
-    time: "10:00",
-    required: true,
-    done: false,
-    icon: "⛪",
-  },
-  {
-    id: "vespers",
-    title: "Vísperas (oración de la tarde)",
-    category: "vespers",
-    cadence: "daily",
-    time: "19:00",
-    required: false,
-    done: false,
-    icon: "🌇",
-  },
-  {
     id: "examen",
     title: "Examen de conciencia",
     category: "examen",
     cadence: "daily",
     time: "21:00",
+    required: true,
     done: false,
     icon: "🕯️",
   },
+
+  // SEMANAL — Domingos
+  {
+    id: "mass-sunday",
+    title: "Santa Misa dominical",
+    category: "mass",
+    cadence: "weekly",
+    time: "10:00",
+    required: true,
+    done: false,
+    icon: "⛪",
+    days: [0], // domingo
+  },
+
+  // SEMANAL — Miércoles y Viernes
+  {
+    id: "fasting",
+    title: "Ayuno de hábito o de alimento",
+    category: "fasting",
+    cadence: "weekly",
+    time: "06:00",
+    required: true,
+    done: false,
+    icon: "🍞",
+    days: [3, 5], // miércoles, viernes
+  },
+
+  // MENSUAL
   {
     id: "confession",
-    title: "Confesión mensual",
+    title: "Confesión o guía espiritual",
     category: "confession",
-    cadence: "weekly",
-    required: false,
+    cadence: "monthly",
+    required: true,
     done: false,
     icon: "🙏",
   },

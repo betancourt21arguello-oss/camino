@@ -1,27 +1,43 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRosario } from "../engine/useRosario";
+import { DEVOTIONS, ROSARIO_IDS } from "../engine/devotions";
+import { devotionIdForToday } from "../engine/devotions/rosarioMisterios";
 import { Lobby } from "./rosario/Lobby";
 import { LiveSession } from "./rosario/LiveSession";
 import { IntentionPrompt } from "./rosario/IntentionPrompt";
 import { useSpiritual } from "../fruits/store";
-import { useRosaryLobbyData } from "../rosary/useRosaryLobbyData";
+import { useActiveRooms, type ActiveRoom } from "../rosary/useActiveRooms";
 
-export function RosarioScreen({
-  onOpenGallery,
-  onActiveChange,
-}: {
+type Props = {
   onOpenGallery?: () => void;
   onActiveChange?: (active: boolean) => void;
-}) {
-  const [selectedDevotionId, setSelectedDevotionId] = useState("rosario-dolorosos");
+  onOpenHour?: (kind: "laudes" | "vespers" | "compline") => void;
+};
+
+export function RosarioScreen({ onOpenGallery, onActiveChange, onOpenHour }: Props) {
+  const todayDevotionId = useMemo(() => devotionIdForToday(), []);
+  const [selectedDevotionId, setSelectedDevotionId] = useState(todayDevotionId);
   const rosario = useRosario(selectedDevotionId);
   const { emit, lightCandle, activeIntentions, candles } = useSpiritual();
-  const lobby = useRosaryLobbyData();
-  const [pendingStart, setPendingStart] = useState<
-    null | "community" | "solo" | "join"
-  >(null);
+  const { rooms, loading: roomsLoading, total: totalPraying } = useActiveRooms();
 
-  // Emitir frutos según el resultado del motor (desacoplado del rezo).
+  const [pendingStart, setPendingStart] = useState<null | "community" | "solo" | "join">(null);
+
+  // Unirse a una sala cuya devoción aún no está cargada requiere esperar a que
+  // el motor se reconstruya tras cambiar selectedDevotionId. Lo difiero aquí.
+  const pendingJoinRef = useRef(false);
+  const prevSelRef = useRef(selectedDevotionId);
+  useEffect(() => {
+    if (prevSelRef.current !== selectedDevotionId) {
+      prevSelRef.current = selectedDevotionId;
+      if (pendingJoinRef.current) {
+        pendingJoinRef.current = false;
+        rosario.joinExisting();
+      }
+    }
+  }, [selectedDevotionId, rosario]);
+
+  // Frutos al completar (desacoplado del motor).
   const prevStatus = useRef(rosario.state.status);
   const joinedRef = useRef(false);
   useEffect(() => {
@@ -34,19 +50,13 @@ export function RosarioScreen({
     prevStatus.current = s;
   }, [rosario.state.status, emit]);
 
-  // Al empezar en modo comunidad, se produce Agua (caridad).
   useEffect(() => {
-    if (
-      rosario.state.status === "running" &&
-      rosario.state.mode === "community" &&
-      !joinedRef.current
-    ) {
+    if (rosario.state.status === "running" && rosario.state.mode === "community" && !joinedRef.current) {
       joinedRef.current = true;
       emit({ type: "community-join" });
     }
   }, [rosario.state.status, rosario.state.mode, emit]);
 
-  // Informar a la app cuando el Rosario está activo (para ocultar su navbar).
   const isActivePrayer = rosario.state.status !== "idle";
   useEffect(() => {
     onActiveChange?.(isActivePrayer);
@@ -55,29 +65,44 @@ export function RosarioScreen({
 
   const run = (kind: "community" | "solo" | "join") => {
     if (kind === "community") rosario.startCommunity();
-    if (kind === "solo") rosario.startSolo();
-    if (kind === "join") rosario.joinExisting();
+    else if (kind === "solo") rosario.startSolo();
+    else rosario.joinExisting();
     setPendingStart(null);
   };
 
   const requestStart = (kind: "community" | "solo" | "join") => {
-    // Si ya tienes intenciones activas, entras directo.
     if (activeIntentions.length > 0) run(kind);
     else setPendingStart(kind);
+  };
+
+  // Unirse a una sala concreta (rosario, coronilla u hora).
+  const handleJoinRoom = (room: ActiveRoom) => {
+    if (room.kind === "hour" && room.hourKind) {
+      onOpenHour?.(room.hourKind);
+      return;
+    }
+    const same = room.devotionId === selectedDevotionId;
+    setSelectedDevotionId(room.devotionId);
+    if (activeIntentions.length > 0) {
+      if (same) rosario.joinExisting();
+      else pendingJoinRef.current = true;
+    } else {
+      // Sin intención: el prompt se mostrará; al confirmar, run('join') usará
+      // el motor ya reconstruido con la devoción de la sala.
+      setPendingStart("join");
+    }
   };
 
   if (rosario.state.status === "idle") {
     return (
       <>
         <Lobby
-          meta={rosario.meta}
-          roomActive={lobby.data.roomActive}
-          peopleNow={lobby.data.peopleNow}
-          metrics={lobby.data}
-          loading={lobby.loading}
+          rooms={rooms}
+          roomsLoading={roomsLoading}
+          totalPraying={totalPraying}
           onStartCommunity={() => requestStart("community")}
           onStartSolo={() => requestStart("solo")}
-          onJoin={() => requestStart("join")}
+          onJoinRoom={handleJoinRoom}
           onOpenGallery={onOpenGallery}
           selectedDevotionId={selectedDevotionId}
           onSelectDevotion={setSelectedDevotionId}
@@ -96,11 +121,7 @@ export function RosarioScreen({
     );
   }
 
-  // En el Rosario Comunitario se sostienen las intenciones de TODA la sala,
-  // no solo las seleccionadas por este usuario.
-  const communityIntentions = candles
-    .filter((c) => c.expiresAt > Date.now())
-    .map((c) => c.intention);
+  const communityIntentions = candles.filter((c) => c.expiresAt > Date.now()).map((c) => c.intention);
 
   return (
     <LiveSession
@@ -110,3 +131,6 @@ export function RosarioScreen({
     />
   );
 }
+
+// Reexport para quienes necesiten distinguir rosarios (p. ej. el anillo).
+export { ROSARIO_IDS, DEVOTIONS };

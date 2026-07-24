@@ -11,12 +11,25 @@ function urlBase64ToUint8Array(base64String: string) {
   return outputArray;
 }
 
+function detectPushSupport(): { webPush: boolean; reason: string } {
+  if (typeof window === "undefined") return { webPush: false, reason: "SSR" };
+  if (!("serviceWorker" in navigator)) return { webPush: false, reason: "Sin Service Worker" };
+  if (!("PushManager" in window)) return { webPush: false, reason: "Sin PushManager" };
+  if (!("Notification" in window)) return { webPush: false, reason: "Sin API de notificaciones" };
+  // iOS Safari 16.4+ soporta Web Push solo en PWAs standalone
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isStandalone =
+    window.matchMedia?.("(display-mode: standalone)").matches ||
+    (navigator as unknown as { standalone?: boolean }).standalone === true;
+  if (isIOS && !isStandalone) {
+    return { webPush: false, reason: "En iPhone, instala la app primero (Añadir a pantalla de inicio) para activar push." };
+  }
+  return { webPush: true, reason: "" };
+}
+
 export function usePushNotifications() {
-  const supported =
-    typeof window !== "undefined" &&
-    "serviceWorker" in navigator &&
-    "PushManager" in window &&
-    "Notification" in window;
+  const detection = detectPushSupport();
+  const supported = detection.webPush;
   const [permission, setPermission] = useState<NotificationPermission>(
     typeof Notification !== "undefined" ? Notification.permission : "default",
   );
@@ -34,11 +47,14 @@ export function usePushNotifications() {
 
   const enable = useCallback(async () => {
     if (!supported) {
-      setError("Este navegador no soporta push web.");
+      setError(detection.reason || "Este dispositivo no soporta push web.");
       return;
     }
     if (!VAPID_PUBLIC_KEY) {
-      setError("Falta VITE_VAPID_PUBLIC_KEY.");
+      // Fallback: solo activar correo en vez de bloquear.
+      setError(
+        "Push web no configurado en este servidor. Activa recordatorios por correo.",
+      );
       return;
     }
     setBusy(true);
@@ -46,37 +62,48 @@ export function usePushNotifications() {
     try {
       const perm = await Notification.requestPermission();
       setPermission(perm);
-      if (perm !== "granted") throw new Error("Permiso de notificaciones denegado.");
+      if (perm !== "granted") {
+        throw new Error(
+          "Permiso de notificaciones denegado. Actívalo en Ajustes del navegador.",
+        );
+      }
 
       const reg = await navigator.serviceWorker.register("/sw.js");
+      // Esperar a que el service worker esté activo
+      await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
       });
 
-      const token = supabase ? (await supabase.auth.getSession()).data.session?.access_token : undefined;
-      await fetch(`${WORKER_API_BASE}/notifications/subscribe`, {
+      const token = supabase
+        ? (await supabase.auth.getSession()).data.session?.access_token
+        : undefined;
+      const res = await fetch(`${WORKER_API_BASE}/notifications/subscribe`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
           ...(token ? { authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ subscription: sub, channel: "web" }),
+        body: JSON.stringify({ subscription: sub.toJSON(), channel: "web" }),
       });
+      if (!res.ok) throw new Error(`Error del servidor: ${res.status}`);
       setEnabled(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo activar push.");
     } finally {
       setBusy(false);
     }
-  }, [supported]);
+  }, [supported, detection.reason]);
 
   const enableEmail = useCallback(async () => {
     setBusy(true);
     setError(null);
     try {
-      const token = supabase ? (await supabase.auth.getSession()).data.session?.access_token : undefined;
-      await fetch(`${WORKER_API_BASE}/notifications/email/reminders`, {
+      const token = supabase
+        ? (await supabase.auth.getSession()).data.session?.access_token
+        : undefined;
+      const res = await fetch(`${WORKER_API_BASE}/notifications/email/reminders`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -84,6 +111,7 @@ export function usePushNotifications() {
         },
         body: JSON.stringify({ enabled: true }),
       });
+      if (!res.ok) throw new Error(`Error: ${res.status}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo activar correo.");
     } finally {
@@ -91,5 +119,14 @@ export function usePushNotifications() {
     }
   }, []);
 
-  return { supported, permission, enabled, busy, error, enable, enableEmail };
+  return {
+    supported,
+    iosNeedsInstall: !supported && detection.reason.includes("iPhone"),
+    permission,
+    enabled,
+    busy,
+    error,
+    enable,
+    enableEmail,
+  };
 }

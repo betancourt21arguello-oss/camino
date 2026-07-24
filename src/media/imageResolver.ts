@@ -1,130 +1,130 @@
-// 100% gratuito, sin API keys.
-// Estrategia: Gemini NO genera imágenes, solo sugiere términos de búsqueda.
-// Aquí resolvemos esos términos a URLs públicas reales.
-//
-// Orden de resolución (todo CORS habilitado, sin keys):
-// 1. Si ya es http URL, se usa directo.
-// 2. Wikipedia (es → en) summary API → thumbnail.source (Wikimedia Commons detrás).
-// 3. Wikimedia Commons search API → imageinfo.url
-// 4. Fallback local /images/daily.jpg o placeholder con inicial.
+// Resolución de imágenes públicas, gratuita y sin API keys.
+// Usa APIs de búsqueda que devuelven HTTP 200 aunque no haya resultados.
+// Evita /page/summary/{texto libre}, origen de los 404 visibles en consola.
 
-const WIKI_CACHE = new Map<string, string | null>();
+const resultCache = new Map<string, string | null>();
+const pendingCache = new Map<string, Promise<string | null>>();
 
-function isHttpUrl(s: string | undefined | null): boolean {
-  if (!s) return false;
-  return /^https?:\/\//i.test(s);
+function isHttpUrl(value: string | undefined | null): boolean {
+  return Boolean(value && /^https?:\/\//i.test(value));
 }
 
-async function fetchJson(url: string, timeoutMs = 6000): Promise<any | null> {
+async function fetchJson(url: string, timeoutMs = 7000): Promise<any | null> {
   try {
     const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeoutMs);
-    const res = await fetch(url, { signal: controller.signal });
-    clearTimeout(id);
-    if (!res.ok) return null;
-    return await res.json();
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: { Accept: "application/json" },
+    });
+    window.clearTimeout(timer);
+    if (!response.ok) return null;
+    return await response.json();
   } catch {
     return null;
   }
 }
 
-async function wikipediaThumbnail(title: string, lang: "es" | "en"): Promise<string | null> {
-  const key = `wiki:${lang}:${title}`;
-  if (WIKI_CACHE.has(key)) return WIKI_CACHE.get(key)!;
-
-  // Title needs underscores, encoded
-  const encoded = encodeURIComponent(title.replace(/ /g, "_"));
-  const url = `https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encoded}`;
-  const data = await fetchJson(url);
-  const thumb = data?.thumbnail?.source || data?.originalimage?.source || null;
-  if (thumb) WIKI_CACHE.set(key, thumb);
-  return thumb;
-}
-
-async function wikimediaSearch(query: string): Promise<string | null> {
-  const key = `commons:${query}`;
-  if (WIKI_CACHE.has(key)) return WIKI_CACHE.get(key)!;
-
-  // Search files in Commons
-  const searchUrl =
-    `https://commons.wikimedia.org/w/api.php` +
-    `?action=query` +
-    `&generator=search` +
-    `&gsrsearch=${encodeURIComponent(query)}` +
-    `&gsrnamespace=6` +
-    `&gsrlimit=6` +
-    `&prop=imageinfo` +
-    `&iiprop=url|mime|extmetadata` +
-    `&iiurlwidth=640` +
-    `&format=json` +
-    `&origin=*`;
-
-  const data = await fetchJson(searchUrl);
-  const pages = data?.query?.pages;
-  if (!pages) return null;
-
-  // Pick first image/* result with a usable url
-  for (const p of Object.values(pages) as any[]) {
-    const info = p?.imageinfo?.[0];
-    const url = info?.thumburl || info?.url;
-    const mime = info?.mime || "";
-    if (url && (mime.startsWith("image/") || url.match(/\.(jpg|jpeg|png|webp)(\?|$)/i))) {
-      WIKI_CACHE.set(key, url);
-      return url;
-    }
-  }
-  return null;
+function cached(key: string, loader: () => Promise<string | null>) {
+  if (resultCache.has(key)) return Promise.resolve(resultCache.get(key) ?? null);
+  const pending = pendingCache.get(key);
+  if (pending) return pending;
+  const promise = loader().then((result) => {
+    resultCache.set(key, result);
+    pendingCache.delete(key);
+    return result;
+  });
+  pendingCache.set(key, promise);
+  return promise;
 }
 
 /**
- * Resuelve un término de búsqueda a una URL pública gratuita.
- * NO usa APIs de pago, NO requiere keys.
+ * MediaWiki Action API: devuelve 200 + lista vacía si no hay coincidencia,
+ * a diferencia de REST page/summary, que ensuciaba consola con 404.
  */
+async function wikipediaSearchThumbnail(
+  query: string,
+  lang: "es" | "en",
+): Promise<string | null> {
+  const normalized = query.trim();
+  if (normalized.length < 3) return null;
+  const key = `wikipedia:${lang}:${normalized}`;
+  return cached(key, async () => {
+    const url =
+      `https://${lang}.wikipedia.org/w/api.php` +
+      `?action=query&generator=search` +
+      `&gsrsearch=${encodeURIComponent(normalized)}` +
+      `&gsrnamespace=0&gsrlimit=5&prop=pageimages` +
+      `&piprop=thumbnail|original&pithumbsize=720` +
+      `&format=json&origin=*`;
+    const data = await fetchJson(url);
+    const pages = Object.values(data?.query?.pages ?? {}) as any[];
+    for (const page of pages) {
+      const image = page?.thumbnail?.source ?? page?.original?.source;
+      if (isHttpUrl(image)) return image;
+    }
+    return null;
+  });
+}
+
+/** Wikimedia Commons: archivos públicos con metadata de licencia. */
+async function wikimediaSearch(query: string): Promise<string | null> {
+  const normalized = query.trim();
+  if (normalized.length < 3) return null;
+  const key = `commons:${normalized}`;
+  return cached(key, async () => {
+    const url =
+      `https://commons.wikimedia.org/w/api.php` +
+      `?action=query&generator=search` +
+      `&gsrsearch=${encodeURIComponent(normalized)}` +
+      `&gsrnamespace=6&gsrlimit=8&prop=imageinfo` +
+      `&iiprop=url|mime|extmetadata&iiurlwidth=720` +
+      `&format=json&origin=*`;
+    const data = await fetchJson(url);
+    const pages = Object.values(data?.query?.pages ?? {}) as any[];
+    for (const page of pages) {
+      const info = page?.imageinfo?.[0];
+      const image = info?.thumburl ?? info?.url;
+      const mime = String(info?.mime ?? "");
+      if (
+        isHttpUrl(image) &&
+        (mime.startsWith("image/") || /\.(jpe?g|png|webp)(\?|$)/i.test(image))
+      ) {
+        return image;
+      }
+    }
+    return null;
+  });
+}
+
+function looksLikeEntityName(value: string) {
+  const words = value.trim().split(/\s+/);
+  return (
+    words.length <= 7 &&
+    !/\b(painting|public domain|sacred art|gospel|wikimedia|catholic|arte sacro)\b/i.test(
+      value,
+    )
+  );
+}
+
 export async function resolvePublicImage(
   queryOrUrl: string | undefined | null,
   fallback: string,
 ): Promise<string> {
   if (!queryOrUrl) return fallback;
-  const trimmed = queryOrUrl.trim();
-  if (isHttpUrl(trimmed)) return trimmed;
-  if (trimmed.length < 3) return fallback;
+  const query = queryOrUrl.trim();
+  if (isHttpUrl(query)) return query;
+  if (query.length < 3) return fallback;
 
-  const q = trimmed;
-
-  // Try direct Wikipedia titles (es first, then en)
-  const candidates = [
-    q,
-    q.replace(/^San\s+/i, ""),
-    q.replace(/^Santa\s+/i, ""),
-    q.replace(/^Santo\s+/i, ""),
-  ];
-
-  for (const c of candidates) {
-    const thumbEs = await wikipediaThumbnail(c, "es");
-    if (thumbEs) return thumbEs;
+  if (looksLikeEntityName(query)) {
+    const es = await wikipediaSearchThumbnail(query, "es");
+    if (es) return es;
+    const en = await wikipediaSearchThumbnail(query, "en");
+    if (en) return en;
   }
-  for (const c of candidates) {
-    const thumbEn = await wikipediaThumbnail(c, "en");
-    if (thumbEn) return thumbEn;
-  }
-
-  // Try Commons search with a few query variants
-  const searchVariants = [
-    q,
-    `${q} saint painting`,
-    `${q} santo`,
-    `${q} catholic`,
-  ];
-
-  for (const sq of searchVariants) {
-    const url = await wikimediaSearch(sq);
-    if (url) return url;
-  }
-
-  return fallback;
+  return (await wikimediaSearch(query)) ?? fallback;
 }
 
-// Convenience wrappers with local fallbacks
 export async function resolveSaintImage(
   saintName: string | undefined,
   existingUrl: string | undefined,
@@ -132,14 +132,39 @@ export async function resolveSaintImage(
   if (isHttpUrl(existingUrl)) return { url: existingUrl!, isPlaceholder: false };
   if (!saintName) return { url: null, isPlaceholder: true };
 
-  // If existingUrl is actually a search term from Gemini (not http), resolve it
-  const searchTerm = existingUrl && !isHttpUrl(existingUrl) ? existingUrl : saintName;
-  const resolved = await resolvePublicImage(searchTerm, "");
-  if (resolved) return { url: resolved, isPlaceholder: false };
-  // Try saint name directly
-  const byName = await resolvePublicImage(saintName, "");
-  if (byName) return { url: byName, isPlaceholder: false };
+  const candidates = [
+    saintName,
+    saintName.replace(/^San(?:ta|to)?\s+/i, ""),
+    existingUrl && !isHttpUrl(existingUrl) ? existingUrl : "",
+  ].filter((value): value is string => Boolean(value));
+  for (const candidate of candidates) {
+    const es = await wikipediaSearchThumbnail(candidate, "es");
+    if (es) return { url: es, isPlaceholder: false };
+    const en = await wikipediaSearchThumbnail(candidate, "en");
+    if (en) return { url: en, isPlaceholder: false };
+  }
+  for (const query of [`${saintName} santo`, `${saintName} Catholic saint painting`]) {
+    const image = await wikimediaSearch(query);
+    if (image) return { url: image, isPlaceholder: false };
+  }
   return { url: null, isPlaceholder: true };
+}
+
+/** Prioriza arte sacro católico de dominio público en Commons. */
+export async function resolveCatholicImage(
+  subject: string | undefined,
+  gospelRef: string | undefined,
+): Promise<string | null> {
+  const base = (subject || gospelRef || "Jesus Christ").trim();
+  for (const query of [
+    `${base} Catholic religious painting`,
+    `${base} sacred art Jesus Christ`,
+    `${base} arte sacro católico`,
+  ]) {
+    const image = await wikimediaSearch(query);
+    if (image) return image;
+  }
+  return null;
 }
 
 export async function resolveDailyImage(
@@ -149,13 +174,8 @@ export async function resolveDailyImage(
 ): Promise<string> {
   const fallback = "/images/daily.jpg";
   if (isHttpUrl(imagePromptOrUrl)) return imagePromptOrUrl!;
-
-  // Build search query from Gemini's prompt / gospel / quote
-  const query =
-    imagePromptOrUrl ||
-    (gospelRef ? `Gospel ${gospelRef} painting renaissance public domain` : "") ||
-    quote ||
-    "Bible";
-
-  return resolvePublicImage(query, fallback);
+  const subject = imagePromptOrUrl || gospelRef || quote || "Jesus Christ Gospel";
+  const catholic = await resolveCatholicImage(subject, gospelRef);
+  if (catholic) return catholic;
+  return (await wikimediaSearch(`${subject} painting public domain`)) ?? fallback;
 }

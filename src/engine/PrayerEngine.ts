@@ -25,7 +25,17 @@ export class PrayerEngine {
   private soloDone = false;
 
   constructor(devotion: Devotion) {
-    this.devotion = devotion;
+    // Blindaje de runtime: una id antigua o una respuesta remota inválida no
+    // debe derribar toda la aplicación intentando leer `sections`.
+    this.devotion =
+      devotion && Array.isArray(devotion.sections)
+        ? devotion
+        : {
+            id: "devotion-unavailable",
+            title: "Devoción",
+            subtitle: "Contenido no disponible",
+            sections: [],
+          };
     this.flatten();
   }
 
@@ -34,6 +44,7 @@ export class PrayerEngine {
     this.flat = [];
     let mysteryNumber = 0;
     this.devotion.sections.forEach((section, sectionIndex) => {
+      if (!section || !Array.isArray(section.steps)) return;
       if (section.kind === "mystery") mysteryNumber += 1;
       section.steps.forEach((step) => {
         this.flat.push({

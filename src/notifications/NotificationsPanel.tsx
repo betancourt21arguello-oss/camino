@@ -9,15 +9,23 @@ export function NotificationsPanel() {
         RECORDATORIOS
       </div>
       <p className="mt-1 text-sm leading-relaxed text-[#77736b]">
-        Recibe avisos para Laudes, Ángelus, Rosario y tareas pendientes.
+        Recibe avisos para Ofrecimiento, Laudes, Rosario y tareas pendientes.
       </p>
+
+      {push.iosNeedsInstall && (
+        <p className="mt-2 rounded-xl bg-[#f6efdd] px-3 py-2 text-xs leading-relaxed text-[#8a6f34]">
+          En iPhone, primero instala Camino como app (Añadir a pantalla de inicio desde Safari).
+          Después podrás activar notificaciones push.
+        </p>
+      )}
+
       <div className="mt-3 grid grid-cols-2 gap-2">
         <button
           onClick={push.enable}
-          disabled={push.busy || push.enabled}
+          disabled={push.busy || push.enabled || push.iosNeedsInstall}
           className="h-11 rounded-full bg-[#1c1c1e] text-sm font-medium text-white disabled:opacity-50"
         >
-          {push.enabled ? "Push activo" : "Activar push"}
+          {push.enabled ? "✓ Push activo" : push.iosNeedsInstall ? "Instalar primero" : "Activar push"}
         </button>
         <button
           onClick={push.enableEmail}
@@ -28,9 +36,6 @@ export function NotificationsPanel() {
         </button>
       </div>
       {push.error && <p className="mt-2 text-xs text-[#a95353]">{push.error}</p>}
-      {!push.supported && (
-        <p className="mt-2 text-xs text-[#a8a8ad]">Este dispositivo no soporta push web.</p>
-      )}
     </div>
   );
 }
