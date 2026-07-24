@@ -155,7 +155,7 @@ export async function resolveDailyImage(
     imagePromptOrUrl ||
     (gospelRef ? `Gospel ${gospelRef} painting renaissance public domain` : "") ||
     quote ||
-    "Jesus teaching crowd painting public domain";
+    "Bible";
 
   return resolvePublicImage(query, fallback);
 }
