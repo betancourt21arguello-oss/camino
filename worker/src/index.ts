@@ -81,21 +81,22 @@ async function supabaseFetchDaily(env: any, date: string): Promise<any> {
 
 async function supabaseUpsertDaily(env: any, date: string, liturgy: any): Promise<void> {
   const url = `${env.SUPABASE_URL}/rest/v1/daily_liturgy`;
-  const body = {
+  const body: Record<string, any> = {
     date,
     weekday: liturgy.weekday,
     season: liturgy.season,
     liturgical_color: liturgy.liturgicalColor,
-    saint: liturgy.saint,
+    saint: liturgy.saint ?? null,
     quote: liturgy.quote,
     gospel: liturgy.gospel,
     psalm: liturgy.psalm,
-    first_reading: liturgy.firstReading,
-    second_reading: liturgy.secondReading ?? null,
+    first_reading: liturgy.firstReading ?? liturgy.first_reading ?? null,
+    second_reading: liturgy.secondReading ?? liturgy.second_reading ?? null,
     laudes: liturgy.laudes,
+    angelus: liturgy.angelus ?? null,
     reflection: liturgy.reflection,
-    image_url: liturgy.imageUrl,
-    marian: liturgy.marian,
+    image_url: liturgy.imageUrl ?? null,
+    messages: liturgy.messages ?? (liturgy.marian ? [liturgy.marian] : null),
     generated_at: new Date().toISOString(),
   };
   const res = await fetch(url, {
@@ -116,21 +117,80 @@ async function supabaseUpsertDaily(env: any, date: string, liturgy: any): Promis
 
 async function generateLiturgy(env: any, targetDate?: string): Promise<any> {
   const target = targetDate || getTodayKey();
-  const prompt = `Eres un asistente litúrgico católico. Devuelve SOLO JSON válido con esta forma:
-  { "date":"${target}","weekday","season","liturgicalColor",
-    "saint": {"name","title","initial"},
-    "quote": {"text","ref"},
-    "gospel": {"ref","title","body"},
-    "psalm": {"ref","title","body"},
-    "firstReading": {"ref","title","body"},
-    "secondReading": {"ref","title","body"} | null,
-    "laudes": {"title","body"},
-    "reflection": "...",
-    "imagePrompt": "...",
-    "marian": {"source":"Betania"|"Medjugorje","text","relevant":true|false} }
-  Para la fecha ${target}. Incluye Evangelio, Salmo, 1ª y 2ª lectura (si aplica),
-  Laudes, reflexión, santo del día y —si es relevante ese día— un mensaje de la
-  Virgen de Betania o de Medjugorje. Marca "relevant": false si no aplica.`;
+  const prompt = `Eres un asistente litúrgico católico experto. Devuelve SOLO JSON válido, sin markdown, sin texto adicional, con esta estructura EXACTA para la fecha ${target}:
+
+{
+  "date": "${target}",
+  "weekday": "Viernes",
+  "season": "Tiempo Ordinario",
+  "liturgicalColor": "Verde",
+  "isSolemnity": true,
+  "liturgicalRank": "solemnidad",
+  "saint": {
+    "name": "San Chárbel Majluf",
+    "title": "Sacerdote Maronita",
+    "initial": "SC",
+    "story": "Historia corta e interesante del santo, con los datos más relevantes de su vida.",
+    "highlights": ["hito 1", "hito 2", "hito 3"],
+    "lessons": ["lección 1", "lección 2"],
+    "exampleToday": "Cómo su ejemplo nos inspira hoy.",
+    "gospelConnection": "Cómo su vida se conecta con el Evangelio del día.",
+    "venezuelaRelevance": "Relevancia para los feligreses en Venezuela.",
+    "prayer": "Oración corta al santo."
+  },
+  "quote": {"text": "cita bíblica o de santo para el día", "ref": "referencia"},
+  "gospel": {"ref": "referencia", "title": "título", "body": "texto completo", "evangelist": "san Mateo", "introFormula": "...", "closingProclaim": "...", "closingResponse": "...", "threeCrosses": true},
+  "psalm": {"ref": "referencia", "title": "título", "body": "texto completo del salmo responsorial"},
+  "firstReading": {"ref": "referencia", "title": "título", "body": "texto completo"},
+  "secondReading": {"ref": "referencia", "title": "título", "body": "texto completo"},
+  "laudes": {
+    "title": "Laudes",
+    "body": "cuerpo/resumen",
+    "hour": "07:00",
+    "mood": "dawn",
+    "parts": [
+      {"kind": "hymn", "label": "Himno", "text": "..."},
+      {"kind": "psalmody", "label": "Salmo", "text": "...", "response": "R. ..."},
+      {"kind": "reading", "label": "Breve lectura", "text": "...", "rubric": "..."},
+      {"kind": "gospelCanticle", "label": "Benedictus", "text": "..."},
+      {"kind": "intercessions", "label": "Intercesiones", "text": "..."},
+      {"kind": "ourFather", "label": "Padre Nuestro", "text": "..."},
+      {"kind": "concludingPrayer", "label": "Oración final", "text": "..."}
+    ]
+  },
+  "vespers": {"title": "Vísperas", "body": "...", "hour": "19:00", "mood": "dusk", "parts": []},
+  "compline": {"title": "Completas", "body": "...", "hour": "21:30", "mood": "night", "parts": []},
+  "angelus": {
+    "title": "Ángelus",
+    "body": "texto",
+    "verses": [
+      {"leader": "V. El Ángel del Señor anunció a María", "response": "R. Y concibió del Espíritu Santo"},
+      {"leader": "V. He aquí la esclava del Señor", "response": "R. Hágase en mí según tu palabra"},
+      {"leader": "V. El Verbo se hizo carne", "response": "R. Y habitó entre nosotros"}
+    ],
+    "closingPrayer": "Oración final del Ángelus"
+  },
+  "reflection": "reflexión espiritual extensa conectando las lecturas con la vida cotidiana",
+  "imagePrompt": "descripción detallada para imagen sagrada del día",
+  "imageUrl": "",
+  "catechism": {"number": "...", "title": "...", "text": "...", "applyToday": "..."},
+  "onThisDay": {"title": "...", "category": "...", "text": "...", "venezuela": "..."},
+  "messages": [
+    {"source": "Papa Francisco", "text": "mensaje relacionado con el Evangelio del día", "relevant": true}
+  ],
+  "suggestedNovenas": [{"title": "...", "reason": "..."}],
+  "marian": {"source": "Betania", "text": "...", "relevant": true}
+}
+
+REGLAS FUNDAMENTALES:
+1. Fecha exacta: ${target}. Determina correctamente día de la semana, temporada y rango litúrgico.
+2. Segunda lectura: DEBE incluirse SIEMPRE con contenido real del día. NUNCA null.
+3. Laudes: incluye al menos 7 partes (himno, salmodia, breve lectura, cántico evangélico, intercesiones, Padrenuestro, oración final).
+4. Ángelus: incluye los 3 versos completos (V. / R.) y la oración final.
+5. Santo del día: historia rica, highlights (array), lecciones (array), conexión con Evangelio, relevancia para Venezuela, oración propia.
+6. Solemnidad: si es domingo o solemnidad => isSolemnity=true, liturgicalRank="solemnidad".
+7. Mensajes: de Betania, Medjugorje, Fátima, Lourdes, Papas (León XIV, Francisco, San Juan Pablo II), Carlo Acutis, San José Gregorio Hernández, Santa Madre Carmen Rendiles, Beata María de San José. DIRECTAMENTE relacionados con el Evangelio o la fecha. Incluye TODAS las coincidencias. Máximo 5.
+9. Usa EXACTAMENTE las claves en camelCase como se muestra arriba. No inventes claves nuevas.`;
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${env.GEMINI_API_KEY}`,
@@ -152,6 +212,23 @@ async function generateLiturgy(env: any, targetDate?: string): Promise<any> {
   const data = await res.json();
   const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
   const parsed = JSON.parse(text);
+  if (parsed && typeof parsed === "object") {
+    const snakeToCamel = (obj: any): any => {
+      if (Array.isArray(obj)) return obj.map(snakeToCamel);
+      if (obj && typeof obj === "object") {
+        const out: Record<string, any> = {};
+        for (const key of Object.keys(obj)) {
+          const camel = key
+            .replace(/_([a-z])/g, (_, c) => c.toUpperCase())
+            .replace(/^([A-Z])/, (c) => c.toLowerCase());
+          out[camel] = snakeToCamel(obj[key]);
+        }
+        return out;
+      }
+      return obj;
+    };
+    Object.assign(parsed, snakeToCamel(parsed));
+  }
   parsed.date = target;
   return parsed;
 }
