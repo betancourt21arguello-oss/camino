@@ -1,10 +1,16 @@
 import webpush from "web-push";
 
-webpush.setVapidDetails(
-  "mailto:admin@camino.app",
-  env.VAPID_PUBLIC_KEY,
-  env.VAPID_PRIVATE_KEY,
-);
+let vapidConfigured = false;
+
+function configureVapid(env: any) {
+  if (vapidConfigured) return;
+  webpush.setVapidDetails(
+    "mailto:admin@camino.app",
+    env.VAPID_PUBLIC_KEY,
+    env.VAPID_PRIVATE_KEY,
+  );
+  vapidConfigured = true;
+}
 
 function getTodayKey(): string {
   return new Date().toISOString().slice(0, 10);
@@ -98,10 +104,10 @@ async function supabaseUpsertDaily(env: any, date: string, liturgy: any): Promis
   }
 }
 
-async function generateLiturgy(env: any): Promise<any> {
-  const today = getTodayKey();
+async function generateLiturgy(env: any, targetDate?: string): Promise<any> {
+  const target = targetDate || getTodayKey();
   const prompt = `Eres un asistente litúrgico católico. Devuelve SOLO JSON válido con esta forma:
-  { "date":"${today}","weekday","season","liturgicalColor",
+  { "date":"${target}","weekday","season","liturgicalColor",
     "saint": {"name","title","initial"},
     "quote": {"text","ref"},
     "gospel": {"ref","title","body"},
@@ -112,7 +118,7 @@ async function generateLiturgy(env: any): Promise<any> {
     "reflection": "...",
     "imagePrompt": "...",
     "marian": {"source":"Betania"|"Medjugorje","text","relevant":true|false} }
-  Para la fecha ${today}. Incluye Evangelio, Salmo, 1ª y 2ª lectura (si aplica),
+  Para la fecha ${target}. Incluye Evangelio, Salmo, 1ª y 2ª lectura (si aplica),
   Laudes, reflexión, santo del día y —si es relevante ese día— un mensaje de la
   Virgen de Betania o de Medjugorje. Marca "relevant": false si no aplica.`;
 
@@ -136,7 +142,7 @@ async function generateLiturgy(env: any): Promise<any> {
   const data = await res.json();
   const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
   const parsed = JSON.parse(text);
-  parsed.date = today;
+  parsed.date = target;
   return parsed;
 }
 
@@ -151,12 +157,13 @@ async function cachedOrGenerate(env: any): Promise<any> {
   return liturgy;
 }
 
-function handleWhatsAppVerify(request: Request): Response {
+function handleWhatsAppVerify(request: Request, env: any): Response {
   const url = new URL(request.url);
   const mode = url.searchParams.get("hub.mode");
   const token = url.searchParams.get("hub.verify_token");
   const challenge = url.searchParams.get("hub.challenge");
-  if (mode === "subscribe" && token && challenge) {
+  const expected = env.WHATSAPP_VERIFY_TOKEN;
+  if (mode === "subscribe" && token && challenge && token === expected) {
     return new Response(challenge, { status: 200 });
   }
   return new Response("Forbidden", { status: 403 });
@@ -167,7 +174,11 @@ async function handleWhatsAppWebhook(env: any, body: any): Promise<Response> {
   if (!msg) return new Response("ok");
 
   const from = msg.from;
-  if (from !== env.ADMIN_PHONE) return new Response("ignored");
+  const adminPhones = (env.ADMIN_PHONE || env.WHATSAPP_ADMIN_PHONES || "")
+    .split(",")
+    .map((p: string) => p.trim())
+    .filter(Boolean);
+  if (!adminPhones.includes(from)) return new Response("ignored");
 
   if (msg.type === "audio") {
     const mediaId = msg.audio.id;
@@ -251,7 +262,8 @@ async function handleSubscribe(request: Request, env: any): Promise<Response> {
   }
 }
 
-async function sendPushNotification(subscription: any, payload: { title: string; body: string; url?: string }) {
+async function sendPushNotification(env: any, subscription: any, payload: { title: string; body: string; url?: string }) {
+  configureVapid(env);
   const notificationPayload = JSON.stringify(payload);
   await webpush.sendNotification(subscription, notificationPayload);
 }
@@ -340,7 +352,7 @@ async function processReminders(env: any): Promise<void> {
       try {
         const subscription = JSON.parse(sub.subscription || "{}");
         if (subscription?.endpoint) {
-          await sendPushNotification(subscription, {
+          await sendPushNotification(env, subscription, {
             title: "Camino · Recordatorio",
             body: `Es hora de: ${task.title || taskType}`,
             url: "/",
@@ -468,7 +480,7 @@ export default {
     }
 
     if (url.pathname === "/whatsapp") {
-      if (request.method === "GET") return handleWhatsAppVerify(request);
+      if (request.method === "GET") return handleWhatsAppVerify(request, env);
       if (request.method === "POST") {
         let body: any = {};
         try {
@@ -482,12 +494,27 @@ export default {
 
     if (url.pathname === "/daily" && request.method === "GET") {
       try {
-        const today = getTodayKey();
-        let liturgy = await supabaseFetchDaily(env, today);
+        const date = url.searchParams.get("date") || getTodayKey();
+        let liturgy = await supabaseFetchDaily(env, date);
         if (!liturgy) liturgy = await cachedOrGenerate(env);
         return jsonResponse(liturgy, 200, {
           "Cache-Control": "public, max-age=300",
         });
+      } catch (e: any) {
+        return jsonResponse({ error: e.message }, 500);
+      }
+    }
+
+    if (url.pathname === "/daily/generate" && request.method === "POST") {
+      try {
+        const body = await request.json();
+        const targetDate = (body && typeof body === "object" && "date" in body)
+          ? String(body.date)
+          : getTodayKey();
+        const liturgy = await generateLiturgy(env, targetDate);
+        await env.DAILY_CACHE.put(targetDate, JSON.stringify(liturgy), { expirationTtl: 172800 });
+        await supabaseUpsertDaily(env, targetDate, liturgy);
+        return jsonResponse(liturgy);
       } catch (e: any) {
         return jsonResponse({ error: e.message }, 500);
       }
