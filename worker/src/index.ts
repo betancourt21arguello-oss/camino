@@ -4,16 +4,26 @@ let vapidConfigured = false;
 
 function configureVapid(env: any) {
   if (vapidConfigured) return;
+  const publicKey = env.VAPID_PUBLIC_KEY;
+  const privateKey = env.VAPID_PRIVATE_KEY;
+  if (!publicKey || !privateKey) {
+    console.warn("VAPID keys not configured in worker environment");
+    return;
+  }
   webpush.setVapidDetails(
     "mailto:admin@camino.app",
-    env.VAPID_PUBLIC_KEY,
-    env.VAPID_PRIVATE_KEY,
+    publicKey,
+    privateKey,
   );
   vapidConfigured = true;
 }
 
 function getTodayKey(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+function handleVapidKey(_request: Request, env: any): Response {
+  return jsonResponse({ vapidPublicKey: env.VAPID_PUBLIC_KEY || "" });
 }
 
 async function supabaseSelect(env: any, table: string, params: Record<string, string> = {}, body: any = null): Promise<any> {
@@ -532,6 +542,10 @@ export default {
       } catch (e: any) {
         return jsonResponse({ error: e.message }, 500);
       }
+    }
+
+    if (url.pathname === "/notifications/vapid-public-key" && request.method === "GET") {
+      return handleVapidKey(request, env);
     }
 
     if (url.pathname === "/notifications/subscribe" && request.method === "POST") {
