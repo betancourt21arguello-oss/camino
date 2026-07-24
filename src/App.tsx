@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { BottomNav, type Tab } from "./components/BottomNav";
 import { CaminoScreen, type ReaderTarget } from "./screens/CaminoScreen";
 import { RosarioScreen } from "./screens/RosarioScreen";
@@ -121,6 +121,12 @@ function Shell() {
     setJornadaOpen(false);
     setTab("camino");
   };
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.location.pathname === "/admin") {
+      setAdminOpen(true);
+    }
+  }, []);
 
   return (
     <div
