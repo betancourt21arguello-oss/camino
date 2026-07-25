@@ -23,7 +23,10 @@ export function useDailyLiturgy() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${WORKER_API_BASE}/daily?date=${date}`);
+      const url = new URL(`${WORKER_API_BASE}/daily`);
+      url.searchParams.set("date", date);
+      url.searchParams.set("_t", String(Date.now()));
+      const res = await fetch(url.toString());
       if (!res.ok) throw new Error(`Daily API ${res.status}`);
       const data = await res.json();
       setPayload({

@@ -210,7 +210,8 @@ REGLAS FUNDAMENTALES:
   }
 
   const data = await res.json();
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+  let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+  text = text.replace(/^```(?:json)?\s*[\r\n]/i, "").replace(/[\r\n]*```$/, "").trim();
   const parsed = JSON.parse(text);
   if (parsed && typeof parsed === "object") {
     const snakeToCamel = (obj: any): any => {
@@ -585,7 +586,7 @@ export default {
         let liturgy = await supabaseFetchDaily(env, date);
         if (!liturgy) liturgy = await cachedOrGenerate(env);
         return jsonResponse(liturgy, 200, {
-          "Cache-Control": "public, max-age=300",
+          "Cache-Control": "public, max-age=60, must-revalidate",
         });
       } catch (e: any) {
         return jsonResponse({ error: e.message }, 500);
