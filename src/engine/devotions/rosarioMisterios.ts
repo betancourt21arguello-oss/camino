@@ -201,11 +201,11 @@ function buildRosario(set: RosarioSet): Devotion {
   };
 }
 
-export const ROSARIO_DESTRUCTIONS: Record<RosarioSet, Devotion> = {
-  gozosos: buildRosario("gozosos"),
-  dolorosos: buildRosario("dolorosos"),
-  luminosos: buildRosario("luminosos"),
-  gloriosos: buildRosario("gloriosos"),
+export const ROSARIO_DESTRUCTIONS: Record<string, Devotion> = {
+  "rosario-gozosos": buildRosario("gozosos"),
+  "rosario-dolorosos": buildRosario("dolorosos"),
+  "rosario-luminosos": buildRosario("luminosos"),
+  "rosario-gloriosos": buildRosario("gloriosos"),
 };
 
 /** Lunes y Sábado → Gozosos · Martes y Viernes → Dolorosos ·

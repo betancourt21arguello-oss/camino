@@ -22,6 +22,8 @@ export type ReaderTarget =
   | "catechism"
   | "onthistoday";
 
+export type { Props };
+
 type Props = {
   onStartJornada: () => void;
   onOpenReader: (t: ReaderTarget) => void;
@@ -34,39 +36,7 @@ type Props = {
   onGenerateDaily: () => void;
 };
 
-const CaminoPopup = () => {
-  return (
-    <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
-      <div className="bg-white p-6 rounded-lg shadow-lg text-center">
-        <h2 className="text-xl font-bold mb-4">Camino V.2.0.1</h2>
-        <p className="mb-4">Un proyecto de ByP Solutions.</p>
-        <a href="https://bypsolutionsbpo.com" className="text-blue-500 hover:underline">https://bypsolutionsbpo.com</a>
-        <button onClick={() => setShowPopup(false)} className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Cerrar</button>
-      </div>
-    </div>
-  );
-};
-
-const CaminoScreen: React.FC<Props> = ({ onStartJornada, onOpenReader, onOpenAsset, assets, liturgy, monthEvents, pastProgress, loadingDaily, onGenerateDaily }) => {
-  const [showPopup, setShowPopup] = useState(false);
-
-  const handleCaminoClick = () => {
-    setShowPopup(true);
-  };
-
-  return (
-    <div className="flex flex-col h-full">
-      {showPopup && <CaminoPopup />}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200">
-        <button onClick={handleCaminoClick} className="text-xl font-bold">Camino</button>
-        <button onClick={onStartJornada} className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Iniciar Jornada</button>
-      </div>
-      {/* Rest of the component remains the same */}
-    </div>
-  );
-};
-
-const CaminoScreen: React.FC<Props> = ({
+export const CaminoScreen: React.FC<Props> = ({
   onStartJornada,
   onOpenReader,
   onOpenAsset,
@@ -77,8 +47,8 @@ const CaminoScreen: React.FC<Props> = ({
   loadingDaily,
   onGenerateDaily,
   generatingDaily,
-  onOpenAdmin,
-}: Props) {
+}: Props) => {
+  const [showPopup, setShowPopup] = useState(false);
   const [saintOpen, setSaintOpen] = useState(false);
   const [cateOpen, setCateOpen] = useState(false);
   const [onThisOpen, setOnThisOpen] = useState(false);
@@ -87,8 +57,6 @@ const CaminoScreen: React.FC<Props> = ({
   const laudesAudio = assetsByTag("laudes", assets)[0];
   const angelusAudio = assetsByTag("angelus", assets)[0];
   const todayDay = todayDayFromLiturgy(L);
-
-  // Resolver imágenes públicas gratuitas (Wikimedia/Wikipedia), sin generar.
   useEffect(() => {
     let active = true;
     const run = async () => {
@@ -119,22 +87,20 @@ const CaminoScreen: React.FC<Props> = ({
 
   return (
     <div className="min-h-full bg-[#f7f6f3] pb-28 text-[#1c1c1e]">
+      {showPopup && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+          <div className="bg-white p-6 rounded-lg shadow-lg text-center max-w-sm mx-4">
+            <h2 className="text-xl font-bold mb-4">Camino V.2.0.1</h2>
+            <p className="mb-4">Un proyecto de ByP Solutions.</p>
+            <a href="https://bypsolutionsbpo.com" className="text-blue-500 hover:underline block mb-4">https://bypsolutionsbpo.com</a>
+            <button onClick={() => setShowPopup(false)} className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Cerrar</button>
+          </div>
+        </div>
+      )}
       {/* Top bar */}
       <div className="flex items-center justify-between px-6 pt-8">
         <button
-          onClick={() => {
-            // Triple-tap activates admin (hidden: production users won't triple-click fast)
-            const key = "camino_admin_taps";
-            const now = Date.now();
-            const taps: number[] = JSON.parse(sessionStorage.getItem(key) ?? "[]");
-            taps.push(now);
-            const recent = taps.filter((t) => now - t < 1200);
-            sessionStorage.setItem(key, JSON.stringify(recent.slice(-5)));
-            if (recent.length >= 5) {
-              sessionStorage.removeItem(key);
-              onOpenAdmin?.();
-            }
-          }}
+          onClick={() => setShowPopup(true)}
           className="text-sm font-semibold tracking-[0.35em]"
         >
           CAMINO
