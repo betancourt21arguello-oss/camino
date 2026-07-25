@@ -117,10 +117,19 @@ async function supabaseUpsertDaily(env: any, date: string, liturgy: any): Promis
 
 async function generateLiturgy(env: any, targetDate?: string): Promise<any> {
   const target = targetDate || getTodayKey();
-  const prompt = `Eres un asistente litúrgico católico experto. Devuelve SOLO JSON válido, sin markdown, sin explicaciones, con estas claves exactas para ${target}:
-  date, weekday, season, liturgicalColor, liturgicalRank, isSolemnity, saint.name, saint.title, saint.initial, saint.story, saint.highlights[3], saint.lessons[2], saint.exampleToday, saint.gospelConnection, saint.venezuelaRelevance, saint.prayer, quote.text, quote.ref, gospel.ref, gospel.title, gospel.body, gospel.evangelist, psalm.ref, psalm.title, psalm.body, firstReading.ref, firstReading.title, firstReading.body, secondReading.ref, secondReading.title, secondReading.body, laudes.title, laudes.hour, laudes.mood, laudes.parts[7], vespers.title/hour/mood, compline.title/hour/mood, angelus.title/verses[3]/closingPrayer, reflection, catechism.number/title/text/applyToday, onThisDay.title/category/text/venezuela, messages[5 max], suggestedNovenas[2], marian.source/text/relevant.
-  
-  REGLAS: 1) ${target} exacto. 2) Segunda lectura SIEMPRE con texto real; NUNCA null. 3) Laudes con 7 partes exactas. 4) Ángelus con 3 versos y oración final. 5) Santo: historia rica + highlights/lessons/prayer. 6) Si domingo o solemnidad => isSolemnity=true, rank=solemnidad. 7) Mensajes de Betania, Medjugorje, Fátima, Lourdes, Papas (León XIV, Francisco, Juan Pablo II), Carlo Acutis, San José Gregorio Hernández, Santa Madre Carmen Rendiles, Beata María de San José relacionados al día/evangelio. 9) Solo claves camelCase listadas.`;
+  const prompt = `Eres un asistente litúrgico católico experto. Devuelve SOLO JSON válido, sin markdown, sin explicaciones, utilizando un español hispano/latinoamericano (natural, claro y reverente). Usa estas claves exactas para la fecha ${target}:
+
+date, weekday, season, liturgicalColor, liturgicalRank, isSolemnity, saint.name, saint.title, saint.initial, saint.story, saint.highlights[3], saint.lessons[2], saint.exampleToday, saint.gospelConnection, saint.venezuelaRelevance, saint.prayer, quote.text, quote.ref, gospel.ref, gospel.title, gospel.body, gospel.evangelist, psalm.ref, psalm.title, psalm.body, firstReading.ref, firstReading.title, firstReading.body, secondReading.ref, secondReading.title, secondReading.body, laudes.title, laudes.hour, laudes.mood, laudes.parts[7], vespers.title/hour/mood, compline.title/hour/mood, angelus.title/verses[3]/closingPrayer, reflection, catechism.number/title/text/applyToday, onThisDay.title/category/text/venezuela, messages[5 max], suggestedNovenas[2], marian.source/text/relevant.
+
+REGLAS ESTRICTAS:
+1) FECHA EXACTA: La información debe corresponder litúrgicamente al ${target}.
+2) LECTURAS COMPLETAS: Genera SIEMPRE el texto real y completo de la primera lectura (firstReading), el salmo (psalm) y el evangelio (gospel). NUNCA uses null o textos vacíos. Si el día (${target}) es domingo o solemnidad, genera también la segunda lectura (secondReading) con su texto real; si es un día ferial sin segunda lectura oficial, déjala en null pero asegúrate de que la primera lectura no falle.
+3) REFLEXIÓN: El campo 'reflection' DEBE ser una síntesis que conecte tres elementos: el mensaje del Evangelio del día, el ejemplo de vida del Santo del día y una aplicación directa a la realidad, esperanza o cultura de Venezuela.
+4) MENSAJES MARIANOS: En el array 'messages', PRIORIZA SIEMPRE incluir al menos un mensaje de la Virgen de Betania (María Virgen y Madre Reconciliadora de todos los Pueblos). Completa el resto con Fátima, Lourdes, Medjugorje, Papas (León XIII, Francisco, Juan Pablo II), San José Gregorio Hernández, Santa Madre Carmen Rendiles, Beata María de San José o Carlo Acutis, que resuenen con el evangelio.
+5) ESTRUCTURA DE ORACIONES: Laudes debe tener exactamente 7 partes. Ángelus debe tener 3 versos exactos y la oración final.
+6) SANTO DEL DÍA: Provee una historia rica, destacando su conexión con el evangelio y su relevancia para Venezuela (venezuelaRelevance).
+7) RANGO: Si es domingo o solemnidad, establece isSolemnity=true y liturgicalRank="solemnidad".
+8) FORMATO: Solo utiliza las claves en camelCase listadas. Cero texto fuera del JSON.`;
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${env.GEMINI_API_KEY}`,
