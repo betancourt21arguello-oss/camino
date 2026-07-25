@@ -231,6 +231,20 @@ function AngelusView({
     };
   }, []);
 
+  // Auto-play con retraso de 2 segundos después del montaje
+  useEffect(() => {
+    if (!audioUrl) return;
+    const timer = setTimeout(() => {
+      const audio = audioRef.current;
+      if (audio) {
+        audio.play().catch(() => {
+          // El navegador bloqueó la reproducción automática
+        });
+      }
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [audioUrl]);
+
   // Calcular la línea activa basada en angelusLyrics
   const activeIndex = useMemo(() => {
     let idx = 0;
@@ -285,8 +299,9 @@ function AngelusView({
       <audio
         ref={audioRef}
         src={audioUrl}
-        preload="metadata"
-        className="hidden"
+        preload="auto"
+        className="absolute opacity-0 w-0 h-0 overflow-hidden pointer-events-none"
+        autoPlay
       />
 
       {/* Header Info badge */}
