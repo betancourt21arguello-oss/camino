@@ -32,8 +32,38 @@ type Props = {
   pastProgress: Record<number, { rosaries: number; done: boolean }>;
   loadingDaily?: boolean;
   onGenerateDaily: () => void;
-  generatingDaily?: boolean;
-  onOpenAdmin?: () => void;
+};
+
+const CaminoPopup = () => {
+  return (
+    <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+      <div className="bg-white p-6 rounded-lg shadow-lg text-center">
+        <h2 className="text-xl font-bold mb-4">Camino V.2.0.1</h2>
+        <p className="mb-4">Un proyecto de ByP Solutions.</p>
+        <a href="https://bypsolutionsbpo.com" className="text-blue-500 hover:underline">https://bypsolutionsbpo.com</a>
+        <button onClick={() => setShowPopup(false)} className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Cerrar</button>
+      </div>
+    </div>
+  );
+};
+
+const CaminoScreen: React.FC<Props> = ({ onStartJornada, onOpenReader, onOpenAsset, assets, liturgy, monthEvents, pastProgress, loadingDaily, onGenerateDaily }) => {
+  const [showPopup, setShowPopup] = useState(false);
+
+  const handleCaminoClick = () => {
+    setShowPopup(true);
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      {showPopup && <CaminoPopup />}
+      <div className="flex items-center justify-between p-4 border-b border-gray-200">
+        <button onClick={handleCaminoClick} className="text-xl font-bold">Camino</button>
+        <button onClick={onStartJornada} className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Iniciar Jornada</button>
+      </div>
+      {/* Rest of the component remains the same */}
+    </div>
+  );
 };
 
 export function CaminoScreen({
