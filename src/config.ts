@@ -3,7 +3,7 @@ const normalizeBase = (v: string | undefined, fallback: string) => {
   if (!raw) return fallback;
   if (/^https?:\/\//i.test(raw)) return raw;
   try {
-    return new URL(raw, "https://camino-6vx.pages.dev").toString();
+    return new URL("https://" + raw).toString();
   } catch {
     return fallback;
   }
@@ -13,7 +13,7 @@ export const WORKER_API_BASE = (() => {
   const raw = (import.meta.env.VITE_API_BASE || "https://camino-api.byp.workers.dev").trim();
   if (/^https?:\/\//i.test(raw)) return raw;
   try {
-    return new URL(raw, "https://camino-6vx.pages.dev").toString();
+    return new URL("https://" + raw).toString();
   } catch {
     return "https://camino-api.byp.workers.dev";
   }
