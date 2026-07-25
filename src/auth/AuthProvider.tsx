@@ -51,8 +51,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
           : null,
       );
-      if (window.location.hash.includes("access_token") || window.location.hash.includes("refresh_token")) {
-        window.history.replaceState({}, document.title, FRONTEND_URL);
+      if (
+        window.location.hash.includes("access_token") ||
+        window.location.hash.includes("refresh_token")
+      ) {
+        const target =
+          window.location.pathname === "/auth/callback"
+            ? "/auth/callback"
+            : FRONTEND_URL;
+        window.history.replaceState({}, document.title, target);
       }
       setLoading(false);
     });
@@ -73,8 +80,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
           : null,
       );
-      if (window.location.hash.includes("access_token") || window.location.hash.includes("refresh_token")) {
-        window.history.replaceState({}, document.title, FRONTEND_URL);
+      if (
+        window.location.hash.includes("access_token") ||
+        window.location.hash.includes("refresh_token")
+      ) {
+        const target =
+          window.location.pathname === "/auth/callback"
+            ? "/auth/callback"
+            : FRONTEND_URL;
+        window.history.replaceState({}, document.title, target);
       }
     });
     return () => subscription.unsubscribe();
@@ -87,7 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: FRONTEND_URL },
+      options: { emailRedirectTo: FRONTEND_URL + "/auth/callback" },
     });
     if (error) return { error: error.message };
     return { message: "Te enviamos un enlace seguro. Revisa tu correo para entrar." };
@@ -97,7 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!supabase) return { error: "Supabase Auth no está configurado." };
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
-      options: { redirectTo: FRONTEND_URL },
+      options: { redirectTo: FRONTEND_URL + "/auth/callback" },
     });
     return error ? { error: error.message } : {};
   }, []);

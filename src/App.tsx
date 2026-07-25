@@ -17,6 +17,7 @@ import { GalleryScreen } from "./screens/GalleryScreen";
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import { useWhatsAppAssets } from "./media/useWhatsAppAssets";
 import { AdminPortal } from "./screens/AdminPortal";
+import { AuthCallbackScreen } from "./screens/AuthCallbackScreen";
 import { JORNADA_CATEGORIES, categoriesForTarget, markCategoriesDone } from "./rule/markTasks";
 
 type PrayerKind = "laudes" | "angelus" | "vespers" | "compline";
@@ -204,6 +205,16 @@ function Shell() {
 }
 
 export default function App() {
+  const isAuthCallback = typeof window !== "undefined" && window.location.pathname === "/auth/callback";
+
+  if (isAuthCallback) {
+    return (
+      <AuthProvider>
+        <AuthCallbackScreen />
+      </AuthProvider>
+    );
+  }
+
   return (
     <AuthProvider>
       <SpiritualProvider>

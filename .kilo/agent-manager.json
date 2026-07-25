@@ -4,17 +4,12 @@
     "ses_065e7be37ffecer6VNIGONDnfv": {
       "worktreeId": null,
       "createdAt": "2026-07-25T16:25:08.862Z"
-    },
-    "ses_065e0e50effeYiBBoMPYUTKkW2": {
-      "worktreeId": null,
-      "createdAt": "2026-07-25T16:32:37.683Z"
     }
   },
   "tabOrder": {
     "local": [
       "ses_06bdd29b5ffeysXjZLfpmRJwPZ",
-      "ses_065e7be37ffecer6VNIGONDnfv",
-      "ses_065e0e50effeYiBBoMPYUTKkW2"
+      "ses_065e7be37ffecer6VNIGONDnfv"
     ]
   },
   "sessionsCollapsed": true
