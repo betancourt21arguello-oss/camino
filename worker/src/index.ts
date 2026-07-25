@@ -76,7 +76,19 @@ async function supabaseFetchDaily(env: any, date: string): Promise<any> {
     throw new Error(`Supabase fetch failed: ${res.status} ${text}`);
   }
   const data = await res.json();
-  return data[0] || null;
+  const row = data[0] || null;
+  if (!row) return null;
+  const out: Record<string, any> = { ...row };
+  for (const key of Object.keys(row)) {
+    const camel = key
+      .replace(/_([a-z])/g, (_, c) => c.toUpperCase())
+      .replace(/^([A-Z])/, (c) => c.toLowerCase());
+    if (camel !== key) {
+      out[camel] = row[key];
+      delete out[key];
+    }
+  }
+  return out;
 }
 
 async function supabaseUpsertDaily(env: any, date: string, liturgy: any): Promise<void> {
