@@ -159,35 +159,6 @@ export function DailyPrayerPortal({ kind, liturgy, assets, onClose, onComplete }
 
 /* ------------------------------ Ángelus ------------------------------ */
 
-declare global {
-  interface Window {
-    SC?: {
-      Widget: {
-        (iframe: HTMLIFrameElement | string): SoundCloudWidget;
-        Events: {
-          READY: string;
-          PLAY: string;
-          PAUSE: string;
-          FINISH: string;
-          PLAY_PROGRESS: string;
-          ERROR: string;
-        };
-      };
-    };
-  }
-}
-
-interface SoundCloudWidget {
-  bind(event: string, callback: (data?: any) => void): void;
-  unbind(event: string): void;
-  play(): void;
-  pause(): void;
-  toggle(): void;
-  seekTo(milliseconds: number): void;
-  getDuration(callback: (duration: number) => void): void;
-  getPosition(callback: (position: number) => void): void;
-}
-
 const angelusLyrics = [
   { start: 0, end: 2.81, text: "El ángel del Señor anunció a María." },
   { start: 3.69, end: 5.64, text: "Y concibió por obra y gracia del Espíritu Santo." },
@@ -222,94 +193,43 @@ function AngelusView({
   audioLabel?: string;
   isImmersive?: boolean;
 }) {
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  const widgetRef = useRef<SoundCloudWidget | null>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
   const lineRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTimeSec, setCurrentTimeSec] = useState(0);
   const [durationSec, setDurationSec] = useState(84.55);
-  const [isWidgetReady, setIsWidgetReady] = useState(false);
 
-  // SoundCloud target URL fallback
-  const soundcloudTrackUrl = useMemo(() => {
-    if (audioUrl && audioUrl.includes("soundcloud.com")) {
-      return audioUrl;
-    }
-    return "https://soundcloud.com/opusdei/angelus-con-el-papa-francisco";
-  }, [audioUrl]);
-
-  const iframeSrc = useMemo(() => {
-    const encoded = encodeURIComponent(soundcloudTrackUrl);
-    return `https://w.soundcloud.com/player/?url=${encoded}&color=%23d4af6a&auto_play=false&hide_related=true&show_comments=false&show_user=false&show_reposts=false&show_teaser=false`;
-  }, [soundcloudTrackUrl]);
-
-  // Cargar SDK de SoundCloud si no está presente
+  // Sincronizar el audio nativo con los eventos del elemento <audio>
   useEffect(() => {
-    let isMounted = true;
+    const audio = audioRef.current;
+    if (!audio) return;
 
-    const initWidget = () => {
-      if (!iframeRef.current || !window.SC?.Widget) return;
-      try {
-        const widget = window.SC.Widget(iframeRef.current);
-        widgetRef.current = widget;
-
-        const Events = window.SC.Widget.Events;
-
-        widget.bind(Events.READY, () => {
-          if (!isMounted) return;
-          setIsWidgetReady(true);
-          widget.getDuration((dMs) => {
-            if (dMs && dMs > 0) setDurationSec(dMs / 1000);
-          });
-        });
-
-        widget.bind(Events.PLAY, () => {
-          if (isMounted) setIsPlaying(true);
-        });
-
-        widget.bind(Events.PAUSE, () => {
-          if (isMounted) setIsPlaying(false);
-        });
-
-        widget.bind(Events.FINISH, () => {
-          if (isMounted) {
-            setIsPlaying(false);
-            setCurrentTimeSec(0);
-          }
-        });
-
-        widget.bind(Events.PLAY_PROGRESS, (data: { currentPosition: number; relativePosition: number }) => {
-          if (!isMounted) return;
-          const sec = (data.currentPosition || 0) / 1000;
-          setCurrentTimeSec(sec);
-        });
-      } catch (e) {
-        console.error("Error initializing SoundCloud widget:", e);
-      }
+    const onTimeUpdate = () => setCurrentTimeSec(audio.currentTime);
+    const onLoadedMetadata = () => {
+      if (audio.duration && audio.duration > 0) setDurationSec(audio.duration);
+    };
+    const onPlay = () => setIsPlaying(true);
+    const onPause = () => setIsPlaying(false);
+    const onEnded = () => {
+      setIsPlaying(false);
+      setCurrentTimeSec(0);
     };
 
-    if (window.SC?.Widget) {
-      initWidget();
-    } else {
-      const existingScript = document.querySelector('script[src="https://w.soundcloud.com/player/api.js"]');
-      if (!existingScript) {
-        const script = document.createElement("script");
-        script.src = "https://w.soundcloud.com/player/api.js";
-        script.async = true;
-        script.onload = () => {
-          if (isMounted) initWidget();
-        };
-        document.body.appendChild(script);
-      } else {
-        existingScript.addEventListener("load", initWidget);
-      }
-    }
+    audio.addEventListener("timeupdate", onTimeUpdate);
+    audio.addEventListener("loadedmetadata", onLoadedMetadata);
+    audio.addEventListener("play", onPlay);
+    audio.addEventListener("pause", onPause);
+    audio.addEventListener("ended", onEnded);
 
     return () => {
-      isMounted = false;
+      audio.removeEventListener("timeupdate", onTimeUpdate);
+      audio.removeEventListener("loadedmetadata", onLoadedMetadata);
+      audio.removeEventListener("play", onPlay);
+      audio.removeEventListener("pause", onPause);
+      audio.removeEventListener("ended", onEnded);
     };
-  }, [iframeSrc]);
+  }, []);
 
   // Calcular la línea activa basada en angelusLyrics
   const activeIndex = useMemo(() => {
@@ -335,13 +255,19 @@ function AngelusView({
   }, [activeIndex]);
 
   const togglePlay = () => {
-    if (!widgetRef.current) return;
-    widgetRef.current.toggle();
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (audio.paused) {
+      audio.play();
+    } else {
+      audio.pause();
+    }
   };
 
   const seekToTime = (seconds: number) => {
-    if (!widgetRef.current) return;
-    widgetRef.current.seekTo(seconds * 1000);
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.currentTime = seconds;
     setCurrentTimeSec(seconds);
   };
 
@@ -355,19 +281,12 @@ function AngelusView({
 
   return (
     <div className="flex flex-col min-h-full items-center justify-between pb-4">
-      {/* Hidden SoundCloud iframe for API control */}
-      <iframe
-        ref={iframeRef}
-        id="sc-widget"
-        width="100%"
-        height="166"
-        scrolling="no"
-        frameBorder="no"
-        allow="autoplay"
-        src={iframeSrc}
-        className="hidden pointer-events-none absolute opacity-0 w-0 h-0"
-        tabIndex={-1}
-        aria-hidden="true"
+      {/* Native audio element using Cloudflare R2 hosted file */}
+      <audio
+        ref={audioRef}
+        src={audioUrl}
+        preload="metadata"
+        className="hidden"
       />
 
       {/* Header Info badge */}
@@ -446,12 +365,7 @@ function AngelusView({
             whileTap={{ scale: 0.93 }}
             whileHover={{ scale: 1.04 }}
             onClick={togglePlay}
-            disabled={!isWidgetReady}
-            className={`flex h-13 w-13 items-center justify-center rounded-full text-white shadow-[0_6px_20px_rgba(212,175,106,0.4)] transition-all ${
-              isWidgetReady
-                ? "bg-gradient-to-br from-[#dfbc7a] to-[#be954e] active:scale-95"
-                : "bg-gray-300 cursor-not-allowed opacity-60"
-            }`}
+            className="flex h-13 w-13 items-center justify-center rounded-full text-white shadow-[0_6px_20px_rgba(212,175,106,0.4)] transition-all bg-gradient-to-br from-[#dfbc7a] to-[#be954e] active:scale-95"
             aria-label={isPlaying ? "Pausar Oración" : "Comenzar a Rezar"}
           >
             {isPlaying ? (
