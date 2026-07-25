@@ -1,0 +1,19 @@
+{
+  "slug": "lectura-devotional-breve",
+  "name": "Devocional breve",
+  "purpose": "Un versículo o pasaje corto con una breve reflexión pastoral.",
+  "pros": [
+    "Muy rápido",
+    "Ideal para días ocupados"
+  ],
+  "cons": [
+    "Menos profundidad"
+  ],
+  "audience": "Quienes tienen solo 5 minutos.",
+  "steps": [
+    { "key": "prayer", "title": "Oración corta", "instruction": "Invita al Espíritu Santo.", "durationSec": 15, "inputType": "none" },
+    { "key": "read", "title": "Pasaje del día", "instruction": "Lee el versículo con calma.", "durationSec": 60, "inputType": "highlight" },
+    { "key": "meditate", "title": "Reflexión", "instruction": "¿Cómo aplicar esto hoy?", "durationSec": 60, "inputType": "text" },
+    { "key": "close", "title": "Cierre", "instruction": "Un Padrenuestro y listo.", "durationSec": 30, "inputType": "none" }
+  ]
+}

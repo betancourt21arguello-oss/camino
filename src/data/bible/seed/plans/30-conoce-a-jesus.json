@@ -1,0 +1,10 @@
+{
+  "slug": "30-conoce-a-jesus",
+  "title": "Conoce a Jesús en 30 días",
+  "description": "De la Creación a la Cruz: los pasajes esenciales del Evangelio.",
+  "days_count": 30,
+  "level": "principiante",
+  "goal_tags": ["conocer_a_jesus"],
+  "minutes_per_day": 10,
+  "cover": "/biblia/covers/30-days.jpg"
+}

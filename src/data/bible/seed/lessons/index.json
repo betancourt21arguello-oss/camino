@@ -1,0 +1,47 @@
+[
+  {
+    "slug": "por-que-no-al-azar",
+    "title": "¿Por qué NO abrir la Biblia al azar?",
+    "summary": "La Biblia es un diálogo histórico y eclesial, no una bola de cristal.",
+    "body_md": "Abrir la Biblia al azar puede llevar a interpretaciones subjetivas. La Iglesia nos enseña a leerla con contexto, comunidad y Tradición.\n\nTODO: verificar cita exacta de Verbum Domini sobre lectura descontextualizada.",
+    "order": 1,
+    "category": "fundamentos",
+    "sources": [
+      { "doc": "Verbum Domini", "ref": "TODO: número y sección", "url": "https://www.vatican.va/content/benedict-xvi/es/apost_exhortations/documents/hf_ben-xvi_exh_20100930_verbum-domini.html" }
+    ]
+  },
+  {
+    "slug": "biblia-no-es-novela",
+    "title": "La Biblia no es una novela: es un diálogo",
+    "summary": "Es un corpus inspirado por el Espíritu Santo en comunidad.",
+    "body_md": "TODO: contenido curado por humano. Insertar aquí el texto definitivo una vez aprobado.",
+    "order": 2,
+    "category": "fundamentos",
+    "sources": [
+      { "doc": "Dei Verbum", "ref": "TODO: número", "url": "https://www.vatican.va/archive/hist_councils/ii_vatican_council/documents/vat-ii_const_19651118_dei-verbum_sp.html" }
+    ]
+  },
+  {
+    "slug": "sentido-literal-y-espiritual",
+    "title": "Sentido literal y sentido espiritual",
+    "summary": "La Iglesia distingue dos sentidos para leer bien la Escritura.",
+    "body_md": "TODO: desarrollar siguiendo Catecismo 115-119 (verificar numeración exacta en edición oficial).",
+    "order": 3,
+    "category": "metodo",
+    "sources": [
+      { "doc": "Catecismo de la Iglesia Católica", "ref": "TODO: 115-119", "url": "https://www.vatican.va/archive/catechism_sp/index.html" }
+    ]
+  },
+  {
+    "slug": "que-es-lectio-divina",
+    "title": "¿Qué es la Lectio Divina?",
+    "summary": "Una forma orante de leer la Biblia practicada desde los primeros monjes.",
+    "body_md": "TODO: contenido final. Referencias: Catecismo 2708; Verbum Domini 86-87 (verificar).",
+    "order": 4,
+    "category": "metodo",
+    "sources": [
+      { "doc": "Catecismo de la Iglesia Católica", "ref": "TODO: 2708" },
+      { "doc": "Verbum Domini", "ref": "TODO: 86-87" }
+    ]
+  }
+]

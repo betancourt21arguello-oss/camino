@@ -14,11 +14,11 @@ import { DailyPrayerPortal } from "./screens/DailyPrayerPortal";
 import { AudioAssetScreen } from "./screens/AudioAssetScreen";
 import { AuthPortal } from "./screens/AuthPortal";
 import { GalleryScreen } from "./screens/GalleryScreen";
-import { AuthProvider, useAuth } from "./auth/AuthProvider";
-import { useWhatsAppAssets } from "./media/useWhatsAppAssets";
 import { AdminPortal } from "./screens/AdminPortal";
 import { AuthCallbackScreen } from "./screens/AuthCallbackScreen";
 import { JORNADA_CATEGORIES, categoriesForTarget, markCategoriesDone } from "./rule/markTasks";
+import { BibliaHomeScreen } from "./screens/biblia/BibliaHomeScreen";
+import { BibliaOnboardingScreen } from "./screens/biblia/BibliaOnboardingScreen";
 
 type PrayerKind = "laudes" | "angelus" | "vespers" | "compline";
 const PRAYER_KINDS = new Set<ReaderTarget>(["laudes", "angelus", "vespers", "compline"]);
@@ -128,6 +128,13 @@ function Shell() {
     }
   }, []);
 
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash.startsWith('#/biblia') && tab !== 'biblia') {
+      setTab('biblia');
+    }
+  }, []);
+
   return (
     <div
       className="flex min-h-screen items-center justify-center p-0 sm:p-6"
@@ -153,6 +160,7 @@ function Shell() {
                 onOpenAdmin={() => setAdminOpen(true)}
               />
             )}
+            {tab === "biblia" && <BibliaShell />}
             {tab === "regla" && (
               <ReglaScreen onOpenReader={openReader} onStartRosary={() => setTab("rosario")} liturgy={daily.liturgy} />
             )}

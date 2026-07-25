@@ -423,7 +423,7 @@ function HourMinimal({ hour, partIndex, label }: { hour?: HourLiturgy; partIndex
 
   if (!part) {
     return (
-      <div className="flex min-h-full flex-col items-center justify-center text-center">
+      <div className="flex min-h-[50vh] flex-col items-center justify-center text-center">
         <p className="font-serif-holy text-[22px] leading-relaxed text-[#3a3a3e]">
           {hour ? "Fin de la oración." : `Los ${label} aún no están disponibles.`}
         </p>
@@ -432,7 +432,7 @@ function HourMinimal({ hour, partIndex, label }: { hour?: HourLiturgy; partIndex
   }
 
   return (
-    <div className="flex min-h-full flex-col justify-center">
+    <div className="flex min-h-[50vh] flex-col justify-center">
       <div className="flex flex-col gap-1">
         <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a07a3c]">
           {part.label || RUBRIC[part.kind]}

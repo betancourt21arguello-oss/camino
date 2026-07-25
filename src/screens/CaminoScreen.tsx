@@ -328,32 +328,29 @@ export const CaminoScreen: React.FC<Props> = ({
           />
           <button
             onClick={() => onOpenReader("laudes")}
-            className="col-span-2 rounded-2xl border border-[#e8dcc8] bg-gradient-to-r from-[#f5f0e8] to-white p-5 text-left shadow-sm transition active:scale-[0.99]"
+            className="col-span-1 flex items-center gap-3 rounded-2xl border border-[#e8dcc8] bg-gradient-to-r from-[#f5f0e8] to-white p-3 text-left shadow-sm transition active:scale-[0.99]"
           >
-            <div className="flex items-center gap-4">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-white text-2xl shadow-inner">
-                ☀️
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-[10px] tracking-[0.2em] text-[#a07a3c] font-semibold uppercase">
-                  Oración de la mañana
-                </div>
-                <div className="font-serif-holy text-xl font-semibold text-[#1c1c1e]">Laudes del día</div>
-                <div className="text-sm text-[#8a8a90]">
-                  {laudesAudio ? `${laudesAudio.author} · audio disponible` : "Comienza tu jornada"}
-                </div>
-              </div>
-              {!!laudesPresence.count && (
-                <div className="flex flex-col items-end gap-0.5 text-xs text-[#6e875e]">
-                  <div className="flex items-center gap-1.5">
-                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#6e9f6f]" />
-                    {laudesPresence.count}
-                  </div>
-                  <span>{laudesPresence.count === 1 ? "persona rezando" : "personas rezando"}</span>
-                </div>
-              )}
-              <span className="text-[#b0b0b5] text-xl">›</span>
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-xl shadow-inner">
+              ☀️
             </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-[9px] tracking-[0.2em] text-[#a07a3c] font-semibold uppercase">
+                Oración de la mañana
+              </div>
+              <div className="font-serif-holy text-sm font-semibold text-[#1c1c1e]">Laudes del día</div>
+              <div className="text-xs text-[#8a8a90]">
+                {laudesAudio ? `${laudesAudio.author} · audio disponible` : "Comienza tu jornada"}
+              </div>
+            </div>
+            {!!laudesPresence.count && (
+              <div className="flex flex-col items-end gap-0.5 text-[10px] text-[#6e875e]">
+                <div className="flex items-center gap-1">
+                  <span className="h-1 w-1 animate-pulse rounded-full bg-[#6e9f6f]" />
+                  {laudesPresence.count}
+                </div>
+                <span>{laudesPresence.count === 1 ? "persona" : "personas"}</span>
+              </div>
+            )}
           </button>
           <ActionCard
             icon="🕊️"

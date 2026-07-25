@@ -1,0 +1,25 @@
+{
+  "slug": "lectio-divina-simplificada",
+  "name": "Lectio Divina simplificada",
+  "purpose": "Leer la Palabra como diálogo orante, adecuada para principiantes.",
+  "pros": [
+    "Cualquier persona puede empezar",
+    "No requiere conocimientos previos",
+    "Se adapta a 10 minutos"
+  ],
+  "cons": [
+    "Necesita práctica para no leer rápido"
+  ],
+  "audience": "Principiantes y quienes buscan orar con la Escritura.",
+  "steps": [
+    { "key": "statio", "title": "Statio", "instruction": "Ponte en presencia de Dios. Suelta las prisas.", "durationSec": 30, "inputType": "timer", "optional": true },
+    { "key": "prayer", "title": "Oración inicial", "instruction": "Pide al Espíritu Santo que te haga entender.", "durationSec": 20, "inputType": "none" },
+    { "key": "context", "title": "Antes de leer", "instruction": "Lee la nota de contexto del pasaje.", "durationSec": 30, "inputType": "none" },
+    { "key": "read", "title": "Lectio", "instruction": "Lee el pasaje despacio. Resalta la frase que resonó.", "durationSec": 180, "inputType": "highlight" },
+    { "key": "meditate", "title": "Meditatio", "instruction": "¿Qué me dice Dios a mí con este texto?", "durationSec": 60, "inputType": "text" },
+    { "key": "pray", "title": "Oratio", "instruction": "Responde a Dios con tus palabras.", "durationSec": 60, "inputType": "chips" },
+    { "key": "silence", "title": "Contemplatio", "instruction": "Descansa en silencio en su presencia.", "durationSec": 60, "inputType": "timer", "optional": true },
+    { "key": "action", "title": "Actio", "instruction": "¿A qué te compromete hoy el Señor?", "durationSec": 30, "inputType": "chips" },
+    { "key": "close", "title": "Cierre", "instruction": "Da gracias y termina.", "durationSec": 20, "inputType": "none" }
+  ]
+}

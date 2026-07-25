@@ -1,0 +1,10 @@
+{
+  "slug": "7-primera-semana",
+  "title": "Primera semana con la Palabra",
+  "description": "Un plan puente ultra corto para quien duda. Conoce a Jesús en 7 pasos.",
+  "days_count": 7,
+  "level": "principiante",
+  "goal_tags": ["conocer_a_jesus"],
+  "minutes_per_day": 5,
+  "cover": "/biblia/covers/7-days.jpg"
+}

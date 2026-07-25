@@ -1,0 +1,20 @@
+{
+  "slug": "lectura-leccionario",
+  "name": "Lectura del Leccionario",
+  "purpose": "Seguir las lecturas de la Misa del día, con la Iglesia universal.",
+  "pros": [
+    "Sincronizado con el tiempo litúrgico",
+    "Corto y concreto"
+  ],
+  "cons": [
+    "No es lineal: salta entre libros"
+  ],
+  "audience": "Quienes quieren unirse a la liturgia diaria.",
+  "steps": [
+    { "key": "context", "title": "Día litúrgico", "instruction": "Lee el contexto del día en el calendario.", "durationSec": 30, "inputType": "none" },
+    { "key": "read", "title": "Lecturas", "instruction": "Lee las lecturas del día.", "durationSec": 300, "inputType": "none" },
+    { "key": "meditate", "title": "Reflexión", "instruction": "¿Qué pasaje te toca más?", "durationSec": 60, "inputType": "text" },
+    { "key": "pray", "title": "Oración", "instruction": "Ora con la Palabra de hoy.", "durationSec": 60, "inputType": "chips" },
+    { "key": "close", "title": "Cierre", "instruction": "Lleva la Palabra a tu día.", "durationSec": 20, "inputType": "none" }
+  ]
+}
