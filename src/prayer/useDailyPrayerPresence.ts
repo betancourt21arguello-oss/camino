@@ -27,6 +27,7 @@ export function useDailyPrayerPresence(kind: DailyPrayerKind, active = false) {
     };
 
     const refresh = async () => {
+      if (!mounted || !user) return;
       const { count: total, error } = await client
         .from("daily_prayer_presence")
         .select("profile_id", { count: "exact", head: true })

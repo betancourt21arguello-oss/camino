@@ -52,7 +52,8 @@ function GeminiPanel() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ date }),
       });
-      setResult(res.ok ? `✅ Generado para ${date}` : `❌ Error ${res.status}`);
+      const text = await res.text();
+      setResult(res.ok ? `✅ Generado para ${date}` : `❌ Error ${res.status}: ${text}`);
     } catch (e) {
       setResult(`❌ ${e instanceof Error ? e.message : "Error"}`);
     }
