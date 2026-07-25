@@ -172,6 +172,24 @@ function AngelusView({
 
   const v = withAt[verseIndex];
 
+  const isSoundCloud = useMemo(() => {
+    if (!audioUrl) return false;
+    return /soundcloud\.com/.test(audioUrl);
+  }, [audioUrl]);
+
+  if (isSoundCloud) {
+    return (
+      <SoundCloudAngelus
+        angelus={angelus}
+        audioUrl={audioUrl}
+        audioLabel={audioLabel}
+        verses={withAt}
+        verseIndex={verseIndex}
+        setVerseIndex={setVerseIndex}
+      />
+    );
+  }
+
   return (
     <div className="flex min-h-full flex-col">
       {audioUrl && (
@@ -261,6 +279,181 @@ function EmptyHour({ label }: { label: string }) {
       <p className="font-serif-holy text-[24px] leading-relaxed text-white/90">
         Los {label} aún no están disponibles en este momento.
       </p>
+    </div>
+  );
+}
+
+/* --------------------------- SoundCloud Ángelus --------------------------- */
+
+const angelusLyrics = [
+  { start: 0, end: 2.81, text: "El ángel del Señor anunció a María." },
+  { start: 3.69, end: 5.64, text: "Y concibió por obra y gracia del Espíritu Santo." },
+  { start: 5.64, end: 22.24, text: "Dios te salve, María..." },
+  { start: 22.24, end: 24.44, text: "He aquí la esclava del Señor." },
+  { start: 24.44, end: 26.62, text: "Hágase en mí según tu palabra." },
+  { start: 26.62, end: 41.98, text: "Dios te salve, María..." },
+  { start: 41.98, end: 43.96, text: "Y el Verbo de Dios se hizo carne." },
+  { start: 43.96, end: 45.40, text: "Y habitó entre nosotros." },
+  { start: 45.40, end: 62.10, text: "Dios te salve, María..." },
+  { start: 62.10, end: 64.74, text: "Ruega por nosotros, Santa Madre de Dios," },
+  { start: 64.74, end: 69.50, text: "para que seamos dignos de alcanzar las promesas de Jesucristo." },
+  { start: 69.50, end: 70.44, text: "Oremos." },
+  { start: 70.44, end: 73.24, text: "Oh Padre, Infunde en nuestra alma tu gracia." },
+  { start: 73.24, end: 78.08, text: "Tú, que en la anunciación del Ángel nos has revelado la encarnación de tu Hijo," },
+  { start: 78.08, end: 82.40, text: "por su pasión y su cruz condúcenos a la gloria de la resurrección." },
+  { start: 82.40, end: 84.55, text: "Por Cristo, Nuestro Señor. Amén." },
+];
+
+const SC_ANGELUS_URL = "https://soundcloud.com/opusdei/angelus-con-el-papa-francisco";
+
+function SoundCloudAngelus({
+  audioUrl,
+  audioLabel,
+  verses,
+  verseIndex,
+  setVerseIndex,
+}: {
+  angelus?: AngelusLiturgy;
+  audioUrl: string;
+  audioLabel?: string;
+  verses: { at?: number; leader?: string; response?: string }[];
+  verseIndex: number;
+  setVerseIndex: (n: number) => void;
+}) {
+  const widgetRef = useRef<HTMLIFrameElement>(null);
+  const widgetInstanceRef = useRef<any>(null);
+  const [ready, setReady] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+
+  const activeLine = useMemo(() => {
+    const t = currentTime;
+    let idx = 0;
+    for (let i = 0; i < angelusLyrics.length; i++) {
+      if (t >= angelusLyrics[i].start) idx = i;
+    }
+    return idx;
+  }, [currentTime]);
+
+  useEffect(() => {
+    setVerseIndex(activeLine);
+  }, [activeLine, setVerseIndex]);
+
+  useEffect(() => {
+    const scriptId = "sc-widget-api";
+    if (document.getElementById(scriptId)) {
+      window.addEventListener("load", initWidget, { once: true });
+      return;
+    }
+    const script = document.createElement("script");
+    script.id = scriptId;
+    script.src = "https://w.soundcloud.com/player/api.js";
+    script.async = true;
+    document.body.appendChild(script);
+    window.addEventListener("load", initWidget, { once: true });
+    return () => {
+      window.removeEventListener("load", initWidget);
+    };
+  }, []);
+
+  const initWidget = () => {
+    const el = widgetRef.current;
+    if (!el) return;
+    // @ts-ignore
+    const SC = window.SC;
+    if (!SC || !SC.Widget) return;
+    const widget = SC.Widget(el);
+    widgetInstanceRef.current = widget;
+
+    widget.bind(SC.Widget.Events.READY, () => {
+      setReady(true);
+      widget.getDuration((d: any) => setDuration(d));
+    });
+
+    widget.bind(SC.Widget.Events.PLAY_PROGRESS, (e: any) => {
+      setCurrentTime(e.currentPosition / 1000);
+    });
+
+    widget.bind(SC.Widget.Events.PLAY, () => setPlaying(true));
+    widget.bind(SC.Widget.Events.PAUSE, () => setPlaying(false));
+    widget.bind(SC.Widget.Events.FINISH, () => setPlaying(false));
+  };
+
+  const toggle = async () => {
+    const widget = widgetInstanceRef.current;
+    if (!widget) return;
+    if (playing) {
+      widget.pause();
+    } else {
+      widget.play();
+    }
+  };
+
+  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+  return (
+    <div className="flex min-h-full flex-col">
+      <div className="mb-6 flex items-center gap-3 rounded-2xl bg-white/10 p-3">
+        <button onClick={toggle} className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white text-[#1c1c1e]" aria-label={playing ? "Pausar" : "Reproducir"}>
+          {playing ? (
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z" /></svg>
+          ) : (
+            <svg viewBox="0 0 24 24" className="ml-0.5 h-5 w-5" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+          )}
+        </button>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-medium text-white">{audioLabel ?? "Ángelus · Papa Francisco"}</div>
+          <div className="text-[11px] text-white/55">Audio sincronizado con el texto</div>
+        </div>
+        <div className="text-right text-xs tabular-nums text-white/60">
+          {Math.floor(currentTime / 60)}:{String(Math.floor(currentTime % 60)).padStart(2, "0")}
+        </div>
+      </div>
+
+      <div className="relative z-10 mx-5 h-1 shrink-0 overflow-hidden rounded-full bg-white/15">
+        <motion.div className="h-full rounded-full bg-white/90" animate={{ width: `${progress}%` }} transition={{ type: "spring", stiffness: 90, damping: 22 }} />
+      </div>
+
+      <div className="no-scrollbar relative z-10 mt-6 flex-1 overflow-y-auto px-1 py-2">
+        <div className="mx-auto max-w-2xl space-y-5">
+          {angelusLyrics.map((line, i) => {
+            const isActive = i === activeLine;
+            const isPast = i < activeLine;
+            return (
+              <motion.p
+                key={i}
+                animate={{ opacity: isActive ? 1 : isPast ? 0.5 : 0.35, scale: isActive ? 1.02 : 1 }}
+                transition={{ duration: 0.35 }}
+                className={`font-serif-holy text-center text-[22px] leading-relaxed transition-colors ${
+                  isActive ? "text-white" : "text-white/70"
+                }`}
+              >
+                {line.text}
+              </motion.p>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="mt-6 flex justify-center">
+        <div className="flex items-center gap-2 rounded-full bg-white/10 px-4 py-2">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/70">Progreso</span>
+          <span className="text-xs tabular-nums text-white/90">{Math.floor(currentTime / 60)}:{String(Math.floor(currentTime % 60)).padStart(2, "0")} / {Math.floor(duration / 60)}:{String(Math.floor(duration % 60)).padStart(2, "0")}</span>
+        </div>
+      </div>
+
+      <iframe
+        ref={widgetRef}
+        id="sc-angelus-widget"
+        width="100%"
+        height="166"
+        scrolling="no"
+        frameborder="no"
+        allow="autoplay"
+        style={{ position: "absolute", width: "1px", height: "1px", opacity: 0, pointerEvents: "none" }}
+        src="https://w.soundcloud.com/player/?url=https%3A//soundcloud.com/opusdei/angelus-con-el-papa-francisco&color=%23d4af6a&auto_play=false&hide_related=true&show_comments=false&show_user=false&show_reposts=false&show_teaser=false"
+      />
     </div>
   );
 }
