@@ -58,7 +58,7 @@ function groupLastMilestones(events: GardenEvent[]) {
 }
 
 export function PerfilScreen({ onOpenAuth }: { onOpenAuth: () => void }) {
-  const { balance, gardenEvents, gardenState, activeIntentions, waterGarden } = useSpiritual();
+  const { balance, gardenEvents, gardenState, activeIntentions, waterGarden, bulkWaterGarden } = useSpiritual();
   const { user, signOut } = useAuth();
   const [tab, setTab] = useState<ProfileTab>("jardin");
 
@@ -144,7 +144,7 @@ export function PerfilScreen({ onOpenAuth }: { onOpenAuth: () => void }) {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.25 }}
             >
-              <JardinTab traits={traits} gardenState={gardenState} balance={balance} events={gardenEvents} waterGarden={waterGarden} agua={balance.agua} />
+              <JardinTab traits={traits} gardenState={gardenState} balance={balance} events={gardenEvents} waterGarden={waterGarden} bulkWaterGarden={bulkWaterGarden} agua={balance.agua} />
             </motion.div>
           )}
           {tab === "intenciones" && (
@@ -183,6 +183,7 @@ function JardinTab({
   balance,
   events,
   waterGarden,
+  bulkWaterGarden,
   agua,
 }: {
   traits: ReturnType<typeof useGardenDna>;
@@ -190,6 +191,7 @@ function JardinTab({
   balance: ReturnType<typeof useSpiritual>["balance"];
   events: GardenEvent[];
   waterGarden: (intention: string) => boolean;
+  bulkWaterGarden: (intention: string) => boolean;
   agua: number;
 }) {
   const [showWater, setShowWater] = useState(false);
@@ -197,6 +199,8 @@ function JardinTab({
   const [rain, setRain] = useState(false);
   const [watered, setWatered] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [bulkWaterOpen, setBulkWaterOpen] = useState(false);
+  const [bulkIntention, setBulkIntention] = useState(INTENTIONS[0]);
   const milestones = useMemo(() => groupLastMilestones(events), [events]);
 
   const handleWater = () => {
@@ -207,6 +211,17 @@ function JardinTab({
       setTimeout(() => setRain(false), 2400);
       setTimeout(() => setWatered(false), 1600);
       setShowWater(false);
+    }
+  };
+
+  const handleBulkWater = () => {
+    if (agua <= 0) return;
+    if (bulkWaterGarden(bulkIntention)) {
+      setRain(true);
+      setWatered(true);
+      setTimeout(() => setRain(false), 2400);
+      setTimeout(() => setWatered(false), 1600);
+      setBulkWaterOpen(false);
     }
   };
 
@@ -245,6 +260,15 @@ function JardinTab({
       >
         💧 Regar mi jardín {agua > 0 ? `(Requiere 1💧 · ${agua})` : "(Sin agua)"}
       </button>
+
+      {agua > 1 && (
+        <button
+          onClick={() => setBulkWaterOpen(true)}
+          className="mt-2 flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-[#c4a35a] bg-[#f6efdd] text-sm font-medium text-[#8a6f34]"
+        >
+          🌊 Regar todo ({agua}💧)
+        </button>
+      )}
 
       {/* Grid de estadísticas fusionado */}
       <div className="mt-4 grid grid-cols-3 gap-2">
@@ -329,6 +353,48 @@ function JardinTab({
                 Regar · {intention}
               </button>
               <button onClick={() => setShowWater(false)} className="mt-2 h-11 w-full text-sm text-[#8a8a90]">
+                Cancelar
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {bulkWaterOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-50 flex items-end justify-center bg-black/40 p-4 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ y: 40, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 40, opacity: 0 }}
+              className="w-full max-w-md rounded-3xl bg-white p-6"
+            >
+              <h3 className="text-center font-serif-holy text-xl font-semibold">Riego completo</h3>
+              <p className="mt-1 text-center text-sm text-[#8a8a90]">Consume todo tu agua en un solo acto de caridad.</p>
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                {INTENTIONS.map((i) => (
+                  <button
+                    key={i}
+                    onClick={() => setBulkIntention(i)}
+                    className={`h-11 rounded-full border text-sm transition ${
+                      bulkIntention === i
+                        ? "border-[#c4a35a] bg-[#f6efdd] text-[#8a6f34]"
+                        : "border-[#e6e3db] bg-white text-[#6b6b70]"
+                    }`}
+                  >
+                    {i}
+                  </button>
+                ))}
+              </div>
+              <button onClick={handleBulkWater} className="mt-5 h-12 w-full rounded-full bg-[#1c1c1e] font-medium text-white">
+                🌊 Regar todo · {bulkIntention}
+              </button>
+              <button onClick={() => setBulkWaterOpen(false)} className="mt-2 h-11 w-full text-sm text-[#8a8a90]">
                 Cancelar
               </button>
             </motion.div>

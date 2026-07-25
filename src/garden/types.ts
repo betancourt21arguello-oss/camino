@@ -80,6 +80,10 @@ export interface GardenState {
   butterflyCount: number;
   season: GardenSeason;
   lastGrowth: number;
+  lastActivityTime: number;
+  health: number;
+  pointsScore: number;
+  level: number;
 }
 
 export interface GardenSignature {

@@ -1,6 +1,7 @@
 import { memo, useId, useMemo } from "react";
 import { motion } from "framer-motion";
 import { generateGardenModel, signatureFromDna } from "./model";
+import { LevelModule, resolveLevel } from "./levels";
 import type { GardenPoint, TreeModel } from "./model";
 import type { DnaTraits, GardenSignature, GardenState } from "./types";
 
@@ -39,6 +40,10 @@ export const GardenSvg = memo(function GardenSvg({
   const flowers =
     FLOWER_PALETTES[dna.paletteVariant % FLOWER_PALETTES.length];
   const seasonSky = SEASON_SKY[state.season];
+  const health = state.health;
+  const saturate = 0.3 + 0.7 * health;
+  const contentOpacity = 0.6 + 0.4 * health;
+  const isDrought = health < 0.3;
 
   return (
     <svg
@@ -46,6 +51,7 @@ export const GardenSvg = memo(function GardenSvg({
       className="h-auto w-full"
       role="img"
       aria-label="Jardín silvestre revelado por tu vida de oración"
+      style={{ willChange: "filter, opacity" }}
     >
       <defs>
         <linearGradient id={skyId} x1="0" y1="0" x2="0" y2="1">
@@ -63,150 +69,174 @@ export const GardenSvg = memo(function GardenSvg({
         </linearGradient>
       </defs>
 
-      <rect width="720" height="460" fill={`url(#${skyId})`} />
-      <path d={model.terrain} fill="#c9cfba" />
-      <path d="M0 383 C180 350 520 360 720 330 L720 460 L0 460Z" fill="#b8c1a5" opacity=".42" />
+      <rect width="720" height="460" fill={`url(#${skyId})`} opacity={0.7 + 0.3 * health} />
 
-      <ellipse cx="360" cy="145" rx="290" ry="215" fill={`url(#${glowId})`} />
-      {model.lightRays.map((ray, i) => (
-        <motion.path
-          key={i}
-          d={`M ${ray.x} 0 L ${ray.x + ray.width} 390 L ${ray.x - ray.width / 2} 390 Z`}
-          fill="#d4af6a"
-          opacity={ray.opacity}
-          animate={{ opacity: [ray.opacity * 0.65, ray.opacity, ray.opacity * 0.65] }}
-          transition={{ duration: 8 + i, repeat: Infinity, ease: "easeInOut" }}
-        />
-      ))}
+      <g
+        style={{
+          filter: `saturate(${saturate})`,
+          opacity: contentOpacity,
+          willChange: "filter, opacity",
+        }}
+      >
+        <path d={model.terrain} fill="#c9cfba" />
+        <path d="M0 383 C180 350 520 360 720 330 L720 460 L0 460Z" fill="#b8c1a5" opacity=".42" />
 
-      {model.rocks.map((rock) => (
-        <ellipse
-          key={rock.id}
-          cx={rock.x}
-          cy={rock.y}
-          rx={9 * rock.scale}
-          ry={5.5 * rock.scale}
-          fill="#aba497"
-          opacity=".62"
-        />
-      ))}
-
-      <path d={model.path} fill="none" stroke="#d7cdb9" strokeWidth={model.pathWidth} strokeLinecap="round" opacity=".76" />
-      <path d={model.path} fill="none" stroke="#eee7d9" strokeWidth="2" strokeDasharray="3 10" strokeLinecap="round" opacity=".85" />
-
-      {model.river.visible && (
-        <motion.g
-          initial={false}
-          animate={{ opacity: [0.8, 0.95, 0.8] }}
-          transition={{ duration: 7, repeat: Infinity, ease: "easeInOut" }}
-        >
-          <path d={model.river.d} fill={`url(#${waterId})`} opacity={0.6 + state.waterLevel / 300} />
-          <path d={model.river.d} fill="none" stroke="#e8efeb" strokeWidth="2" opacity=".6" />
-        </motion.g>
-      )}
-
-      {model.ambientPlants
-        .filter((p) => isFinite(p.x) && isFinite(p.y))
-        .map((plant) => (
-          <Plant key={plant.id} plant={plant} color={GREENS[plant.tone % GREENS.length]} />
-        ))}
-      {model.ambientFlowers
-        .filter((f) => isFinite(f.x) && isFinite(f.y))
-        .map((flower) => (
-          <Flower key={flower.id} flower={flower} color={flowers[flower.tone % flowers.length]} />
+        <ellipse cx="360" cy="145" rx="290" ry="215" fill={`url(#${glowId})`} />
+        {model.lightRays.map((ray, i) => (
+          <motion.path
+            key={i}
+            d={`M ${ray.x} 0 L ${ray.x + ray.width} 390 L ${ray.x - ray.width / 2} 390 Z`}
+            fill="#d4af6a"
+            opacity={ray.opacity}
+            animate={{ opacity: [ray.opacity * 0.65, ray.opacity, ray.opacity * 0.65] }}
+            transition={{ duration: 8 + i, repeat: Infinity, ease: "easeInOut" }}
+          />
         ))}
 
-      {model.lights.map((light) => (
-        <motion.g
-          key={light.id}
-          animate={{ opacity: [0.5, 1, 0.6] }}
-          transition={{ duration: 2.5 + light.delay, repeat: Infinity }}
-        >
-          <circle cx={light.x} cy={light.y} r="3" fill="#f0e2b8" />
-          <circle cx={light.x} cy={light.y} r="8" fill="#d4af6a" opacity=".18" />
-        </motion.g>
-      ))}
+        {model.rocks.map((rock) => (
+          <ellipse
+            key={rock.id}
+            cx={rock.x}
+            cy={rock.y}
+            rx={9 * rock.scale}
+            ry={5.5 * rock.scale}
+            fill="#aba497"
+            opacity=".62"
+          />
+        ))}
 
-      <CentralTree tree={model.tree} justWatered={justWatered} />
+        <path d={model.path} fill="none" stroke="#d7cdb9" strokeWidth={model.pathWidth} strokeLinecap="round" opacity=".76" />
+        <path d={model.path} fill="none" stroke="#eee7d9" strokeWidth="2" strokeDasharray="3 10" strokeLinecap="round" opacity=".85" />
 
-      {model.butterflies
-        .filter((b) => isFinite(b.x) && isFinite(b.y))
-        .map((butterfly) => (
+        {model.river.visible && (
           <motion.g
-            key={butterfly.id}
-            initial={{ opacity: 0 }}
-            animate={{
-              x: [butterfly.x, butterfly.x + 18, butterfly.x - 8, butterfly.x],
-              y: [butterfly.y, butterfly.y - 13, butterfly.y + 5, butterfly.y],
-              opacity: [0, 0.72, 0.6, 0],
-            }}
-            transition={{ duration: 14, delay: butterfly.delay * 2, repeat: Infinity, ease: "easeInOut" }}
+            initial={false}
+            animate={{ opacity: [0.8, 0.95, 0.8] }}
+            transition={{ duration: 7, repeat: Infinity, ease: "easeInOut" }}
           >
-            <ellipse cx="-3" cy="0" rx="4" ry="2.5" fill="#b9a4b8" transform="rotate(28)" />
-            <ellipse cx="3" cy="0" rx="4" ry="2.5" fill="#c7b6c2" transform="rotate(-28)" />
+            <path d={model.river.d} fill={`url(#${waterId})`} opacity={0.6 + state.waterLevel / 300} />
+            <path d={model.river.d} fill="none" stroke="#e8efeb" strokeWidth="2" opacity=".6" />
           </motion.g>
-        ))}
+        )}
 
-      {model.particles
-        .filter((p) => p.x != null && p.y != null && isFinite(p.x) && isFinite(p.y))
-        .map((particle) => (
-          <motion.g
-            key={particle.id}
-            initial={{ opacity: 0 }}
-            style={{ x: particle.x, y: particle.y }}
-            animate={{
-              opacity: [0.08, 0.42, 0.08],
-              y: [particle.y, particle.y - 8, particle.y],
-            }}
-            transition={{
-              opacity: { duration: 7 + particle.delay, repeat: Infinity },
-              y: {
-                duration: 7 + particle.delay,
-                delay: particle.delay,
-                repeat: Infinity,
-                ease: "easeInOut",
-              },
-            }}
-          >
-            <circle cx={0} cy={0} r={0.7 + particle.scale * 0.8} fill="#d4af6a" />
-          </motion.g>
-        ))}
-
-      {showRain && (
-        <motion.g
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-        >
-          {Array.from({ length: 28 }).map((_, i) => (
-            <motion.line
-              key={i}
-              x1={40 + i * 24}
-              y1={0}
-              x2={34 + i * 24}
-              y2={460}
-              stroke="#b7c8cc"
-              strokeWidth="1.2"
-              opacity=".45"
-              animate={{ y1: [-20, 480], y2: [440, 920] }}
-              transition={{ duration: 1.2, delay: i * 0.04, repeat: Infinity, ease: "linear" }}
-            />
+        {model.ambientPlants
+          .filter((p) => isFinite(p.x) && isFinite(p.y))
+          .map((plant) => (
+            <Plant key={plant.id} plant={plant} color={GREENS[plant.tone % GREENS.length]} />
           ))}
-        </motion.g>
-      )}
+        {model.ambientFlowers
+          .filter((f) => isFinite(f.x) && isFinite(f.y))
+          .map((flower) => (
+            <Flower key={flower.id} flower={flower} color={flowers[flower.tone % flowers.length]} />
+          ))}
 
-      {justWatered && (
-        <motion.circle
-          cx="360"
-          cy="322"
-          r="20"
-          fill="none"
-          stroke="#b7c8cc"
-          initial={{ r: 20, opacity: 0.6 }}
-          animate={{ r: 180, opacity: 0 }}
-          transition={{ duration: 2.2, ease: "easeOut" }}
-        />
-      )}
+        {model.lights.map((light) => (
+          <motion.g
+            key={light.id}
+            animate={{ opacity: [0.5, 1, 0.6] }}
+            transition={{ duration: 2.5 + light.delay, repeat: Infinity }}
+            style={{ opacity: contentOpacity }}
+          >
+            <circle cx={light.x} cy={light.y} r="3" fill="#f0e2b8" />
+            <circle cx={light.x} cy={light.y} r="8" fill="#d4af6a" opacity=".18" />
+          </motion.g>
+        ))}
+
+        <CentralTree tree={model.tree} justWatered={justWatered} />
+
+        {model.butterflies
+          .filter((b) => isFinite(b.x) && isFinite(b.y))
+          .map((butterfly) => (
+            <motion.g
+              key={butterfly.id}
+              initial={{ opacity: 0 }}
+              animate={{
+                x: [butterfly.x, butterfly.x + 18, butterfly.x - 8, butterfly.x],
+                y: [butterfly.y, butterfly.y - 13, butterfly.y + 5, butterfly.y],
+                opacity: [0, 0.72, 0.6, 0],
+              }}
+              transition={{ duration: 14, delay: butterfly.delay * 2, repeat: Infinity, ease: "easeInOut" }}
+            >
+              <ellipse cx="-3" cy="0" rx="4" ry="2.5" fill="#b9a4b8" transform="rotate(28)" />
+              <ellipse cx="3" cy="0" rx="4" ry="2.5" fill="#c7b6c2" transform="rotate(-28)" />
+            </motion.g>
+          ))}
+
+        {model.particles
+          .filter((p) => p.x != null && p.y != null && isFinite(p.x) && isFinite(p.y))
+          .map((particle) => (
+            <motion.g
+              key={particle.id}
+              initial={{ opacity: 0 }}
+              style={{ x: particle.x, y: particle.y }}
+              animate={{
+                opacity: [0.08, 0.42, 0.08],
+                y: [particle.y, particle.y - 8, particle.y],
+              }}
+              transition={{
+                opacity: { duration: 7 + particle.delay, repeat: Infinity },
+                y: {
+                  duration: 7 + particle.delay,
+                  delay: particle.delay,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                },
+              }}
+            >
+              <circle cx={0} cy={0} r={0.7 + particle.scale * 0.8} fill="#d4af6a" />
+            </motion.g>
+          ))}
+
+        {showRain && (
+          <motion.g
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            {Array.from({ length: 28 }).map((_, i) => (
+              <motion.line
+                key={i}
+                x1={40 + i * 24}
+                y1={0}
+                x2={34 + i * 24}
+                y2={460}
+                stroke="#b7c8cc"
+                strokeWidth="1.2"
+                opacity=".45"
+                animate={{ y1: [-20, 480], y2: [440, 920] }}
+                transition={{ duration: 1.2, delay: i * 0.04, repeat: Infinity, ease: "linear" }}
+              />
+            ))}
+          </motion.g>
+        )}
+
+        {justWatered && (
+          <motion.circle
+            cx="360"
+            cy="322"
+            r="20"
+            fill="none"
+            stroke="#b7c8cc"
+            initial={{ r: 20, opacity: 0.6 }}
+            animate={{ r: 180, opacity: 0 }}
+            transition={{ duration: 2.2, ease: "easeOut" }}
+          />
+        )}
+
+        {isDrought && (
+          <rect
+            x="0"
+            y="0"
+            width="720"
+            height="460"
+            fill="#8a7e6b"
+            opacity={0.12 * (1 - health / 0.3)}
+            pointerEvents="none"
+          />
+        )}
+
+        <LevelModule config={resolveLevel(state.level)} dna={dna} />
+      </g>
 
       <g transform="translate(680 420)">
         <GardenSignatureGlyph signature={signature} />

@@ -34,6 +34,7 @@ interface SpiritualState {
   lightCandle: (intention: string) => Candle | null;
   prayForCandle: (id: string) => void;
   waterGarden: (intention: string) => boolean;
+  bulkWaterGarden: (intention: string) => boolean;
 }
 
 const Ctx = createContext<SpiritualState | null>(null);
@@ -271,6 +272,41 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
     [user],
   );
 
+  const bulkWaterGarden = useCallback(
+    (intention: string): boolean => {
+      const currentAgua = balance.agua;
+      if (currentAgua <= 0) return false;
+      setBalance((b: FruitBalance) => ({ ...b, agua: 0 }));
+      setGardenEvents((events: GardenEvent[]) => [
+        ...events,
+        {
+          id: `garden-bulkwater-${now()}`,
+          type: "WATER_GARDEN",
+          value: currentAgua,
+          createdAt: now(),
+          meta: { intention: intention || "Paz" },
+        },
+      ]);
+      setHistory((h) => [
+        {
+          id: `bulkwater-${now()}`,
+          note: `Riego completo · ${intention || "Paz"} (${currentAgua}💧)`,
+          at: now(),
+          fruits: { agua: -currentAgua },
+        },
+        ...h,
+      ]);
+      if (supabase && user) {
+        void supabase.rpc("bulk_water_garden", {
+          p_user_id: user.id,
+          p_intention: intention || "Paz",
+        });
+      }
+      return true;
+    },
+    [balance.agua, user],
+  );
+
   const activeIntentions = useMemo(
     () => candles.filter((c) => c.expiresAt > now() && (c.mine || c.prayedBy.includes("me"))),
     [candles],
@@ -292,6 +328,7 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
     lightCandle,
     prayForCandle,
     waterGarden,
+    bulkWaterGarden,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

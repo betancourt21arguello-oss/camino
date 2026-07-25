@@ -1,4 +1,5 @@
 import { createPrng, noise1D } from "./prng";
+import { resolveLevel } from "./levels";
 import type { DnaTraits, GardenSignature, GardenState } from "./types";
 
 export interface GardenPoint {
@@ -144,25 +145,24 @@ export function generateGardenModel(traits: DnaTraits, state: GardenState): Gard
 }
 
 export function buildWildGarden(traits: DnaTraits, state: GardenState): GardenModel {
+  const levelConfig = resolveLevel(state.level);
   const riverRad = (traits.riverAngle * Math.PI) / 180;
   const riverX = 360 + Math.cos(riverRad) * 190;
   const riverY = 350 + Math.sin(riverRad) * 40;
 
   const tree = buildCentralTree(traits, state);
 
-  // Flores y Luces: totalCoronillas -> luces nocturnas y flores blancas
-  const lightCount = Math.min(12, Math.floor(state.totalCoronillas * 1.2) + Math.floor(state.streak / 10));
+  const lightCount = Math.min(12, Math.floor(state.totalCoronillas * 1.2) + Math.floor(state.streak / 10)) + levelConfig.lightBonus;
   const flowerCount =
     Math.min(20, Math.floor(state.totalCoronillas * 1.5)) +
-    Math.min(8, Math.floor(state.totalSilenceMinutes / 20));
+    Math.min(8, Math.floor(state.totalSilenceMinutes / 20)) +
+    levelConfig.flowerBonus;
 
-  // Novenas -> piedras en el sendero
-  const stoneCount = Math.min(12, 3 + state.totalNovenas * 2 + traits.rockPattern);
+  const stoneCount = Math.min(12, 3 + state.totalNovenas * 2 + traits.rockPattern) + levelConfig.rockBonus;
 
-  // Semillas (pasivas) + Silencio -> densidad de vegetación/hierba en la base
   const smallVegCount = Math.min(
     30,
-    5 + Math.floor(state.totalSeeds * 0.7) + Math.floor(state.totalSilenceMinutes / 6),
+    5 + Math.floor(state.totalSeeds * 0.7) + Math.floor(state.totalSilenceMinutes / 6) + levelConfig.plantBonus,
   );
 
   return {
@@ -198,13 +198,13 @@ export function buildWildGarden(traits: DnaTraits, state: GardenState): GardenMo
       { x0: 100, x1: 620, y0: 280, y1: 380 },
     ),
     tree,
-    butterflies: makePoints(createPrng(`${traits.dna}:butterflies`), "butterfly", Math.min(6, Math.floor(state.waterLevel / 18)), {
+    butterflies: makePoints(createPrng(`${traits.dna}:butterflies`), "butterfly", Math.min(6, Math.floor(state.waterLevel / 18)) + levelConfig.butterflyBonus, {
       x0: 80,
       x1: 640,
       y0: 140,
       y1: 285,
     }),
-    particles: makePoints(createPrng(`${traits.dna}:particles`), "particle", 16, {
+    particles: makePoints(createPrng(`${traits.dna}:particles`), "particle", 16 + levelConfig.particleBonus, {
       x0: 25,
       x1: 695,
       y0: 70,
@@ -213,7 +213,7 @@ export function buildWildGarden(traits: DnaTraits, state: GardenState): GardenMo
     lightRays: (() => {
       const lightRng = createPrng(`${traits.dna}:light`);
       return Array.from(
-        { length: clampCount(Math.floor(state.communityPrayer / 2) + 2, 7) },
+        { length: clampCount(Math.floor(state.communityPrayer / 2) + 2 + levelConfig.lightRayBonus, 7) },
         () => ({
           x: lightRng() * 720,
           width: 30 + lightRng() * 80,

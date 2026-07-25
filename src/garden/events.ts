@@ -17,6 +17,10 @@ export function gardenEventType(type: SpiritualEventType): GardenEventType {
   return EVENT_MAP[type];
 }
 
+function clamp(value: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, value));
+}
+
 export function aggregateGardenState(
   events: GardenEvent[],
   activeCandles: number,
@@ -32,13 +36,27 @@ export function aggregateGardenState(
   const waterings = count("WATER_GARDEN") + count("WATER_RECEIVED") + count("CANDLE_LIT");
   const silence = count("SILENCE_TIME") + count("REFLECTION_COMPLETED");
   const community = count("COMMUNITY_PRAYER");
-  // Las semillas ahora son pasivas: nutren la vegetación base del jardín.
   const seeds = count("SEED_RECEIVED") + rosaries + Math.floor(silence / 10);
   const streak = count("STREAK_MAINTAINED") + Math.floor(rosaries / 2);
 
   const waterLevel = Math.min(100, waterings * 8 + count("WATER_RECEIVED") * 4);
   const lightLevel = Math.min(100, 22 + community * 12 + count("CANDLE_LIT") * 2);
   const butterflyCount = Math.min(6, Math.floor(waterLevel / 18));
+
+  const lastActivityTime = events.at(-1)?.createdAt ?? 0;
+  const elapsedHours = (Date.now() - lastActivityTime) / (1000 * 60 * 60);
+  const health = clamp(1 - elapsedHours / 48, 0, 1);
+
+  const pointsScore =
+    rosaries * 10 +
+    novenas * 30 +
+    coronillas * 15 +
+    waterings * 2 +
+    Math.floor(silence / 10) +
+    community * 5 +
+    streak * 3;
+
+  const level = Math.max(0, Math.floor(Math.sqrt(pointsScore / 15)));
 
   return {
     totalRosaries: rosaries,
@@ -58,6 +76,10 @@ export function aggregateGardenState(
     birdCount: 0,
     butterflyCount,
     season: "ordinary",
-    lastGrowth: events.at(-1)?.createdAt ?? 0,
+    lastGrowth: lastActivityTime,
+    lastActivityTime,
+    health,
+    pointsScore,
+    level,
   };
 }
