@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 import { WORKER_API_BASE } from "../config";
+import { defaultTasks, type TaskCategory } from "../rule/tasks";
 
 export function AdminPortal({ onClose }: { onClose: () => void }) {
-  const [tab, setTab] = useState<"garden" | "gemini" | "upload" | "telegram">("gemini");
+  const [tab, setTab] = useState<"garden" | "gemini" | "upload" | "telegram" | "tasks">("gemini");
 
   return (
     <div className="absolute inset-0 z-[70] flex flex-col bg-[#0e0e10] text-white">
@@ -14,7 +15,7 @@ export function AdminPortal({ onClose }: { onClose: () => void }) {
       </header>
 
       <nav className="flex shrink-0 gap-1 px-3 pt-3">
-        {(["gemini", "upload", "garden", "telegram"] as const).map((t) => (
+        {(["gemini", "upload", "tasks", "garden", "telegram"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -22,7 +23,7 @@ export function AdminPortal({ onClose }: { onClose: () => void }) {
               tab === t ? "bg-[var(--gold)] text-black" : "bg-white/[0.06] text-white/60"
             }`}
           >
-            {t === "gemini" ? "Gemini" : t === "upload" ? "Subir audio" : t === "garden" ? "Jardín" : "Telegram"}
+            {t === "gemini" ? "Gemini" : t === "upload" ? "Subir audio" : t === "tasks" ? "Tareas" : t === "garden" ? "Jardín" : "Telegram"}
           </button>
         ))}
       </nav>
@@ -30,6 +31,7 @@ export function AdminPortal({ onClose }: { onClose: () => void }) {
       <div className="no-scrollbar flex-1 overflow-y-auto p-4">
         {tab === "gemini" && <GeminiPanel />}
         {tab === "upload" && <UploadPanel />}
+        {tab === "tasks" && <TasksPanel />}
         {tab === "garden" && <GardenEditor />}
         {tab === "telegram" && <TelegramPanel />}
       </div>
@@ -92,7 +94,6 @@ function UploadPanel() {
     setBusy(true);
     setResult("");
     try {
-      // Upload to Worker → R2
       const formData = new FormData();
       formData.append("file", file);
       formData.append("tag", tag);
@@ -156,6 +157,286 @@ function UploadPanel() {
       >
         {busy ? "Subiendo…" : "Publicar audio"}
       </button>
+      {result && <p className="text-sm">{result}</p>}
+    </div>
+  );
+}
+
+// Assign tasks to user(s)
+function TasksPanel() {
+  const [target, setTarget] = useState<"user" | "all">("user");
+  const [userId, setUserId] = useState("");
+  const [query, setQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<{ id: string; email: string; full_name?: string }[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [selectedTasks, setSelectedTasks] = useState<{ title: string; category: TaskCategory; cadence: string; time?: string }[]>([]);
+  const [customTitle, setCustomTitle] = useState("");
+  const [customCategory, setCustomCategory] = useState<TaskCategory>("custom");
+  const [customCadence, setCustomCadence] = useState<"daily" | "weekly" | "monthly">("daily");
+  const [customTime, setCustomTime] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState("");
+
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      const q = query.trim().toLowerCase();
+      if (q.length < 2) {
+        setSearchResults([]);
+        setSearching(false);
+        return;
+      }
+      setSearching(true);
+      try {
+        const res = await fetch(`${WORKER_API_BASE}/admin/users/search?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        setSearchResults(data.results || []);
+      } catch {
+        setSearchResults([]);
+      }
+      setSearching(false);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const toggleTask = (t: (typeof defaultTasks)[number]) => {
+    setSelectedTasks((prev) => {
+      const exists = prev.find((p) => p.title === t.title && p.category === t.category);
+      if (exists) return prev.filter((p) => p !== exists);
+      return [...prev, { title: t.title, category: t.category, cadence: t.cadence, time: t.time }];
+    });
+  };
+
+  const addCustom = () => {
+    const title = customTitle.trim();
+    if (!title) return;
+    setSelectedTasks((prev) => {
+      if (prev.find((p) => p.title === title)) return prev;
+      return [...prev, { title, category: customCategory, cadence: customCadence, time: customTime || undefined }];
+    });
+    setCustomTitle("");
+    setCustomTime("");
+  };
+
+  const removeTask = (index: number) =>
+    setSelectedTasks((prev) => prev.filter((_, i) => i !== index));
+
+  const assign = async () => {
+    if (target === "user" && !userId.trim()) return;
+    if (selectedTasks.length === 0) return;
+    setBusy(true);
+    setResult("");
+    try {
+      const res = await fetch(`${WORKER_API_BASE}/admin/tasks`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          target: target === "all" ? "all" : "single",
+          userId: target === "user" ? userId.trim() : undefined,
+          taskDate: selectedDate,
+          tasks: selectedTasks.map((t) => ({
+            title: t.title,
+            category: t.category,
+            cadence: t.cadence,
+            time: t.time || null,
+            required: true,
+          })),
+        }),
+      });
+      const data = await res.json();
+      setResult(
+        res.ok
+          ? `✅ Asignadas ${data.inserted} tareas a ${target === "all" ? "todos los usuarios" : "1 usuario"}`
+          : `❌ Error: ${data.error || res.status}`
+      );
+      if (res.ok) setSelectedTasks([]);
+    } catch (e) {
+      setResult(`❌ ${e instanceof Error ? e.message : "Error"}`);
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div className="space-y-5">
+      <h2 className="text-lg font-semibold">Asignar tareas de vida</h2>
+      <p className="text-sm text-white/60">Crea reglas de vida para un usuario específico o para toda la comunidad.</p>
+
+      <div className="space-y-2">
+        <label className="text-xs font-medium uppercase tracking-wider text-white/50">Destinatario</label>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setTarget("user")}
+            className={`flex-1 rounded-xl border py-2.5 text-sm capitalize transition ${
+              target === "user" ? "border-[var(--gold)] bg-[var(--gold)]/10 text-[var(--gold)]" : "border-white/10 text-white/70"
+            }`}
+          >
+            Usuario específico
+          </button>
+          <button
+            onClick={() => setTarget("all")}
+            className={`flex-1 rounded-xl border py-2.5 text-sm capitalize transition ${
+              target === "all" ? "border-[var(--gold)] bg-[var(--gold)]/10 text-[var(--gold)]" : "border-white/10 text-white/70"
+            }`}
+          >
+            Todos los usuarios
+          </button>
+        </div>
+
+        {target === "user" && (
+          <div className="space-y-2">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Buscar por email o nombre…"
+              className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/30"
+            />
+            {searching && <p className="text-xs text-white/40">Buscando…</p>}
+            {!searching && searchResults.length > 0 && (
+              <div className="max-h-40 space-y-1 overflow-y-auto rounded-xl border border-white/10 bg-white/[0.04]">
+                {searchResults.map((u) => (
+                  <button
+                    key={u.id}
+                    onClick={() => {
+                      setUserId(u.id);
+                      setQuery("");
+                      setSearchResults([]);
+                    }}
+                    className={`flex w-full flex-col gap-0.5 rounded-lg px-3 py-2 text-left transition ${
+                      userId === u.id ? "bg-[var(--gold)]/20" : "hover:bg-white/10"
+                    }`}
+                  >
+                    <span className="text-sm font-medium text-white">{u.full_name || u.email}</span>
+                    <span className="text-[10px] text-white/50">{u.email}</span>
+                    <span className="text-[10px] text-white/30 font-mono">{u.id}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {userId && (
+              <div className="flex items-center gap-2 rounded-xl border border-[var(--gold)]/40 bg-[var(--gold)]/10 px-3 py-2">
+                <span className="text-xs text-[var(--gold)]">Seleccionado:</span>
+                <span className="flex-1 truncate text-sm text-white">{searchResults.find((u) => u.id === userId)?.full_name || searchResults.find((u) => u.id === userId)?.email || userId}</span>
+                <span className="max-w-[120px] truncate text-[10px] text-white/40 font-mono">{userId}</span>
+                <button onClick={() => setUserId("")} className="text-xs text-white/60 hover:text-white">Cambiar</button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-xs font-medium uppercase tracking-wider text-white/50">Fecha de tareas</label>
+        <input
+          type="date"
+          value={selectedDate}
+          onChange={(e) => setSelectedDate(e.target.value)}
+          className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white"
+        />
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-xs font-medium uppercase tracking-wider text-white/50">Tareas a asignar</label>
+        <p className="text-xs text-white/40">Selecciona las tareas base y agrega las personalizadas que necesites.</p>
+        <div className="grid grid-cols-2 gap-2">
+          {defaultTasks.map((t) => {
+            const active = selectedTasks.some((p) => p.title === t.title && p.category === t.category);
+            return (
+              <button
+                key={`${t.category}-${t.title}`}
+                onClick={() => toggleTask(t)}
+                className={`flex items-center justify-between rounded-xl border px-3 py-2.5 text-left transition ${
+                  active ? "border-[var(--gold)] bg-[var(--gold)]/15 text-white" : "border-white/10 bg-white/[0.04] text-white/70 hover:border-white/20"
+                }`}
+              >
+                <span className="flex items-center gap-2 text-sm">
+                  <span>{t.icon}</span>
+                  <span className="truncate">{t.title}</span>
+                </span>
+                <span className="text-[10px] text-white/40">{t.cadence === "daily" ? "diaria" : t.cadence === "weekly" ? "semanal" : "mensual"}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+        <p className="text-xs font-medium uppercase tracking-wider text-white/50">Agregar tarea personalizada</p>
+        <input
+          value={customTitle}
+          onChange={(e) => setCustomTitle(e.target.value)}
+          placeholder="Título de la tarea"
+          className="h-11 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white placeholder:text-white/30"
+        />
+        <div className="flex gap-2">
+          <select
+            value={customCategory}
+            onChange={(e) => setCustomCategory(e.target.value as TaskCategory)}
+            className="h-11 flex-1 rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+          >
+            <option value="custom">Personalizada</option>
+            <option value="ofrecimiento">Ofrecimiento</option>
+            <option value="laudes">Laudes</option>
+            <option value="angelus">Ángelus</option>
+            <option value="rosary">Rosario</option>
+            <option value="gospel">Evangelio</option>
+            <option value="psalm">Salmo</option>
+            <option value="silence">Silencio</option>
+            <option value="mass">Misa</option>
+            <option value="examen">Examen</option>
+            <option value="fasting">Ayuno</option>
+            <option value="confession">Confesión</option>
+            <option value="vespers">Vísperas</option>
+          </select>
+          <select
+            value={customCadence}
+            onChange={(e) => setCustomCadence(e.target.value as "daily" | "weekly" | "monthly")}
+            className="h-11 flex-1 rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+          >
+            <option value="daily">Diaria</option>
+            <option value="weekly">Semanal</option>
+            <option value="monthly">Mensual</option>
+          </select>
+          <input
+            value={customTime}
+            onChange={(e) => setCustomTime(e.target.value)}
+            placeholder="HH:MM (opcional)"
+            className="h-11 w-28 rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white placeholder:text-white/30"
+          />
+        </div>
+        <button
+          onClick={addCustom}
+          disabled={!customTitle.trim()}
+          className="h-10 w-full rounded-xl bg-white/10 text-sm font-medium text-white transition hover:bg-white/20 disabled:opacity-40"
+        >
+          Agregar a la lista
+        </button>
+      </div>
+
+      {selectedTasks.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-medium uppercase tracking-wider text-white/50">Lista seleccionada ({selectedTasks.length})</p>
+          <div className="space-y-1">
+            {selectedTasks.map((t, i) => (
+              <div key={`${t.category}-${t.title}-${i}`} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2">
+                <div className="flex flex-col">
+                  <span className="text-sm text-white">{t.title}</span>
+                  <span className="text-[10px] text-white/40">{t.category} · {t.cadence} {t.time ? `· ${t.time}` : ""}</span>
+                </div>
+                <button onClick={() => removeTask(i)} className="text-xs text-white/50 hover:text-white">✕</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <button
+        onClick={assign}
+        disabled={busy || selectedTasks.length === 0 || (target === "user" && !userId)}
+        className="h-12 w-full rounded-2xl bg-[var(--gold)] font-medium text-black disabled:opacity-50"
+      >
+        {busy ? "Asignando…" : "Asignar tareas"}
+      </button>
+      <p className="text-xs text-white/40">Si es diaria, se crea para la fecha indicada. El usuario verá las tareas en su Regla de Vida.</p>
       {result && <p className="text-sm">{result}</p>}
     </div>
   );

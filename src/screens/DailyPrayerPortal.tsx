@@ -178,31 +178,22 @@ function AngelusView({
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const verses = angelus?.verses ?? [];
 
-  const DEFAULT_AUDIO_URL = "https://soundcloud.com/opusdei/angelus-con-el-papa-francisco";
-  const resolvedAudioUrl = audioUrl ?? DEFAULT_AUDIO_URL;
-  const resolvedAudioLabel = audioLabel ?? "Ángelus · Papa Francisco";
-
-  const isSoundCloud = useMemo(() => /soundcloud\.com/.test(resolvedAudioUrl), [resolvedAudioUrl]);
-
-  // asigna fracciones si el prompt no las trajo
-  const withAt = useMemo(
-    () =>
-      verses.map((v, i) => ({
-        ...v,
-        at: typeof v.at === "number" ? v.at : verses.length ? i / verses.length : 0,
-      })),
-    [verses],
-  );
+  const verses = useMemo(() => {
+    const base = angelus?.verses ?? angelusLyrics;
+    return base.map((v, i) => ({
+      text: v.leader ?? v.text,
+      at: typeof v.at === "number" ? v.at : typeof (v as any).start === "number" ? (v as any).start : base.length ? i / base.length : 0,
+    }));
+  }, [angelus]);
 
   const activeLine = useMemo(() => {
     if (!duration) return 0;
     const p = currentTime / duration;
     let idx = 0;
-    for (let i = 0; i < withAt.length; i++) if (withAt[i].at <= p + 0.001) idx = i;
+    for (let i = 0; i < verses.length; i++) if (verses[i].at <= p + 0.001) idx = i;
     return idx;
-  }, [currentTime, duration, withAt]);
+  }, [currentTime, duration, verses]);
 
   useEffect(() => {
     setVerseIndex(activeLine);
@@ -235,95 +226,79 @@ function AngelusView({
         await el.play();
         setPlaying(true);
       } catch {
-        // autoplay blocked — user interaction required
+        // autoplay bloqueado por el navegador
       }
+    }
+  };
+
+  const seek = (t: number) => {
+    const el = audioRef.current;
+    if (el && duration > 0) {
+      el.currentTime = Math.max(0, Math.min(t, duration));
+      setCurrentTime(el.currentTime);
     }
   };
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
-  if (isSoundCloud) {
-    return (
-      <SoundCloudAngelus
-        angelus={angelus}
-        audioUrl={resolvedAudioUrl}
-        audioLabel={resolvedAudioLabel}
-        verses={withAt}
-        verseIndex={verseIndex}
-        setVerseIndex={setVerseIndex}
-        isImmersive={isImmersive}
-      />
-    );
-  }
-
   return (
     <div className="flex min-h-full flex-col">
-      <div className="mb-6 flex items-center gap-3 rounded-2xl bg-white/10 p-3">
-        <button onClick={toggle} className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white text-[#1c1c1e]" aria-label={playing ? "Pausar" : "Reproducir"}>
+      <audio ref={audioRef} src={audioUrl} preload="metadata" className="hidden" />
+
+      <div className="mb-6 flex items-center gap-3">
+        <button
+          onClick={toggle}
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#1c1c1e] text-white transition active:scale-95"
+          aria-label={playing ? "Pausar" : "Reproducir"}
+        >
           {playing ? (
-            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z" /></svg>
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z" /></svg>
           ) : (
-            <svg viewBox="0 0 24 24" className="ml-0.5 h-5 w-5" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+            <svg viewBox="0 0 24 24" className="ml-0.5 h-4 w-4" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
           )}
         </button>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium text-white">{resolvedAudioLabel}</div>
-          <div className="text-[11px] text-white/55">Audio sincronizado con el texto</div>
+          <div className="truncate text-[13px] font-medium text-[#1c1c1e]">{audioLabel ?? "Ángelus · Papa Francisco"}</div>
+          <div className="text-[11px] text-[#9a9a9f]">Audio sincronizado</div>
         </div>
-        <audio ref={audioRef} src={resolvedAudioUrl} preload="metadata" />
+        <div className="text-right text-[11px] tabular-nums text-[#9a9a9f]">
+          {Math.floor(currentTime / 60)}:{String(Math.floor(currentTime % 60)).padStart(2, "0")}
+        </div>
       </div>
 
-      <div className="relative z-10 mx-5 h-1 shrink-0 overflow-hidden rounded-full bg-white/15">
-        <motion.div className="h-full rounded-full bg-white/90" animate={{ width: `${progress}%` }} transition={{ type: "spring", stiffness: 90, damping: 22 }} />
+      <div className="relative mb-8 h-1 w-full cursor-pointer overflow-hidden rounded-full bg-[#e5e5e5]">
+        <div className="h-full rounded-full bg-[#d4af6a] transition-all duration-300" style={{ width: `${progress}%` }} />
+        <input
+          type="range"
+          min={0}
+          max={duration || 0}
+          step={0.1}
+          value={currentTime}
+          onChange={(e) => seek(Number(e.target.value))}
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+        />
       </div>
 
-      <div className="no-scrollbar relative z-10 mt-6 flex-1 overflow-y-auto px-1 py-2">
+      <div className="no-scrollbar flex-1 overflow-y-auto px-1 py-2">
         <div className="mx-auto max-w-2xl space-y-5">
-          {withAt.map((v, i) => {
+          {verses.map((line, i) => {
             const isActive = i === activeLine;
             const isPast = i < activeLine;
             return (
-              <motion.button
+              <button
                 key={i}
                 type="button"
                 onClick={() => {
-                  const t = v.at;
-                  const el = audioRef.current;
-                  if (el && duration) el.currentTime = t * duration;
+                  const t = line.at * duration;
+                  if (t > 0) seek(t);
                 }}
-                animate={{
-                  opacity: isActive ? 1 : isPast ? 0.45 : 0.25,
-                  scale: isActive ? 1.02 : 1,
-                }}
-                transition={{ duration: 0.5, ease: "easeInOut" }}
-                className={`w-full text-left font-serif-holy text-center text-[22px] leading-[1.6] transition-colors focus:outline-none ${
-                  isActive ? "text-white" : "text-white/70"
-                }`}
+                className="w-full text-left font-serif-holy text-center text-[22px] leading-[1.6] transition-all duration-500 focus:outline-none"
+                style={{ opacity: isActive ? 1 : isPast ? 0.45 : 0.25 }}
               >
-                {v.leader}
-              </motion.button>
+                {line.text}
+              </button>
             );
           })}
-        </div>
-      </div>
-
-      <div className="relative z-10 shrink-0 border-t border-[#e6e3db] bg-white/60 px-6 pb-10 pt-6 backdrop-blur-sm">
-        <div className="mx-auto max-w-xs">
-          <motion.button
-            whileTap={{ scale: 0.95 }}
-            onClick={toggle}
-            className="flex h-20 w-20 mx-auto items-center justify-center rounded-full bg-[#d4af6a] shadow-[0_10px_30px_rgba(212,175,106,0.4)] transition active:scale-[0.97]"
-            aria-label={playing ? "Pausar" : "Reproducir"}
-          >
-            {playing ? (
-              <svg viewBox="0 0 24 24" className="h-8 w-8 text-white" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z" /></svg>
-            ) : (
-              <svg viewBox="0 0 24 24" className="ml-1 h-8 w-8 text-white" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-            )}
-          </motion.button>
-          <p className="mt-4 text-center text-xs text-[#9a9a9f]">
-            {Math.floor(currentTime / 60)}:{String(Math.floor(currentTime % 60)).padStart(2, "0")} / {Math.floor(duration / 60)}:{String(Math.floor(duration % 60)).padStart(2, "0")}
-          </p>
         </div>
       </div>
     </div>
@@ -372,7 +347,7 @@ function EmptyHour({ label }: { label: string }) {
   );
 }
 
-/* --------------------------- SoundCloud Ángelus --------------------------- */
+/* --------------------------- Letras Ángelus --------------------------- */
 
 const angelusLyrics = [
   { start: 0, end: 2.81, text: "El ángel del Señor anunció a María." },
@@ -392,253 +367,6 @@ const angelusLyrics = [
   { start: 78.08, end: 82.40, text: "por su pasión y su cruz condúcenos a la gloria de la resurrección." },
   { start: 82.40, end: 84.55, text: "Por Cristo, Nuestro Señor. Amén." },
 ];
-
-const SC_ANGELUS_URL = "https://soundcloud.com/opusdei/angelus-con-el-papa-francisco";
-
-function SoundCloudAngelus({
-  angelus,
-  audioUrl,
-  audioLabel,
-  verses,
-  verseIndex,
-  setVerseIndex,
-  isImmersive,
-}: {
-  angelus?: AngelusLiturgy;
-  audioUrl: string;
-  audioLabel?: string;
-  verses: { at?: number; leader?: string; response?: string }[];
-  verseIndex: number;
-  setVerseIndex: (n: number) => void;
-  isImmersive?: boolean;
-}) {
-  const widgetRef = useRef<HTMLIFrameElement>(null);
-  const widgetInstanceRef = useRef<any>(null);
-  const [ready, setReady] = useState(false);
-  const [playing, setPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-
-  const activeLine = useMemo(() => {
-    const t = currentTime;
-    let idx = 0;
-    for (let i = 0; i < angelusLyrics.length; i++) {
-      if (t >= angelusLyrics[i].start) idx = i;
-    }
-    return idx;
-  }, [currentTime]);
-
-  useEffect(() => {
-    setVerseIndex(activeLine);
-  }, [activeLine, setVerseIndex]);
-
-  useEffect(() => {
-    const scriptId = "sc-widget-api";
-    if (document.getElementById(scriptId)) {
-      window.addEventListener("load", initWidget, { once: true });
-      return;
-    }
-    const script = document.createElement("script");
-    script.id = scriptId;
-    script.src = "https://w.soundcloud.com/player/api.js";
-    script.async = true;
-    document.body.appendChild(script);
-    window.addEventListener("load", initWidget, { once: true });
-    return () => {
-      window.removeEventListener("load", initWidget);
-    };
-  }, []);
-
-  const initWidget = () => {
-    const el = widgetRef.current;
-    if (!el) return;
-    // @ts-ignore
-    const SC = window.SC;
-    if (!SC || !SC.Widget) return;
-    const widget = SC.Widget(el);
-    widgetInstanceRef.current = widget;
-
-    widget.bind(SC.Widget.Events.READY, () => {
-      setReady(true);
-      widget.getDuration((d: any) => setDuration(d));
-    });
-
-    widget.bind(SC.Widget.Events.PLAY_PROGRESS, (e: any) => {
-      setCurrentTime(e.currentPosition / 1000);
-    });
-
-    widget.bind(SC.Widget.Events.PLAY, () => setPlaying(true));
-    widget.bind(SC.Widget.Events.PAUSE, () => setPlaying(false));
-    widget.bind(SC.Widget.Events.FINISH, () => setPlaying(false));
-  };
-
-  const toggle = async () => {
-    const widget = widgetInstanceRef.current;
-    if (!widget) return;
-    if (playing) {
-      widget.pause();
-    } else {
-      widget.play();
-    }
-  };
-
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
-
-  if (!isImmersive) {
-    return (
-      <div className="flex min-h-full flex-col">
-        <div className="mb-6 flex items-center gap-3 rounded-2xl bg-white/10 p-3">
-          <button onClick={toggle} className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white text-[#1c1c1e]" aria-label={playing ? "Pausar" : "Reproducir"}>
-            {playing ? (
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z" /></svg>
-            ) : (
-              <svg viewBox="0 0 24 24" className="ml-0.5 h-5 w-5" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-            )}
-          </button>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-medium text-white">{audioLabel ?? "Ángelus · Papa Francisco"}</div>
-            <div className="text-[11px] text-white/55">Audio sincronizado con el texto</div>
-          </div>
-          <div className="text-right text-xs tabular-nums text-white/60">
-            {Math.floor(currentTime / 60)}:{String(Math.floor(currentTime % 60)).padStart(2, "0")}
-          </div>
-        </div>
-
-        <div className="relative z-10 mx-5 h-1 shrink-0 overflow-hidden rounded-full bg-white/15">
-          <motion.div className="h-full rounded-full bg-white/90" animate={{ width: `${progress}%` }} transition={{ type: "spring", stiffness: 90, damping: 22 }} />
-        </div>
-
-        <div className="no-scrollbar relative z-10 mt-6 flex-1 overflow-y-auto px-1 py-2">
-          <div className="mx-auto max-w-2xl space-y-5">
-            {angelusLyrics.map((line, i) => {
-              const isActive = i === activeLine;
-              const isPast = i < activeLine;
-              return (
-                <motion.p
-                  key={i}
-                  animate={{ opacity: isActive ? 1 : isPast ? 0.5 : 0.35, scale: isActive ? 1.02 : 1 }}
-                  transition={{ duration: 0.35 }}
-                  className={`font-serif-holy text-center text-[22px] leading-relaxed transition-colors ${
-                    isActive ? "text-white" : "text-white/70"
-                  }`}
-                >
-                  {line.text}
-                </motion.p>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="mt-6 flex justify-center">
-          <div className="flex items-center gap-2 rounded-full bg-white/10 px-4 py-2">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/70">Progreso</span>
-            <span className="text-xs tabular-nums text-white/90">{Math.floor(currentTime / 60)}:{String(Math.floor(currentTime % 60)).padStart(2, "0")} / {Math.floor(duration / 60)}:{String(Math.floor(duration % 60)).padStart(2, "0")}</span>
-          </div>
-        </div>
-
-        <iframe
-          ref={widgetRef}
-          id="sc-angelus-widget"
-          width="100%"
-          height="166"
-          scrolling="no"
-          frameborder="no"
-          allow="autoplay"
-          style={{ position: "absolute", width: "1px", height: "1px", opacity: 0, pointerEvents: "none" }}
-          src="https://w.soundcloud.com/player/?url=https%3A//soundcloud.com/opusdei/angelus-con-el-papa-francisco&color=%23d4af6a&auto_play=false&hide_related=true&show_comments=false&show_user=false&show_reposts=false&show_teaser=false"
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex min-h-full flex-col">
-      <div className="mb-8 flex items-center gap-4">
-        <button
-          onClick={toggle}
-          className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-white shadow-[0_0_0_2px_rgba(212,175,106,0.35)] transition hover:shadow-[0_0_0_4px_rgba(212,175,106,0.55)]"
-          aria-label={playing ? "Pausar" : "Reproducir"}
-        >
-          {playing ? (
-            <svg viewBox="0 0 24 24" className="h-6 w-6 text-[#1c1c1e]" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z" /></svg>
-          ) : (
-            <svg viewBox="0 0 24 24" className="ml-1 h-6 w-6 text-[#1c1c1e]" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-          )}
-        </button>
-        <div>
-          <div className="font-serif-holy text-lg text-[#1c1c1e]">{audioLabel ?? "Ángelus · Papa Francisco"}</div>
-          <div className="text-xs text-[#8a8a90]">Audio sincronizado con el texto</div>
-        </div>
-      </div>
-
-      <div className="relative z-10 mx-5 h-1.5 shrink-0 overflow-hidden rounded-full bg-[#e5e5e5]">
-        <motion.div className="h-full rounded-full bg-[#d4af6a]" animate={{ width: `${progress}%` }} transition={{ type: "spring", stiffness: 90, damping: 22 }} />
-      </div>
-
-      <div className="no-scrollbar relative z-10 mt-8 flex-1 overflow-y-auto px-2 py-4">
-        <div className="mx-auto max-w-2xl space-y-6">
-          {angelusLyrics.map((line, i) => {
-            const isActive = i === activeLine;
-            const isPast = i < activeLine;
-            return (
-              <motion.button
-                key={i}
-                type="button"
-                onClick={() => {
-                  const t = line.start;
-                  const widget = widgetInstanceRef.current;
-                  if (widget && ready) widget.seekTo(t * 1000);
-                }}
-                animate={{
-                  opacity: isActive ? 1 : isPast ? 0.45 : 0.25,
-                  scale: isActive ? 1.02 : 1,
-                }}
-                transition={{ duration: 0.5, ease: "easeInOut" }}
-                className={`w-full text-left font-serif-holy text-center text-[28px] leading-[1.6] transition-colors focus:outline-none ${
-                  isActive ? "text-[#1c1c1e]" : "text-[#8a8a90]"
-                }`}
-              >
-                {line.text}
-              </motion.button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="relative z-10 shrink-0 border-t border-[#e6e3db] bg-white/60 px-6 pb-10 pt-6 backdrop-blur-sm">
-        <div className="mx-auto max-w-xs">
-          <motion.button
-            whileTap={{ scale: 0.95 }}
-            onClick={toggle}
-            className="flex h-20 w-20 mx-auto items-center justify-center rounded-full bg-[#d4af6a] shadow-[0_10px_30px_rgba(212,175,106,0.4)] transition active:scale-[0.97]"
-            aria-label={playing ? "Pausar" : "Reproducir"}
-          >
-            {playing ? (
-              <svg viewBox="0 0 24 24" className="h-8 w-8 text-white" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z" /></svg>
-            ) : (
-              <svg viewBox="0 0 24 24" className="ml-1 h-8 w-8 text-white" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-            )}
-          </motion.button>
-          <p className="mt-4 text-center text-xs text-[#9a9a9f]">
-            {Math.floor(currentTime / 60)}:{String(Math.floor(currentTime % 60)).padStart(2, "0")} / {Math.floor(duration / 60)}:{String(Math.floor(duration % 60)).padStart(2, "0")}
-          </p>
-        </div>
-      </div>
-
-      <iframe
-        ref={widgetRef}
-        id="sc-angelus-widget"
-        width="100%"
-        height="166"
-        scrolling="no"
-        frameborder="no"
-        allow="autoplay"
-        style={{ position: "absolute", width: "1px", height: "1px", opacity: 0, pointerEvents: "none" }}
-        src="https://w.soundcloud.com/player/?url=https%3A//soundcloud.com/opusdei/angelus-con-el-papa-francisco&color=%23d4af6a&auto_play=false&hide_related=true&show_comments=false&show_user=false&show_reposts=false&show_teaser=false"
-      />
-    </div>
-  );
-}
 
 /* --------------------------- Cielo ambientado --------------------------- */
 
@@ -689,31 +417,8 @@ function AmbientSky({ mood }: { mood: "dawn" | "noon" | "dusk" | "night" }) {
 
 function AngelusAtmosphere() {
   return (
-    <div className="absolute inset-0 overflow-hidden">
-      <motion.div
-        className="absolute inset-0"
-        style={{
-          background: "linear-gradient(180deg, #e8f0f8 0%, #f5f7fa 30%, #ffffff 100%)",
-        }}
-        animate={{ opacity: [0.9, 1, 0.9] }}
-        transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-      />
-      <motion.div
-        className="absolute left-1/2 top-1/4 h-[500px] w-[500px] -translate-x-1/2 rounded-full"
-        style={{
-          background: "radial-gradient(circle, rgba(212,175,106,0.18) 0%, transparent 70%)",
-        }}
-        animate={{ scale: [1, 1.15, 1], opacity: [0.3, 0.6, 0.3] }}
-        transition={{ duration: 7, repeat: Infinity, ease: "easeInOut" }}
-      />
-      <motion.div
-        className="absolute bottom-0 left-0 right-0 h-1/3"
-        style={{
-          background: "linear-gradient(to top, rgba(232,240,248,0.9), transparent)",
-        }}
-        animate={{ opacity: [0.5, 0.8, 0.5] }}
-        transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-      />
+    <div className="absolute inset-0 bg-[#fafaf9]">
+      <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-[#f5f0e6]/80 to-transparent" />
     </div>
   );
 }

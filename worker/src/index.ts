@@ -490,6 +490,112 @@ async function generateImage(env: any, prompt: string): Promise<string> {
   return `${baseUrl}/${key}`;
 }
 
+async function handleAdminUsersSearch(request: Request, env: any): Promise<Response> {
+  try {
+    const q = new URL(request.url).searchParams.get("q")?.trim().toLowerCase();
+    if (!q || q.length < 2) {
+      return jsonResponse({ results: [] });
+    }
+
+    const url = `${env.SUPABASE_URL}/rest/v1/profiles?select=id,email,full_name&or=ilike.email.*${encodeURIComponent(q)}*,ilike.full_name.*${encodeURIComponent(q)}*&limit=20`;
+    const res = await fetch(url, {
+      headers: {
+        apikey: env.SUPABASE_SERVICE_ROLE,
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE}`,
+      },
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      return jsonResponse({ error: `Supabase search failed: ${res.status} ${text}` }, 500);
+    }
+    const data = await res.json();
+    return jsonResponse({ results: data });
+  } catch (e: any) {
+    return jsonResponse({ error: e.message }, 500);
+  }
+}
+
+async function handleAdminAssignTasks(request: Request, env: any): Promise<Response> {
+  try {
+    const body = await request.json();
+    const target = body?.target;
+    const userIds: string[] = [];
+
+    if (target === "all") {
+      const users = await supabaseSelect(env, "profiles", { select: "id" });
+      userIds.push(...users.map((u: any) => u.id));
+    } else if (target === "single" && typeof body?.userId === "string" && body.userId.trim()) {
+      userIds.push(body.userId.trim());
+    } else {
+      return jsonResponse({ error: "Invalid target" }, 400);
+    }
+
+    if (userIds.length === 0) {
+      return jsonResponse({ error: "No users found" }, 400);
+    }
+
+    const taskDate = typeof body?.taskDate === "string" ? body.taskDate : getTodayKey();
+    const tasks = Array.isArray(body?.tasks) ? body.tasks : [];
+    if (tasks.length === 0) {
+      return jsonResponse({ error: "No tasks provided" }, 400);
+    }
+
+    const rows: any[] = [];
+    for (const userId of userIds) {
+      for (const t of tasks) {
+        const title = typeof t.title === "string" ? t.title.trim() : "";
+        const category = typeof t.category === "string" ? t.category : "custom";
+        const cadence = typeof t.cadence === "string" ? t.cadence : "daily";
+        if (!title) continue;
+        rows.push({
+          profile_id: userId,
+          title,
+          category,
+          cadence,
+          time: typeof t.time === "string" ? t.time : null,
+          required: Boolean(t.required),
+          done: false,
+          task_date: taskDate,
+        });
+      }
+    }
+
+    if (rows.length === 0) {
+      return jsonResponse({ error: "No valid tasks" }, 400);
+    }
+
+    const url = `${env.SUPABASE_URL}/rest/v1/spiritual_tasks`;
+    const chunks: any[] = [];
+    const chunkSize = 50;
+    for (let i = 0; i < rows.length; i += chunkSize) {
+      chunks.push(rows.slice(i, i + chunkSize));
+    }
+
+    let inserted = 0;
+    for (const chunk of chunks) {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: env.SUPABASE_SERVICE_ROLE,
+          Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE}`,
+          Prefer: "resolution=merge-duplicates,return=minimal",
+        },
+        body: JSON.stringify(chunk),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        return jsonResponse({ error: `Supabase insert failed: ${res.status} ${text}`, inserted }, 500);
+      }
+      inserted += chunk.length;
+    }
+
+    return jsonResponse({ ok: true, inserted, users: userIds.length });
+  } catch (e: any) {
+    return jsonResponse({ error: e.message }, 500);
+  }
+}
+
 function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
@@ -583,6 +689,14 @@ export default {
 
     if (url.pathname === "/notifications/email/reminders" && request.method === "POST") {
       return handleEmailReminders(request, env);
+    }
+
+    if (url.pathname === "/admin/users/search" && request.method === "GET") {
+      return handleAdminUsersSearch(request, env);
+    }
+
+    if (url.pathname === "/admin/tasks" && request.method === "POST") {
+      return handleAdminAssignTasks(request, env);
     }
 
     return new Response("Not Found", { status: 404, headers: corsHeaders() });

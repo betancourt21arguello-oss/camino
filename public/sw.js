@@ -1,3 +1,19 @@
+self.addEventListener("fetch", (event) => {
+  if (event.request.url.includes("magiclink") || event.request.url.includes("access_token") || event.request.url.includes("refresh_token")) {
+    event.respondWith(
+      fetch(event.request).then((response) => {
+        if (response.redirected) {
+          const redirectUrl = new URL(response.url);
+          if (redirectUrl.origin === self.location.origin) {
+            return Response.redirect(redirectUrl.href);
+          }
+        }
+        return response;
+      }).catch(() => event.request)
+    );
+  }
+});
+
 self.addEventListener("push", (event) => {
   let data = {};
   try {
