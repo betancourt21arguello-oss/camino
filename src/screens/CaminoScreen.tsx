@@ -33,6 +33,7 @@ type Props = {
   monthEvents: LiturgicalEvent[];
   pastProgress: Record<number, { rosaries: number; done: boolean }>;
   loadingDaily?: boolean;
+  generatingDaily?: boolean;
   onGenerateDaily: () => void;
 };
 
