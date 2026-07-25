@@ -97,6 +97,7 @@ export const defaultTasks: SpiritualTask[] = [
     category: "second_reading",
     cadence: "daily",
     time: "08:30",
+    required: true,
     done: false,
     icon: "📜",
   },

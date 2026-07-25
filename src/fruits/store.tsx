@@ -165,14 +165,18 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
       });
       if (supabase && user) {
         void supabase
-          .rpc("record_spiritual_event", {
+          .rpc("emit_spiritual_event", {
             p_event_type: gardenEventType(e.type),
             p_value: 1,
-            p_meta: e.meta ?? {},
+            p_intention: e.meta?.intention ?? null,
+            p_vela: fruits.vela ?? 0,
+            p_semilla: fruits.semilla ?? 0,
+            p_agua: fruits.agua ?? 0,
+            p_note: note,
           })
           .then(
             () => {},
-            (error) => console.error("Failed to record spiritual event:", error),
+            (error) => console.error("Failed to emit spiritual event:", error),
           );
       }
     },
@@ -181,7 +185,6 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
 
   const lightCandle = useCallback(
     (intention: string): Candle | null => {
-      // Encender una vela consume 1 del saldo de velas.
       let allowed = false;
       setBalance((b: FruitBalance) => {
         if (b.vela <= 0) return b;
@@ -190,13 +193,14 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
       });
       if (!allowed) return null;
 
+      const at = now();
       const c: Candle = {
-        id: `mine-${now()}`,
+        id: `mine-${at}`,
         intention: intention.trim() || "Intención personal",
         ownerName: "Tú",
         ownerHue: 45,
-        litAt: now(),
-        expiresAt: now() + DAY_MS,
+        litAt: at,
+        expiresAt: at + DAY_MS,
         prayedBy: [],
         mine: true,
       };
@@ -207,24 +211,10 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
       ]);
       if (supabase && user) {
         void supabase
-          .from("candles")
-          .insert({ owner_id: user.id, intention: c.intention, expires_at: new Date(c.expiresAt).toISOString() })
+          .rpc("commit_candle", { p_intention: c.intention })
           .then(
             () => {},
             (error) => console.error("Failed to light candle:", error),
-          );
-        void supabase
-          .from("garden_events")
-          .insert({
-            user_id: user.id,
-            event_type: "CANDLE_LIT",
-            value: 1,
-            intention: c.intention,
-            created_at: new Date().toISOString(),
-          })
-          .then(
-            () => {},
-            (error) => console.error("Failed to record candle lit event:", error),
           );
       }
       return c;
@@ -234,7 +224,6 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
 
   const prayForCandle = useCallback(
     (id: string) => {
-      // Regalar una vela requiere tener al menos 1 en inventario
       let allowed = false;
       setBalance((b) => {
         if (b.vela <= 0) return b;
@@ -249,17 +238,11 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
       emit({ type: "pray-for-other" });
       if (supabase && user) {
         void supabase
-          .from("intentions")
-          .insert({ candle_id: id, pray_for_id: user.id })
+          .rpc("commit_gift_candle", { p_candle_id: id, p_amount: 1 })
           .then(
             () => {},
             (error) => console.error("Failed to pray for candle:", error),
           );
-        // Opcional RPC para transferir vela al dueño: gift_candle(p_candle_id, p_amount)
-        (supabase.rpc("gift_candle", { p_candle_id: id, p_amount: 1 }) as any)?.then?.(
-          () => {},
-          (error) => console.error("Failed to gift candle:", error),
-        );
       }
     },
     [emit, user],

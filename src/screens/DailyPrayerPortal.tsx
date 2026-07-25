@@ -42,9 +42,20 @@ export function DailyPrayerPortal({ kind, liturgy, assets, onClose, onComplete }
     return R2_ANGELUS_AUDIO_URL;
   }, [angelus, assets]);
 
+  const laudesAudio = useMemo(() => {
+    if (kind !== "laudes") return undefined;
+    const a = assetsByTag("laudes", assets)[0];
+    if (a?.audioUrl && a.audioUrl.trim().length > 0) {
+      return a.audioUrl;
+    }
+    return undefined;
+  }, [kind, assets]);
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+  const [laudesPlaying, setLaudesPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const laudesAudioRef = useRef<HTMLAudioElement>(null);
 
   const [partIndex, setPartIndex] = useState(0);
   const [verseIndex, setVerseIndex] = useState(0);
@@ -54,6 +65,7 @@ export function DailyPrayerPortal({ kind, liturgy, assets, onClose, onComplete }
   const total = isAngelus ? Math.max(verses.length, 1) : Math.max(parts.length, 1);
   const current = isAngelus ? verseIndex : partIndex;
   const isLast = current >= total - 1;
+  const showSteps = !isAngelus && total > 1;
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -79,6 +91,19 @@ export function DailyPrayerPortal({ kind, liturgy, assets, onClose, onComplete }
       audio.removeEventListener("play", onPlay);
       audio.removeEventListener("pause", onPause);
       audio.removeEventListener("ended", onEnded);
+    };
+  }, []);
+
+  useEffect(() => {
+    const audio = laudesAudioRef.current;
+    if (!audio || kind !== "laudes") return;
+    const onPlay = () => setLaudesPlaying(true);
+    const onPause = () => setLaudesPlaying(false);
+    audio.addEventListener("play", onPlay);
+    audio.addEventListener("pause", onPause);
+    return () => {
+      audio.removeEventListener("play", onPlay);
+      audio.removeEventListener("pause", onPause);
     };
   }, []);
 
@@ -112,6 +137,13 @@ export function DailyPrayerPortal({ kind, liturgy, assets, onClose, onComplete }
     else audio.pause();
   };
 
+  const toggleLaudesPlay = () => {
+    const audio = laudesAudioRef.current;
+    if (!audio) return;
+    if (audio.paused) audio.play();
+    else audio.pause();
+  };
+
   const seekTo = (seconds: number) => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -137,12 +169,35 @@ export function DailyPrayerPortal({ kind, liturgy, assets, onClose, onComplete }
             <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
           </svg>
         </button>
-        <div className="flex items-center gap-2">
-          <span className="text-lg">{meta.icon}</span>
-          <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a07a3c]">{meta.label}</span>
+        <div className="flex flex-col items-center gap-1">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">{meta.icon}</span>
+            <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a07a3c]">{meta.label}</span>
+          </div>
+          {!isAngelus && hour?.hour && (
+            <span className="text-[10px] tabular-nums text-[#a07a3c]/70">{hour.hour}</span>
+          )}
         </div>
         <div className={`min-w-[44px] text-right text-xs tabular-nums ${textMuted}`}>{current + 1}/{total}</div>
       </header>
+
+      {showSteps && (
+        <div className="relative z-10 flex shrink-0 justify-center gap-1.5 px-6 pb-2">
+          {parts.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setPartIndex(i)}
+              className={`h-2 rounded-full transition-all ${
+                i === partIndex
+                  ? "w-6 bg-[#d4af6a] shadow-sm"
+                  : i < partIndex
+                    ? "w-2 bg-[#a07a3c]/40"
+                    : "w-2 bg-black/10"
+              }`}
+            />
+          ))}
+        </div>
+      )}
 
       <div className="relative z-10 mx-5 h-1 shrink-0 overflow-hidden rounded-full bg-black/10">
         <motion.div
@@ -167,7 +222,28 @@ export function DailyPrayerPortal({ kind, liturgy, assets, onClose, onComplete }
             audioRef={audioRef}
           />
         ) : (
-          <HourMinimal hour={hour} partIndex={partIndex} label={meta.label} />
+          <>
+            {laudesAudio && kind === "laudes" && (
+              <div className="mb-6 flex justify-center">
+                <motion.button
+                  whileTap={{ scale: 0.93 }}
+                  onClick={toggleLaudesPlay}
+                  className="flex h-14 w-14 items-center justify-center rounded-full bg-[#d4af6a] text-white shadow-xl"
+                >
+                  {laudesPlaying ? (
+                    <svg viewBox="0 0 24 24" className="h-6 w-6" fill="currentColor">
+                      <path d="M7 5h4v14H7zM13 5h4v14h-4z" />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 24 24" className="ml-1 h-6 w-6" fill="currentColor">
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                  )}
+                </motion.button>
+              </div>
+            )}
+            <HourMinimal hour={hour} partIndex={partIndex} label={meta.label} />
+          </>
         )}
       </div>
 
@@ -194,6 +270,9 @@ export function DailyPrayerPortal({ kind, liturgy, assets, onClose, onComplete }
       </div>
 
       {isAngelus && <audio ref={audioRef} src={angelusAudio} preload="auto" playsInline className="absolute opacity-0 w-0 h-0 overflow-hidden pointer-events-none" />}
+      {kind === "laudes" && laudesAudio && (
+        <audio ref={laudesAudioRef} src={laudesAudio} preload="auto" playsInline className="absolute opacity-0 w-0 h-0 overflow-hidden pointer-events-none" />
+      )}
     </div>
   );
 }
@@ -286,7 +365,7 @@ function AngelusMinimal({
         >
           {isPlaying ? (
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
-              <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+              <path d="M7 5h4v14H7zM13 5h4v14h-4z" />
             </svg>
           ) : (
             <svg viewBox="0 0 24 24" className="ml-0.5 h-5 w-5" fill="currentColor">
@@ -354,18 +433,31 @@ function HourMinimal({ hour, partIndex, label }: { hour?: HourLiturgy; partIndex
 
   return (
     <div className="flex min-h-full flex-col justify-center">
-      <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a07a3c]">{part.label || RUBRIC[part.kind]}</p>
-      {part.rubric && <p className="mb-4 text-[13px] italic text-[#7a7a7e]">{part.rubric}</p>}
-      <p className="whitespace-pre-line font-serif-holy text-[22px] leading-[1.6] text-[#1c1c1e]">{part.text}</p>
+      <div className="flex flex-col gap-1">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a07a3c]">
+          {part.label || RUBRIC[part.kind]}
+        </p>
+        {part.rubric && (
+          <p className="font-serif-holy text-[15px] italic leading-relaxed text-[#7a7a7e]">
+            {part.rubric}
+          </p>
+        )}
+      </div>
+      <p className="mt-5 whitespace-pre-line font-serif-holy text-[24px] leading-[1.65] text-[#1c1c1e]">
+        {part.text}
+      </p>
       {part.response && (
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.25 }}
-          className="mt-6 border-l-2 border-[#d4af6a] pl-4 font-serif-holy text-[19px] italic text-[#5a4a2a]"
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3, duration: 0.4 }}
+          className="mt-8 rounded-2xl border border-[#d4af6a]/40 bg-[#fdfaf3] p-5"
         >
-          R. {part.response}
-        </motion.p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#a07a3c]">Respuesta</p>
+          <p className="mt-2 font-serif-holy text-[20px] italic leading-relaxed text-[#5a4a2a]">
+            R. {part.response}
+          </p>
+        </motion.div>
       )}
     </div>
   );
