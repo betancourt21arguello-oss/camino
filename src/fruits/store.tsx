@@ -213,6 +213,19 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
             () => {},
             (error) => console.error("Failed to light candle:", error),
           );
+        void supabase
+          .from("garden_events")
+          .insert({
+            user_id: user.id,
+            event_type: "CANDLE_LIT",
+            value: 1,
+            intention: c.intention,
+            created_at: new Date().toISOString(),
+          })
+          .then(
+            () => {},
+            (error) => console.error("Failed to record candle lit event:", error),
+          );
       }
       return c;
     },
