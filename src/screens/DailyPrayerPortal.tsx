@@ -35,6 +35,29 @@ export function DailyPrayerPortal({ kind, liturgy, assets, onClose, onComplete }
     return a?.audioUrl;
   }, [angelus, assets]);
 
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const audioRef = useRef<HTMLAudioElement>(null);
+
+  const handlePlayPause = () => {
+    if (audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.pause();
+      } else {
+        audioRef.current.play();
+      }
+      setIsPlaying(!isPlaying);
+    }
+  };
+
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.addEventListener('timeupdate', () => {
+        setCurrentTime(audioRef.current?.currentTime || 0);
+      });
+    }
+  }, []);
+
   const [partIndex, setPartIndex] = useState(0);
   const [verseIndex, setVerseIndex] = useState(0);
 
