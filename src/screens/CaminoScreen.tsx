@@ -66,7 +66,7 @@ const CaminoScreen: React.FC<Props> = ({ onStartJornada, onOpenReader, onOpenAss
   );
 };
 
-export function CaminoScreen({
+const CaminoScreen: React.FC<Props> = ({
   onStartJornada,
   onOpenReader,
   onOpenAsset,
