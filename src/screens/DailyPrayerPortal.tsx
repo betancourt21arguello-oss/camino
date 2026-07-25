@@ -159,6 +159,54 @@ export function DailyPrayerPortal({ kind, liturgy, assets, onClose, onComplete }
 
 /* ------------------------------ Ángelus ------------------------------ */
 
+declare global {
+  interface Window {
+    SC?: {
+      Widget: {
+        (iframe: HTMLIFrameElement | string): SoundCloudWidget;
+        Events: {
+          READY: string;
+          PLAY: string;
+          PAUSE: string;
+          FINISH: string;
+          PLAY_PROGRESS: string;
+          ERROR: string;
+        };
+      };
+    };
+  }
+}
+
+interface SoundCloudWidget {
+  bind(event: string, callback: (data?: any) => void): void;
+  unbind(event: string): void;
+  play(): void;
+  pause(): void;
+  toggle(): void;
+  seekTo(milliseconds: number): void;
+  getDuration(callback: (duration: number) => void): void;
+  getPosition(callback: (position: number) => void): void;
+}
+
+const angelusLyrics = [
+  { start: 0, end: 2.81, text: "El ángel del Señor anunció a María." },
+  { start: 3.69, end: 5.64, text: "Y concibió por obra y gracia del Espíritu Santo." },
+  { start: 5.64, end: 22.24, text: "Dios te salve, María..." },
+  { start: 22.24, end: 24.44, text: "He aquí la esclava del Señor." },
+  { start: 24.44, end: 26.62, text: "Hágase en mí según tu palabra." },
+  { start: 26.62, end: 41.98, text: "Dios te salve, María..." },
+  { start: 41.98, end: 43.96, text: "Y el Verbo de Dios se hizo carne." },
+  { start: 43.96, end: 45.40, text: "Y habitó entre nosotros." },
+  { start: 45.40, end: 62.10, text: "Dios te salve, María..." },
+  { start: 62.10, end: 64.74, text: "Ruega por nosotros, Santa Madre de Dios," },
+  { start: 64.74, end: 69.50, text: "para que seamos dignos de alcanzar las promesas de Jesucristo." },
+  { start: 69.50, end: 70.44, text: "Oremos." },
+  { start: 70.44, end: 73.24, text: "Oh Padre, Infunde en nuestra alma tu gracia." },
+  { start: 73.24, end: 78.08, text: "Tú, que en la anunciación del Ángel nos has revelado la encarnación de tu Hijo," },
+  { start: 78.08, end: 82.40, text: "por su pasión y su cruz condúcenos a la gloria de la resurrección." },
+  { start: 82.40, end: 84.55, text: "Por Cristo, Nuestro Señor. Amén." },
+];
+
 function AngelusView({
   angelus,
   verseIndex,
@@ -174,131 +222,252 @@ function AngelusView({
   audioLabel?: string;
   isImmersive?: boolean;
 }) {
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const [playing, setPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const widgetRef = useRef<SoundCloudWidget | null>(null);
+  const lineRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
-  const verses = useMemo(() => {
-    const base = angelus?.verses ?? angelusLyrics;
-    return base.map((v, i) => ({
-      text: v.leader ?? v.text,
-      at: typeof v.at === "number" ? v.at : typeof (v as any).start === "number" ? (v as any).start : base.length ? i / base.length : 0,
-    }));
-  }, [angelus]);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTimeSec, setCurrentTimeSec] = useState(0);
+  const [durationSec, setDurationSec] = useState(84.55);
+  const [isWidgetReady, setIsWidgetReady] = useState(false);
 
-  const activeLine = useMemo(() => {
-    if (!duration) return 0;
-    const p = currentTime / duration;
-    let idx = 0;
-    for (let i = 0; i < verses.length; i++) if (verses[i].at <= p + 0.001) idx = i;
-    return idx;
-  }, [currentTime, duration, verses]);
+  // SoundCloud target URL fallback
+  const soundcloudTrackUrl = useMemo(() => {
+    if (audioUrl && audioUrl.includes("soundcloud.com")) {
+      return audioUrl;
+    }
+    return "https://soundcloud.com/opusdei/angelus-con-el-papa-francisco";
+  }, [audioUrl]);
 
+  const iframeSrc = useMemo(() => {
+    const encoded = encodeURIComponent(soundcloudTrackUrl);
+    return `https://w.soundcloud.com/player/?url=${encoded}&color=%23d4af6a&auto_play=false&hide_related=true&show_comments=false&show_user=false&show_reposts=false&show_teaser=false`;
+  }, [soundcloudTrackUrl]);
+
+  // Cargar SDK de SoundCloud si no está presente
   useEffect(() => {
-    setVerseIndex(activeLine);
-  }, [activeLine, setVerseIndex]);
+    let isMounted = true;
 
-  useEffect(() => {
-    const el = audioRef.current;
-    if (!el) return;
-    const onTime = () => setCurrentTime(el.currentTime);
-    const onDuration = () => setDuration(el.duration);
-    const onEnd = () => setPlaying(false);
-    el.addEventListener("timeupdate", onTime);
-    el.addEventListener("loadedmetadata", onDuration);
-    el.addEventListener("ended", onEnd);
-    return () => {
-      el.removeEventListener("timeupdate", onTime);
-      el.removeEventListener("loadedmetadata", onDuration);
-      el.removeEventListener("ended", onEnd);
-    };
-  }, []);
-
-  const toggle = async () => {
-    const el = audioRef.current;
-    if (!el) return;
-    if (playing) {
-      el.pause();
-      setPlaying(false);
-    } else {
+    const initWidget = () => {
+      if (!iframeRef.current || !window.SC?.Widget) return;
       try {
-        await el.play();
-        setPlaying(true);
-      } catch {
-        // autoplay bloqueado por el navegador
+        const widget = window.SC.Widget(iframeRef.current);
+        widgetRef.current = widget;
+
+        const Events = window.SC.Widget.Events;
+
+        widget.bind(Events.READY, () => {
+          if (!isMounted) return;
+          setIsWidgetReady(true);
+          widget.getDuration((dMs) => {
+            if (dMs && dMs > 0) setDurationSec(dMs / 1000);
+          });
+        });
+
+        widget.bind(Events.PLAY, () => {
+          if (isMounted) setIsPlaying(true);
+        });
+
+        widget.bind(Events.PAUSE, () => {
+          if (isMounted) setIsPlaying(false);
+        });
+
+        widget.bind(Events.FINISH, () => {
+          if (isMounted) {
+            setIsPlaying(false);
+            setCurrentTimeSec(0);
+          }
+        });
+
+        widget.bind(Events.PLAY_PROGRESS, (data: { currentPosition: number; relativePosition: number }) => {
+          if (!isMounted) return;
+          const sec = (data.currentPosition || 0) / 1000;
+          setCurrentTimeSec(sec);
+        });
+      } catch (e) {
+        console.error("Error initializing SoundCloud widget:", e);
+      }
+    };
+
+    if (window.SC?.Widget) {
+      initWidget();
+    } else {
+      const existingScript = document.querySelector('script[src="https://w.soundcloud.com/player/api.js"]');
+      if (!existingScript) {
+        const script = document.createElement("script");
+        script.src = "https://w.soundcloud.com/player/api.js";
+        script.async = true;
+        script.onload = () => {
+          if (isMounted) initWidget();
+        };
+        document.body.appendChild(script);
+      } else {
+        existingScript.addEventListener("load", initWidget);
       }
     }
-  };
 
-  const seek = (t: number) => {
-    const el = audioRef.current;
-    if (el && duration > 0) {
-      el.currentTime = Math.max(0, Math.min(t, duration));
-      setCurrentTime(el.currentTime);
+    return () => {
+      isMounted = false;
+    };
+  }, [iframeSrc]);
+
+  // Calcular la línea activa basada en angelusLyrics
+  const activeIndex = useMemo(() => {
+    let idx = 0;
+    for (let i = 0; i < angelusLyrics.length; i++) {
+      if (currentTimeSec >= angelusLyrics[i].start - 0.2) {
+        idx = i;
+      }
     }
+    return idx;
+  }, [currentTimeSec]);
+
+  useEffect(() => {
+    setVerseIndex(activeIndex);
+  }, [activeIndex, setVerseIndex]);
+
+  // Scroll suave al verso activo para la vista teleprompter
+  useEffect(() => {
+    const el = lineRefs.current[activeIndex];
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [activeIndex]);
+
+  const togglePlay = () => {
+    if (!widgetRef.current) return;
+    widgetRef.current.toggle();
   };
 
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const seekToTime = (seconds: number) => {
+    if (!widgetRef.current) return;
+    widgetRef.current.seekTo(seconds * 1000);
+    setCurrentTimeSec(seconds);
+  };
+
+  const progressPercent = durationSec > 0 ? Math.min(100, (currentTimeSec / durationSec) * 100) : 0;
+
+  const formatTime = (sec: number) => {
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  };
 
   return (
-    <div className="flex min-h-full flex-col">
-      <audio ref={audioRef} src={audioUrl} preload="metadata" className="hidden" />
+    <div className="flex flex-col min-h-full items-center justify-between pb-4">
+      {/* Hidden SoundCloud iframe for API control */}
+      <iframe
+        ref={iframeRef}
+        id="sc-widget"
+        width="100%"
+        height="166"
+        scrolling="no"
+        frameBorder="no"
+        allow="autoplay"
+        src={iframeSrc}
+        className="hidden pointer-events-none absolute opacity-0 w-0 h-0"
+        tabIndex={-1}
+        aria-hidden="true"
+      />
 
-      <div className="mb-6 flex items-center gap-3">
-        <button
-          onClick={toggle}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#1c1c1e] text-white transition active:scale-95"
-          aria-label={playing ? "Pausar" : "Reproducir"}
-        >
-          {playing ? (
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z" /></svg>
-          ) : (
-            <svg viewBox="0 0 24 24" className="ml-0.5 h-4 w-4" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-          )}
-        </button>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-[13px] font-medium text-[#1c1c1e]">{audioLabel ?? "Ángelus · Papa Francisco"}</div>
-          <div className="text-[11px] text-[#9a9a9f]">Audio sincronizado</div>
-        </div>
-        <div className="text-right text-[11px] tabular-nums text-[#9a9a9f]">
-          {Math.floor(currentTime / 60)}:{String(Math.floor(currentTime % 60)).padStart(2, "0")}
-        </div>
+      {/* Header Info badge */}
+      <div className="mb-4 flex items-center justify-center gap-2 rounded-full border border-[#d4af6a]/30 bg-white/70 px-4 py-1.5 backdrop-blur-md shadow-xs">
+        <span className="flex h-2 w-2 rounded-full bg-[#d4af6a] animate-pulse" />
+        <p className="text-[12px] font-medium tracking-wide text-[#3c4a5e]">
+          {audioLabel ?? "Ángelus del Día · Papa Francisco"}
+        </p>
       </div>
 
-      <div className="relative mb-8 h-1 w-full cursor-pointer overflow-hidden rounded-full bg-[#e5e5e5]">
-        <div className="h-full rounded-full bg-[#d4af6a] transition-all duration-300" style={{ width: `${progress}%` }} />
-        <input
-          type="range"
-          min={0}
-          max={duration || 0}
-          step={0.1}
-          value={currentTime}
-          onChange={(e) => seek(Number(e.target.value))}
-          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-        />
-      </div>
+      {/* Teleprompter / Lyrics view */}
+      <div className="no-scrollbar my-auto flex-1 w-full max-w-xl overflow-y-auto px-4 py-6 space-y-6 text-center">
+        {angelusLyrics.map((line, idx) => {
+          const isActive = idx === activeIndex;
+          const isPast = idx < activeIndex;
 
-      <div className="no-scrollbar flex-1 overflow-y-auto px-1 py-2">
-        <div className="mx-auto max-w-2xl space-y-5">
-          {verses.map((line, i) => {
-            const isActive = i === activeLine;
-            const isPast = i < activeLine;
-            return (
-              <button
-                key={i}
-                type="button"
-                onClick={() => {
-                  const t = line.at * duration;
-                  if (t > 0) seek(t);
-                }}
-                className="w-full text-left font-serif-holy text-center text-[22px] leading-[1.6] transition-all duration-500 focus:outline-none"
-                style={{ opacity: isActive ? 1 : isPast ? 0.45 : 0.25 }}
+          return (
+            <motion.button
+              key={idx}
+              ref={(el) => (lineRefs.current[idx] = el)}
+              type="button"
+              onClick={() => seekToTime(line.start)}
+              animate={{
+                scale: isActive ? 1.05 : 0.98,
+                opacity: isActive ? 1 : isPast ? 0.45 : 0.3,
+              }}
+              transition={{ duration: 0.4 }}
+              className={`w-full font-serif-holy text-[#1c2e4a] focus:outline-none cursor-pointer transition-all ${
+                isActive
+                  ? "text-[24px] md:text-[28px] font-bold leading-relaxed text-[#142642] drop-shadow-[0_2px_10px_rgba(212,175,106,0.3)]"
+                  : "text-[20px] md:text-[22px] leading-relaxed font-normal"
+              }`}
+            >
+              <span
+                className={
+                  isActive
+                    ? "bg-gradient-to-r from-[#1c2e4a] via-[#a37938] to-[#1c2e4a] bg-clip-text text-transparent"
+                    : ""
+                }
               >
                 {line.text}
-              </button>
-            );
-          })}
+              </span>
+            </motion.button>
+          );
+        })}
+      </div>
+
+      {/* Custom Audio Player UI */}
+      <div className="mt-6 w-full max-w-md rounded-2xl border border-white/80 bg-white/70 p-4 shadow-[0_8px_32px_rgba(180,200,220,0.25)] backdrop-blur-xl">
+        {/* Progress Bar */}
+        <div className="group relative mb-3 h-2 w-full cursor-pointer overflow-hidden rounded-full bg-[#e2ebf3]">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-[#c9a86a] to-[#d4af6a] transition-all duration-200"
+            style={{ width: `${progressPercent}%` }}
+          />
+          <input
+            type="range"
+            min={0}
+            max={durationSec || 84.55}
+            step={0.1}
+            value={currentTimeSec}
+            onChange={(e) => seekToTime(Number(e.target.value))}
+            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+            aria-label="Progreso del audio"
+          />
+        </div>
+
+        {/* Time indicators & Controls */}
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] font-semibold tabular-nums text-[#6c7d93]">
+            {formatTime(currentTimeSec)}
+          </span>
+
+          {/* Main Play / Pause Button */}
+          <motion.button
+            whileTap={{ scale: 0.93 }}
+            whileHover={{ scale: 1.04 }}
+            onClick={togglePlay}
+            disabled={!isWidgetReady}
+            className={`flex h-13 w-13 items-center justify-center rounded-full text-white shadow-[0_6px_20px_rgba(212,175,106,0.4)] transition-all ${
+              isWidgetReady
+                ? "bg-gradient-to-br from-[#dfbc7a] to-[#be954e] active:scale-95"
+                : "bg-gray-300 cursor-not-allowed opacity-60"
+            }`}
+            aria-label={isPlaying ? "Pausar Oración" : "Comenzar a Rezar"}
+          >
+            {isPlaying ? (
+              <svg viewBox="0 0 24 24" className="h-6 w-6" fill="currentColor">
+                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" className="ml-1 h-6 w-6" fill="currentColor">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            )}
+          </motion.button>
+
+          <span className="text-[11px] font-semibold tabular-nums text-[#6c7d93]">
+            {formatTime(durationSec)}
+          </span>
         </div>
       </div>
     </div>
@@ -346,27 +515,6 @@ function EmptyHour({ label }: { label: string }) {
     </div>
   );
 }
-
-/* --------------------------- Letras Ángelus --------------------------- */
-
-const angelusLyrics = [
-  { start: 0, end: 2.81, text: "El ángel del Señor anunció a María." },
-  { start: 3.69, end: 5.64, text: "Y concibió por obra y gracia del Espíritu Santo." },
-  { start: 5.64, end: 22.24, text: "Dios te salve, María..." },
-  { start: 22.24, end: 24.44, text: "He aquí la esclava del Señor." },
-  { start: 24.44, end: 26.62, text: "Hágase en mí según tu palabra." },
-  { start: 26.62, end: 41.98, text: "Dios te salve, María..." },
-  { start: 41.98, end: 43.96, text: "Y el Verbo de Dios se hizo carne." },
-  { start: 43.96, end: 45.40, text: "Y habitó entre nosotros." },
-  { start: 45.40, end: 62.10, text: "Dios te salve, María..." },
-  { start: 62.10, end: 64.74, text: "Ruega por nosotros, Santa Madre de Dios," },
-  { start: 64.74, end: 69.50, text: "para que seamos dignos de alcanzar las promesas de Jesucristo." },
-  { start: 69.50, end: 70.44, text: "Oremos." },
-  { start: 70.44, end: 73.24, text: "Oh Padre, Infunde en nuestra alma tu gracia." },
-  { start: 73.24, end: 78.08, text: "Tú, que en la anunciación del Ángel nos has revelado la encarnación de tu Hijo," },
-  { start: 78.08, end: 82.40, text: "por su pasión y su cruz condúcenos a la gloria de la resurrección." },
-  { start: 82.40, end: 84.55, text: "Por Cristo, Nuestro Señor. Amén." },
-];
 
 /* --------------------------- Cielo ambientado --------------------------- */
 
@@ -417,8 +565,49 @@ function AmbientSky({ mood }: { mood: "dawn" | "noon" | "dusk" | "night" }) {
 
 function AngelusAtmosphere() {
   return (
-    <div className="absolute inset-0 bg-[#fafaf9]">
-      <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-[#f5f0e6]/80 to-transparent" />
+    <div className="absolute inset-0 overflow-hidden bg-gradient-to-b from-[#e8f1f8] via-[#f4f8fb] to-[#fafaf9]">
+      {/* Soft Breathing Gradient Aura */}
+      <motion.div
+        className="absolute -top-[20%] left-1/2 h-[500px] w-[500px] -translate-x-1/2 rounded-full bg-gradient-to-br from-[#b8d8f8]/40 via-[#dcebf9]/30 to-[#f3e7ce]/40 blur-3xl pointer-events-none"
+        animate={{
+          scale: [1, 1.15, 1],
+          opacity: [0.5, 0.8, 0.5],
+        }}
+        transition={{
+          duration: 8,
+          repeat: Infinity,
+          ease: "easeInOut",
+        }}
+      />
+
+      {/* Subtle Ethereal Cloud Shapes */}
+      <motion.div
+        className="absolute top-[15%] -left-[10%] h-64 w-96 rounded-full bg-white/60 blur-2xl pointer-events-none"
+        animate={{
+          x: [0, 40, 0],
+          opacity: [0.4, 0.7, 0.4],
+        }}
+        transition={{
+          duration: 18,
+          repeat: Infinity,
+          ease: "easeInOut",
+        }}
+      />
+      <motion.div
+        className="absolute top-[35%] -right-[10%] h-72 w-[450px] rounded-full bg-[#e3effa]/50 blur-2xl pointer-events-none"
+        animate={{
+          x: [0, -50, 0],
+          opacity: [0.3, 0.6, 0.3],
+        }}
+        transition={{
+          duration: 22,
+          repeat: Infinity,
+          ease: "easeInOut",
+        }}
+      />
+
+      {/* Marian Golden Rays / Sunburst Accent */}
+      <div className="absolute inset-x-0 top-0 h-64 bg-gradient-to-b from-[#d4af6a]/10 via-transparent to-transparent pointer-events-none" />
     </div>
   );
 }

@@ -71,8 +71,7 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
         client
           .from("intentions")
           .select("candle_id")
-          .eq("pray_for_id", user.id)
-          .gt("expires_at", new Date().toISOString()),
+          .eq("pray_for_id", user.id),
       ]);
       if (!active) return;
 
@@ -165,11 +164,16 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
         return [...events, { id: `garden-${at}-${events.length}`, type: actionType, value: 1, createdAt: at }];
       });
       if (supabase && user) {
-        void supabase.rpc("record_spiritual_event", {
-          p_event_type: gardenEventType(e.type),
-          p_value: 1,
-          p_meta: e.meta ?? {},
-        });
+        void supabase
+          .rpc("record_spiritual_event", {
+            p_event_type: gardenEventType(e.type),
+            p_value: 1,
+            p_meta: e.meta ?? {},
+          })
+          .then(
+            () => {},
+            (error) => console.error("Failed to record spiritual event:", error),
+          );
       }
     },
     [applyFruits, user],
@@ -202,7 +206,13 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
         { id: `garden-candle-${c.id}`, type: "CANDLE_LIT", value: 1, createdAt: c.litAt },
       ]);
       if (supabase && user) {
-        void supabase.from("candles").insert({ owner_id: user.id, intention: c.intention });
+        void supabase
+          .from("candles")
+          .insert({ owner_id: user.id, intention: c.intention, expires_at: new Date(c.expiresAt).toISOString() })
+          .then(
+            () => {},
+            (error) => console.error("Failed to light candle:", error),
+          );
       }
       return c;
     },
@@ -225,11 +235,17 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
       );
       emit({ type: "pray-for-other" });
       if (supabase && user) {
-        void supabase.from("intentions").insert({ candle_id: id, pray_for_id: user.id });
+        void supabase
+          .from("intentions")
+          .insert({ candle_id: id, pray_for_id: user.id })
+          .then(
+            () => {},
+            (error) => console.error("Failed to pray for candle:", error),
+          );
         // Opcional RPC para transferir vela al dueño: gift_candle(p_candle_id, p_amount)
         (supabase.rpc("gift_candle", { p_candle_id: id, p_amount: 1 }) as any)?.then?.(
           () => {},
-          () => {},
+          (error) => console.error("Failed to gift candle:", error),
         );
       }
     },
@@ -265,7 +281,12 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
         ...h,
       ]);
       if (supabase && user) {
-        void supabase.rpc("water_garden", { p_intention: intention || "Paz" });
+        void supabase
+          .rpc("water_garden", { p_intention: intention || "Paz" })
+          .then(
+            () => {},
+            (error) => console.error("Failed to water garden:", error),
+          );
       }
       return true;
     },
@@ -297,10 +318,15 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
         ...h,
       ]);
       if (supabase && user) {
-        void supabase.rpc("bulk_water_garden", {
-          p_user_id: user.id,
-          p_intention: intention || "Paz",
-        });
+        void supabase
+          .rpc("bulk_water_garden", {
+            p_user_id: user.id,
+            p_intention: intention || "Paz",
+          })
+          .then(
+            () => {},
+            (error) => console.error("Failed to bulk water garden:", error),
+          );
       }
       return true;
     },
