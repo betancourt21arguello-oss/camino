@@ -21,6 +21,8 @@ const HOUR_META: Record<HourKind, { label: string; mood: "dawn" | "noon" | "dusk
   compline: { label: "Completas", mood: "night", icon: "🌙" },
 };
 
+const R2_ANGELUS_AUDIO_URL = "https://pub-8fb2af7acc7246b4b90aa917bb377f90.r2.dev/Angelus-Papa-Francisco.MP3";
+
 export function DailyPrayerPortal({ kind, liturgy, assets, onClose, onComplete }: Props) {
   const meta = HOUR_META[kind];
   const hour: HourLiturgy | undefined =
@@ -30,9 +32,14 @@ export function DailyPrayerPortal({ kind, liturgy, assets, onClose, onComplete }
   const isAngelus = kind === "angelus";
 
   const angelusAudio = useMemo(() => {
-    if (angelus?.audioUrl) return angelus.audioUrl;
+    if (angelus?.audioUrl && angelus.audioUrl.trim().length > 0 && !angelus.audioUrl.includes("soundcloud.com")) {
+      return angelus.audioUrl;
+    }
     const a = assetsByTag("angelus", assets)[0];
-    return a?.audioUrl;
+    if (a?.audioUrl && a.audioUrl.trim().length > 0 && !a.audioUrl.includes("soundcloud.com")) {
+      return a.audioUrl;
+    }
+    return R2_ANGELUS_AUDIO_URL;
   }, [angelus, assets]);
 
   const [isPlaying, setIsPlaying] = useState(false);
@@ -76,13 +83,13 @@ export function DailyPrayerPortal({ kind, liturgy, assets, onClose, onComplete }
   }, []);
 
   useEffect(() => {
-    if (!isAngelus || !angelusAudio) return;
+    if (!isAngelus) return;
     const timer = setTimeout(() => {
       const audio = audioRef.current;
       if (audio) audio.play().catch(() => {});
-    }, 1500);
+    }, 2000);
     return () => clearTimeout(timer);
-  }, [isAngelus, angelusAudio]);
+  }, [isAngelus]);
 
   const goNext = () => {
     if (isLast) {
@@ -186,7 +193,7 @@ export function DailyPrayerPortal({ kind, liturgy, assets, onClose, onComplete }
         </div>
       </div>
 
-      {isAngelus && angelusAudio && <audio ref={audioRef} src={angelusAudio} preload="auto" className="hidden" />}
+      {isAngelus && <audio ref={audioRef} src={angelusAudio} preload="auto" playsInline className="absolute opacity-0 w-0 h-0 overflow-hidden pointer-events-none" />}
     </div>
   );
 }

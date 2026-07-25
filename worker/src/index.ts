@@ -497,19 +497,48 @@ async function handleAdminUsersSearch(request: Request, env: any): Promise<Respo
       return jsonResponse({ results: [] });
     }
 
-    const url = `${env.SUPABASE_URL}/rest/v1/profiles?select=id,email,full_name&or=ilike.email.*${encodeURIComponent(q)}*,ilike.full_name.*${encodeURIComponent(q)}*&limit=20`;
-    const res = await fetch(url, {
+    const profilesUrl = `${env.SUPABASE_URL}/rest/v1/profiles?select=id,email,full_name&or=ilike.email.*${encodeURIComponent(q)}*,ilike.full_name.*${encodeURIComponent(q)}*&limit=20`;
+    const profilesRes = await fetch(profilesUrl, {
       headers: {
         apikey: env.SUPABASE_SERVICE_ROLE,
         Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE}`,
       },
     });
-    if (!res.ok) {
-      const text = await res.text();
-      return jsonResponse({ error: `Supabase search failed: ${res.status} ${text}` }, 500);
+
+    if (profilesRes.ok) {
+      const data = await profilesRes.json();
+      return jsonResponse({ results: data });
     }
-    const data = await res.json();
-    return jsonResponse({ results: data });
+
+    const authUrl = `${env.SUPABASE_URL}/auth/v1/admin/users?limit=20`;
+    const authRes = await fetch(authUrl, {
+      headers: {
+        apikey: env.SUPABASE_SERVICE_ROLE,
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE}`,
+      },
+    });
+
+    if (!authRes.ok) {
+      const text = await profilesRes.text();
+      return jsonResponse({ error: `Supabase search failed: profiles=${profilesRes.status} ${text}, auth=${authRes.status}` }, 500);
+    }
+
+    const authData = await authRes.json();
+    const users = Array.isArray(authData?.users) ? authData.users : [];
+    const results = users
+      .filter((u: any) => {
+        const email = (u?.email || "").toLowerCase();
+        const name = (u?.user_metadata?.full_name || u?.email || "").toLowerCase();
+        return email.includes(q) || name.includes(q);
+      })
+      .slice(0, 20)
+      .map((u: any) => ({
+        id: u.id,
+        email: u.email,
+        full_name: u.user_metadata?.full_name || u.email,
+      }));
+
+    return jsonResponse({ results });
   } catch (e: any) {
     return jsonResponse({ error: e.message }, 500);
   }
@@ -522,7 +551,19 @@ async function handleAdminAssignTasks(request: Request, env: any): Promise<Respo
     const userIds: string[] = [];
 
     if (target === "all") {
-      const users = await supabaseSelect(env, "profiles", { select: "id" });
+      let users = await supabaseSelect(env, "profiles", { select: "id" });
+      if (!users || users.length === 0) {
+        const authRes = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users?limit=1000`, {
+          headers: {
+            apikey: env.SUPABASE_SERVICE_ROLE,
+            Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE}`,
+          },
+        });
+        if (authRes.ok) {
+          const authData = await authRes.json();
+          users = (Array.isArray(authData?.users) ? authData.users : []).map((u: any) => ({ id: u.id }));
+        }
+      }
       userIds.push(...users.map((u: any) => u.id));
     } else if (target === "single" && typeof body?.userId === "string" && body.userId.trim()) {
       userIds.push(body.userId.trim());

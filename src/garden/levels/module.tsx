@@ -193,8 +193,8 @@ export const LevelModule = memo(function LevelModule({
           animate={{ opacity: [0.5, 1, 0.6] }}
           transition={{ duration: 2.5 + l.delay, repeat: Infinity }}
         >
-          <circle cx={l.x} cy={l.y} r="3" fill="#f0e2b8" />
-          <circle cx={l.x} cy={l.y} r="8" fill="#d4af6a" opacity=".18" />
+          <circle cx={l.x ?? 0} cy={l.y ?? 0} r="3" fill="#f0e2b8" />
+          <circle cx={l.x ?? 0} cy={l.y ?? 0} r="8" fill="#d4af6a" opacity=".18" />
         </g>
       ))}
       {butterflies.map((b) => (
@@ -231,7 +231,7 @@ export const LevelModule = memo(function LevelModule({
             },
           }}
         >
-          <circle cx={0} cy={0} r={0.7 + p.scale * 0.8} fill="#d4af6a" />
+          <circle cx={0} cy={0} r={Math.max(0.1, 0.7 + (p.scale ?? 0) * 0.8)} fill="#d4af6a" />
         </g>
       ))}
       {lightRays.map((r, i) => (

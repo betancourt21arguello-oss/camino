@@ -183,7 +183,7 @@ export const GardenSvg = memo(function GardenSvg({
                 },
               }}
             >
-              <circle cx={0} cy={0} r={0.7 + particle.scale * 0.8} fill="#d4af6a" />
+              <circle cx={0} cy={0} r={Math.max(0.1, 0.7 + (particle.scale ?? 0) * 0.8)} fill="#d4af6a" />
             </motion.g>
           ))}
 
@@ -200,10 +200,11 @@ export const GardenSvg = memo(function GardenSvg({
                 y1={0}
                 x2={34 + i * 24}
                 y2={460}
+                initial={{ y1: 0, y2: 460 }}
+                animate={{ y1: [-20, 480], y2: [440, 920] }}
                 stroke="#b7c8cc"
                 strokeWidth="1.2"
                 opacity=".45"
-                animate={{ y1: [-20, 480], y2: [440, 920] }}
                 transition={{ duration: 1.2, delay: i * 0.04, repeat: Infinity, ease: "linear" }}
               />
             ))}
