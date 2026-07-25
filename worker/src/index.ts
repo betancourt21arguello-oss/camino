@@ -605,6 +605,26 @@ async function handleAdminAssignTasks(request: Request, env: any): Promise<Respo
       return jsonResponse({ error: "No valid tasks" }, 400);
     }
 
+    // Delete existing tasks for the same profile_id, category, and task_date to avoid unique constraint violations
+    const deleteParams = new URLSearchParams();
+    deleteParams.set("profile_id", `in.(${userIds.join(",")})`);
+    const categories = tasks.map((t: any) => typeof t.category === "string" ? t.category : "custom");
+    deleteParams.set("category", `in.(${categories.map((c: string) => `'${c}'`).join(",")})`);
+    deleteParams.set("task_date", `eq.${taskDate}`);
+    const deleteUrl = `${env.SUPABASE_URL}/rest/v1/spiritual_tasks?${deleteParams.toString()}`;
+    const deleteRes = await fetch(deleteUrl, {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: env.SUPABASE_SERVICE_ROLE,
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE}`,
+      },
+    });
+    if (!deleteRes.ok) {
+      const text = await deleteRes.text();
+      return jsonResponse({ error: `Supabase delete failed: ${deleteRes.status} ${text}` }, 500);
+    }
+
     const url = `${env.SUPABASE_URL}/rest/v1/spiritual_tasks`;
     const chunks: any[] = [];
     const chunkSize = 50;
@@ -620,7 +640,7 @@ async function handleAdminAssignTasks(request: Request, env: any): Promise<Respo
           "Content-Type": "application/json",
           apikey: env.SUPABASE_SERVICE_ROLE,
           Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE}`,
-          Prefer: "resolution=merge-duplicates,return=minimal",
+          Prefer: "return=minimal",
         },
         body: JSON.stringify(chunk),
       });

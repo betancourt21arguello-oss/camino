@@ -47,7 +47,7 @@ function CandleGlyph({
 }
 
 export function ComunidadScreen() {
-  const { candles, lightCandle, prayForCandle } = useSpiritual();
+  const { candles, lightCandle, prayForCandle, candleFeedback, balance } = useSpiritual();
   const [tab, setTab] = useState<"intenciones" | "reflexiones">("intenciones");
   const [selected, setSelected] = useState<Candle | null>(null);
   const [composing, setComposing] = useState(false);
@@ -80,15 +80,32 @@ export function ComunidadScreen() {
       {tab === "intenciones" ? (
         <div className="px-6">
           <button
-            onClick={() => setComposing(true)}
+            onClick={() => {
+              setComposing(true);
+              setSelected(null);
+            }}
             className="mx-auto mt-6 block min-h-[44px] rounded-full border border-[#d7d3c8] bg-white px-6 text-sm font-medium text-[#5c6b8f]"
           >
             🕯️ Encender una vela por alguien
           </button>
 
-          <p className="mt-4 text-center text-xs text-[#a8a8ad]">
-            Las velas encendidas no se apagan. Puedes rezar por cualquiera.
-          </p>
+          {candleFeedback && (
+            <div
+              className={`mx-auto mt-4 max-w-sm rounded-2xl px-4 py-3 text-center text-sm ${
+                candleFeedback.type === "error"
+                  ? "border border-[#d7d3c8] bg-white text-[#8a5a5a]"
+                  : "bg-[#eef2e6] text-[#5c6b3f]"
+              }`}
+            >
+              {candleFeedback.message}
+            </div>
+          )}
+
+          {!candleFeedback && (
+            <p className="mt-4 text-center text-xs text-[#a8a8ad]">
+              Las velas encendidas no se apagan. Puedes rezar por cualquiera.
+            </p>
+          )}
 
           <div className="mx-auto mt-6 grid max-w-sm grid-cols-4 gap-x-3 gap-y-6">
             {shown.map((c) => (
@@ -158,7 +175,10 @@ export function ComunidadScreen() {
                     prayedBy: [...selected.prayedBy, "me"],
                   });
                 }}
-                className="mt-5 h-12 w-full rounded-full bg-[#1c1c1e] font-medium text-white"
+                disabled={balance.vela <= 0}
+                className={`mt-5 h-12 w-full rounded-full font-medium text-white ${
+                  balance.vela <= 0 ? "bg-[#8a8a90]" : "bg-[#1c1c1e]"
+                }`}
               >
                 Rezar por esta intención · 💧
               </button>
@@ -199,12 +219,17 @@ export function ComunidadScreen() {
                 setDraft("");
                 setComposing(false);
               }}
-              className="mt-4 h-12 w-full rounded-full bg-[#1c1c1e] font-medium text-white"
+              disabled={balance.vela <= 0}
+              className={`mt-4 h-12 w-full rounded-full font-medium text-white ${
+                balance.vela <= 0 ? "bg-[#8a8a90]" : "bg-[#1c1c1e]"
+              }`}
             >
               Encender 🕯️
             </button>
             <button
-              onClick={() => setComposing(false)}
+              onClick={() => {
+                setComposing(false);
+              }}
               className="mt-2 h-11 w-full text-sm text-[#8a8a90]"
             >
               Cancelar

@@ -2,7 +2,6 @@ import { memo, useId, useMemo } from "react";
 import { motion } from "framer-motion";
 import { generateGardenModel, signatureFromDna } from "./model";
 import { LevelModule, resolveLevel } from "./levels";
-import type { GardenPoint, TreeModel } from "./model";
 import type { DnaTraits, GardenSignature, GardenState } from "./types";
 
 const FLOWER_PALETTES = [
@@ -20,6 +19,8 @@ const SEASON_SKY = {
   ordinary: ["#f8f5ed", "#d8dccd"],
 } as const;
 
+const SHADOW_COLOR = "rgba(62, 64, 40, 0.18)";
+
 export const GardenSvg = memo(function GardenSvg({
   dna,
   state,
@@ -36,7 +37,8 @@ export const GardenSvg = memo(function GardenSvg({
   const rawId = useId().replace(/:/g, "");
   const skyId = `sky-${rawId}`;
   const glowId = `glow-${rawId}`;
-  const waterId = `water-${rawId}`;
+  const waterId = "water-iso";
+  const canopyGlowId = `canopy-glow-${rawId}`;
   const flowers =
     FLOWER_PALETTES[dna.paletteVariant % FLOWER_PALETTES.length];
   const seasonSky = SEASON_SKY[state.season];
@@ -44,6 +46,8 @@ export const GardenSvg = memo(function GardenSvg({
   const saturate = 0.3 + 0.7 * health;
   const contentOpacity = 0.6 + 0.4 * health;
   const isDrought = health < 0.3;
+  const tree = model.tree;
+  const showPond = model.pond?.visible ?? false;
 
   return (
     <svg
@@ -63,61 +67,38 @@ export const GardenSvg = memo(function GardenSvg({
           <stop offset="0" stopColor="#f5dfaa" stopOpacity={0.5 + state.lightLevel / 300} />
           <stop offset="1" stopColor="#f5dfaa" stopOpacity="0" />
         </radialGradient>
-        <linearGradient id={waterId} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#b7c8cc" />
-          <stop offset="1" stopColor="#859fa7" />
+        <radialGradient id={canopyGlowId} cx="50%" cy="50%" r="50%">
+          <stop offset="0" stopColor="#f5e6b8" stopOpacity="0.18" />
+          <stop offset="1" stopColor="#f5e6b8" stopOpacity="0" />
+        </radialGradient>
+        <linearGradient id={waterId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#c8d8dc" />
+          <stop offset="0.5" stopColor="#9ab8c2" />
+          <stop offset="1" stopColor="#7a9ba6" />
+        </linearGradient>
+        <linearGradient id="water-iso-deep" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#8ab0bc" stopOpacity="0.35" />
+          <stop offset="1" stopColor="#6a8a9a" stopOpacity="0.55" />
         </linearGradient>
       </defs>
 
       <rect width="720" height="460" fill={`url(#${skyId})`} opacity={0.7 + 0.3 * health} />
 
-      <g
-        style={{
-          filter: `saturate(${saturate})`,
-          opacity: contentOpacity,
-          willChange: "filter, opacity",
-        }}
-      >
-        <path d={model.terrain} fill="#c9cfba" />
-        <path d="M0 383 C180 350 520 360 720 330 L720 460 L0 460Z" fill="#b8c1a5" opacity=".42" />
-
-        <ellipse cx="360" cy="145" rx="290" ry="215" fill={`url(#${glowId})`} />
-        {model.lightRays.map((ray, i) => (
-          <motion.path
-            key={i}
-            d={`M ${ray.x} 0 L ${ray.x + ray.width} 390 L ${ray.x - ray.width / 2} 390 Z`}
-            fill="#d4af6a"
-            opacity={ray.opacity}
-            animate={{ opacity: [ray.opacity * 0.65, ray.opacity, ray.opacity * 0.65] }}
-            transition={{ duration: 8 + i, repeat: Infinity, ease: "easeInOut" }}
-          />
+      <g style={{ filter: `saturate(${saturate})`, opacity: contentOpacity, willChange: "filter, opacity" }}>
+        {model.terrainLayers.map((layer) => (
+          <path key={layer.id} d={layer.d} fill={layer.fill} stroke={layer.stroke} strokeWidth={layer.strokeWidth} />
         ))}
 
-        {model.rocks.map((rock) => (
+        {model.shadows.map((shadow, i) => (
           <ellipse
-            key={rock.id}
-            cx={rock.x}
-            cy={rock.y}
-            rx={9 * rock.scale}
-            ry={5.5 * rock.scale}
-            fill="#aba497"
-            opacity=".62"
+            key={`shadow-${i}`}
+            cx={shadow.x}
+            cy={shadow.y}
+            rx={shadow.rx}
+            ry={shadow.ry}
+            fill={SHADOW_COLOR}
           />
         ))}
-
-        <path d={model.path} fill="none" stroke="#d7cdb9" strokeWidth={model.pathWidth} strokeLinecap="round" opacity=".76" />
-        <path d={model.path} fill="none" stroke="#eee7d9" strokeWidth="2" strokeDasharray="3 10" strokeLinecap="round" opacity=".85" />
-
-        {model.river.visible && (
-          <motion.g
-            initial={false}
-            animate={{ opacity: [0.8, 0.95, 0.8] }}
-            transition={{ duration: 7, repeat: Infinity, ease: "easeInOut" }}
-          >
-            <path d={model.river.d} fill={`url(#${waterId})`} opacity={0.6 + state.waterLevel / 300} />
-            <path d={model.river.d} fill="none" stroke="#e8efeb" strokeWidth="2" opacity=".6" />
-          </motion.g>
-        )}
 
         {model.ambientPlants
           .filter((p) => isFinite(p.x) && isFinite(p.y))
@@ -129,6 +110,25 @@ export const GardenSvg = memo(function GardenSvg({
           .map((flower) => (
             <Flower key={flower.id} flower={flower} color={flowers[flower.tone % flowers.length]} />
           ))}
+
+        {model.floraClusters.map((cluster) => (
+          <FloraCluster key={cluster.id} cluster={cluster} />
+        ))}
+
+        {showPond && model.pond && (
+          <IsometricPond pond={model.pond} waterLevel={state.waterLevel} />
+        )}
+
+        {model.river.visible && !showPond && (
+          <motion.g
+            initial={false}
+            animate={{ opacity: [0.8, 0.95, 0.8] }}
+            transition={{ duration: 7, repeat: Infinity, ease: "easeInOut" }}
+          >
+            <path d={model.river.d} fill={`url(#${waterId})`} opacity={0.6 + state.waterLevel / 300} />
+            <path d={model.river.d} fill="none" stroke="#e8efeb" strokeWidth="2" opacity=".6" />
+          </motion.g>
+        )}
 
         {model.lights.map((light) => (
           <motion.g
@@ -142,7 +142,9 @@ export const GardenSvg = memo(function GardenSvg({
           </motion.g>
         ))}
 
-        <CentralTree tree={model.tree} justWatered={justWatered} />
+        <CedarTree tree={tree} justWatered={justWatered} />
+
+        <ellipse cx={tree.x} cy={tree.y - tree.trunkHeight * 0.4} rx={55 * tree.canopyScale} ry={35 * tree.canopyScale} fill={`url(#${canopyGlowId})`} />
 
         {model.butterflies
           .filter((b) => isFinite(b.x) && isFinite(b.y))
@@ -186,6 +188,17 @@ export const GardenSvg = memo(function GardenSvg({
               <circle cx={0} cy={0} r={Math.max(0.1, 0.7 + (particle.scale ?? 0) * 0.8)} fill="#d4af6a" />
             </motion.g>
           ))}
+
+        {model.lightRays.map((ray, i) => (
+          <motion.path
+            key={`ray-${i}`}
+            d={`M ${ray.x} 0 L ${ray.x + ray.width} 390 L ${ray.x - ray.width / 2} 390 Z`}
+            fill="#d4af6a"
+            opacity={ray.opacity}
+            animate={{ opacity: [ray.opacity * 0.65, ray.opacity, ray.opacity * 0.65] }}
+            transition={{ duration: 8 + i, repeat: Infinity, ease: "easeInOut" }}
+          />
+        ))}
 
         {showRain && (
           <motion.g
@@ -239,14 +252,17 @@ export const GardenSvg = memo(function GardenSvg({
         <LevelModule config={resolveLevel(state.level)} dna={dna} />
       </g>
 
-      <g transform="translate(680 420)">
-        <GardenSignatureGlyph signature={signature} />
+      <g transform="translate(640 420)">
+        <StonePlaque />
+        <g transform="translate(0, 28)">
+          <GardenSignatureGlyph signature={signature} />
+        </g>
       </g>
     </svg>
   );
 });
 
-function Plant({ plant, color }: { plant: GardenPoint; color: string }) {
+function Plant({ plant, color }: { plant: { x: number; y: number; scale: number; delay: number }; color: string }) {
   return (
     <motion.g
       transform={`translate(${plant.x} ${plant.y}) scale(${plant.scale})`}
@@ -261,7 +277,7 @@ function Plant({ plant, color }: { plant: GardenPoint; color: string }) {
   );
 }
 
-function Flower({ flower, color }: { flower: GardenPoint; color: string }) {
+function Flower({ flower, color }: { flower: { x: number; y: number; scale: number; delay: number }; color: string }) {
   return (
     <motion.g
       transform={`translate(${flower.x} ${flower.y}) scale(${flower.scale})`}
@@ -278,102 +294,126 @@ function Flower({ flower, color }: { flower: GardenPoint; color: string }) {
   );
 }
 
-const TREE_LOOK: Record<
-  TreeModel["species"],
-  { colors: string[]; render: (t: TreeModel) => React.ReactElement }
-> = {
-  olivo: {
-    colors: ["#9aa584", "#a9b494", "#8b9678"],
-    render: (t) => (
-      <>
-        {Array.from({ length: 7 }).map((_, i) => {
-          const a = (i / 7) * Math.PI * 2;
-          return (
-            <ellipse
-              key={i}
-              cx={Math.cos(a) * 26}
-              cy={-70 - t.trunkHeight * 0.3 + Math.sin(a) * 14}
-              rx={16 * t.canopyScale}
-              ry={11 * t.canopyScale}
-              fill={i % 2 ? "#9aa584" : "#a9b494"}
-              opacity=".85"
-            />
-          );
-        })}
-      </>
-    ),
-  },
-  cedro: {
-    colors: ["#748174", "#66755f", "#889470"],
-    render: (t) => (
-      <>
-        {[0, 1, 2, 3].map((i) => (
-          <ellipse
-            key={i}
-            cx="0"
-            cy={-46 - i * 20 - t.trunkHeight * 0.15}
-            rx={(38 - i * 6) * t.canopyScale}
-            ry={10 * t.canopyScale}
-            fill={i % 2 ? "#748174" : "#889470"}
-            opacity=".88"
-          />
-        ))}
-      </>
-    ),
-  },
-  cipres: {
-    colors: ["#5f6e52", "#6e7d5f"],
-    render: (t) => (
-      <path
-        d={`M0 ${-30 - t.trunkHeight * 0.2} C -16 ${-70 - t.trunkHeight * 0.4}, -10 ${-120 - t.trunkHeight * 0.6}, 0 ${-150 - t.trunkHeight * 0.7} C 10 ${-120 - t.trunkHeight * 0.6}, 16 ${-70 - t.trunkHeight * 0.4}, 0 ${-30 - t.trunkHeight * 0.2}Z`}
-        fill="#5f6e52"
-        opacity=".88"
-        transform={`scale(${t.canopyScale})`}
-      />
-    ),
-  },
-  roble: {
-    colors: ["#7e8a6b", "#89937a", "#758264"],
-    render: (t) => (
-      <>
-        <ellipse cx="-20" cy={-68 - t.trunkHeight * 0.2} rx={26 * t.canopyScale} ry={20 * t.canopyScale} fill="#7e8a6b" opacity=".82" />
-        <ellipse cx="20" cy={-64 - t.trunkHeight * 0.2} rx={28 * t.canopyScale} ry={22 * t.canopyScale} fill="#89937a" opacity=".86" />
-        <ellipse cx="0" cy={-92 - t.trunkHeight * 0.2} rx={32 * t.canopyScale} ry={25 * t.canopyScale} fill="#758264" opacity=".9" />
-      </>
-    ),
-  },
-  sauce: {
-    colors: ["#8a9776", "#7c886a"],
-    render: (t) => (
-      <>
-        <ellipse cx="0" cy={-96 - t.trunkHeight * 0.2} rx={34 * t.canopyScale} ry={18 * t.canopyScale} fill="#8a9776" opacity=".7" />
-        {Array.from({ length: 9 }).map((_, i) => {
-          const x = -32 + i * 8;
-          return (
-            <path
-              key={i}
-              d={`M${x} ${-96 - t.trunkHeight * 0.2} C ${x - 4} ${-60}, ${x + 2} ${-30}, ${x - 2} ${-4}`}
-              fill="none"
-              stroke="#7c886a"
-              strokeWidth="1.6"
-              opacity=".6"
-            />
-          );
-        })}
-      </>
-    ),
-  },
-};
+function FloraCluster({ cluster }: { cluster: { x: number; y: number; type: string; scale: number; rotation: number; tone: number } }) {
+  const { x, y, type, scale, rotation, tone } = cluster;
+  return (
+    <g transform={`translate(${x} ${y}) rotate(${rotation}) scale(${scale})`}>
+      {type === "lavender" && (
+        <>
+          <ellipse cx="0" cy="-2" rx="6" ry="3" fill={SHADOW_COLOR} />
+          {[0, 1, 2, 3, 4].map((i) => (
+            <g key={i} transform={`translate(${(i - 2) * 4} 0)`}>
+              <line x1="0" y1="0" x2="0" y2="-18" stroke="#6b5a42" strokeWidth="1.5" />
+              <ellipse cx="0" cy="-16" rx="1.8" ry="4" fill="#b9a4b8" />
+              <ellipse cx="0" cy="-21" rx="1.6" ry="3.5" fill="#c7b6c2" />
+              <ellipse cx="0" cy="-12" rx="1.5" ry="3" fill="#d4c4d0" />
+            </g>
+          ))}
+        </>
+      )}
+      {type === "daisy" && (
+        <>
+          <ellipse cx="0" cy="-1" rx="5" ry="2.5" fill={SHADOW_COLOR} />
+          <line x1="0" y1="0" x2="0" y2="-16" stroke="#74815f" strokeWidth="1.3" />
+          {[0, 1, 2, 3, 4].map((i) => (
+            <ellipse key={i} cx="0" cy="-20" rx="2.5" ry="5.5" fill="#f0f0ec" transform={`rotate(${i * 72} 0 -20)`} />
+          ))}
+          <circle cx="0" cy="-20" r="2.8" fill="#d4af6a" />
+        </>
+      )}
+      {type === "rosemary" && (
+        <>
+          <ellipse cx="0" cy="-1" rx="5" ry="2.5" fill={SHADOW_COLOR} />
+          <path d="M0 0 Q-2 -10 -1 -22" fill="none" stroke="#6b7a58" strokeWidth="1.4" />
+          {[-6, -3, 0, 3, 6, -8, -1, 4, 7].map((dx, i) => (
+            <ellipse key={i} cx={dx} cy={-8 - Math.abs(dx) * 0.4} rx="2" ry="1.2" fill="#8a9976" transform={`rotate(${dx > 0 ? -25 : 25} ${dx} ${-8 - Math.abs(dx) * 0.4})`} />
+          ))}
+        </>
+      )}
+      {type === "thyme" && (
+        <>
+          <ellipse cx="0" cy="-1" rx="5" ry="2.5" fill={SHADOW_COLOR} />
+          <path d="M-4 0 Q-3 -4 -2 -8 M0 0 Q0.5 -4 1 -9 M4 0 Q3.5 -3.5 3 -7" fill="none" stroke="#7a8a66" strokeWidth="1.2" />
+          {[-3, 0, 3, -5, 5, -2, 2, 4].map((dx, i) => (
+            <ellipse key={i} cx={dx} cy={-2 - ((tone + i) % 5)} rx="1.8" ry="1" fill="#6b7a58" />
+          ))}
+        </>
+      )}
+      {type === "olive_shrub" && (
+        <>
+          <ellipse cx="0" cy="-1" rx="6" ry="3" fill={SHADOW_COLOR} />
+          <line x1="0" y1="0" x2="-1" y2="-14" stroke="#8b9678" strokeWidth="2" />
+          {[-4, 4, 0, -6, 6].map((dx, i) => (
+            <ellipse key={i} cx={dx} cy={-10 - Math.abs(dx) * 0.3} rx="4" ry="2.5" fill="#9aa584" />
+          ))}
+        </>
+      )}
+    </g>
+  );
+}
 
-function CentralTree({ tree, justWatered }: { tree: TreeModel; justWatered?: boolean }) {
-  const look = TREE_LOOK[tree.species];
+function IsometricPond({ pond, waterLevel }: { pond: { d: string; deepD: string; ripples: Array<{ x: number; y: number; rx: number; ry: number; delay: number }>; lilies: Array<{ x: number; y: number; scale: number }>; stones: Array<{ x: number; y: number; scale: number }> }; waterLevel: number }) {
+  return (
+    <motion.g
+      initial={false}
+      animate={{ opacity: [0.85, 0.95, 0.85] }}
+      transition={{ duration: 7, repeat: Infinity, ease: "easeInOut" }}
+    >
+      <path d={pond.d} fill="url(#water-iso)" opacity="0.85" />
+      <path d={pond.deepD} fill="url(#water-iso-deep)" />
+      {pond.stones.map((stone, i) => (
+        <g key={`stone-${i}`} transform={`translate(${stone.x} ${stone.y}) scale(${stone.scale})`}>
+          <path d="M0 0 Q3 -2 6 0 Q3 -4 0 0Z" fill="#9a928a" opacity="0.7" />
+          <path d="M0 0 Q-2 -1.5 -5 0 Q-2 -3 0 0Z" fill="#7a7268" opacity="0.5" />
+        </g>
+      ))}
+      {pond.lilies.map((lily, i) => (
+        <g key={`lily-${i}`} transform={`translate(${lily.x} ${lily.y}) scale(${lily.scale})`}>
+          <ellipse cx="0" cy="1" rx="5" ry="2.5" fill="#a8c8a0" opacity="0.85" />
+          <path d="M-4 1 Q0 -3 4 1 Q2 4 -4 1Z" fill="#c8dcc0" opacity="0.8" />
+          <circle cx="0" cy="0" r="1.2" fill="#e8c0b0" />
+        </g>
+      ))}
+      {pond.ripples.map((ripple, i) => (
+        <motion.ellipse
+          key={`ripple-${i}`}
+          cx={ripple.x}
+          cy={ripple.y}
+          rx={ripple.rx}
+          ry={ripple.ry}
+          fill="none"
+          stroke="#e8efeb"
+          strokeWidth="0.8"
+          opacity="0.5"
+          animate={{ rx: [ripple.rx, ripple.rx * 1.4, ripple.rx], ry: [ripple.ry, ripple.ry * 1.4, ripple.ry], opacity: [0.5, 0.2, 0.5] }}
+          transition={{ duration: 6 + ripple.delay, repeat: Infinity, ease: "easeInOut" }}
+        />
+      ))}
+    </motion.g>
+  );
+}
+
+function CedarTree({ tree, justWatered }: { tree: { x: number; y: number; trunkHeight: number; canopyScale: number; branches: { d: string; width: number; depth: number }[] }; justWatered?: boolean }) {
+  const cedar = (tree as { cedarExtras?: { roots: { d: string; stroke: string; strokeWidth: number }[]; canopyLayers: { d: string; fill: string; opacity: number }[] } }).cedarExtras;
+  if (!cedar) return null;
+
   return (
     <motion.g
       transform={`translate(${tree.x} ${tree.y})`}
-      animate={justWatered ? { scale: [1, 1.03, 1] } : { rotate: [-0.3, 0.35, -0.3] }}
-      transition={{ duration: justWatered ? 1.2 : 9, repeat: justWatered ? 0 : Infinity, ease: "easeInOut" }}
+      animate={justWatered ? { scale: [1, 1.025, 1] } : { rotate: [-0.15, 0.2, -0.15] }}
+      transition={{ duration: justWatered ? 1.2 : 10, repeat: justWatered ? 0 : Infinity, ease: "easeInOut" }}
       style={{ transformOrigin: `${tree.x}px ${tree.y}px` }}
     >
+      {cedar.roots.map((root, i) => (
+        <path key={`root-${i}`} d={root.d} fill="none" stroke={root.stroke} strokeWidth={root.strokeWidth} strokeLinecap="round" opacity="0.85" />
+      ))}
+      <ellipse cx="0" cy="4" rx="18" ry="6" fill="rgba(62, 64, 40, 0.18)" />
+
+      <g opacity="0.9">
+        <path d={`M-9 0 L-7 ${-tree.trunkHeight} Q-8 ${-tree.trunkHeight - 4} -7 ${-tree.trunkHeight} L-9 0`} fill="#6b5a42" />
+        <path d={`M7 0 L6 ${-tree.trunkHeight} Q6.5 ${-tree.trunkHeight - 3} 6 ${-tree.trunkHeight} L7 0`} fill="#5a4a32" opacity="0.7" />
+      </g>
+
       {tree.branches.map((branch, i) => (
         <path
           key={i}
@@ -384,8 +424,37 @@ function CentralTree({ tree, justWatered }: { tree: TreeModel; justWatered?: boo
           strokeLinecap="round"
         />
       ))}
-      {look.render(tree)}
+
+      {cedar.canopyLayers.map((layer, i) => (
+        <motion.path
+          key={`canopy-${i}`}
+          d={layer.d}
+          fill={layer.fill}
+          opacity={layer.opacity}
+          animate={{ scale: [1, 1.012, 1] }}
+          transition={{ duration: 8 + i * 0.4, repeat: Infinity, ease: "easeInOut" }}
+          style={{ transformOrigin: `${tree.x}px ${tree.y - tree.trunkHeight}px` }}
+        />
+      ))}
     </motion.g>
+  );
+}
+
+function StonePlaque() {
+  const textX = 0;
+  const textY = -6;
+  return (
+    <g transform={`translate(${textX} ${textY})`}>
+      <path d="M-28 0 L28 0 L26 14 L-26 14 Z" fill="#a89e8a" stroke="#706860" strokeWidth="0.8" />
+      <path d="M-28 0 L26 0 L25 2 L-27 2 Z" fill="#c4bca6" opacity="0.8" />
+      <path d="M-26 14 L26 14 L25 16 L-27 16 Z" fill="#706860" opacity="0.4" />
+      <text x="0" y="-10" textAnchor="middle" fontSize="5.5" fontFamily="Georgia, serif" fill="#5a5040">
+        9212498CC5
+      </text>
+      <text x="0" y="-3" textAnchor="middle" fontSize="4.2" fontFamily="Georgia, serif" fill="#6b6050" opacity="0.9">
+        Mediterráneo · Cedro
+      </text>
+    </g>
   );
 }
 
@@ -397,7 +466,7 @@ export function GardenSignatureGlyph({ signature }: { signature: GardenSignature
     return (
       <g transform={`rotate(${signature.angle})`}>
         {Array.from({ length: signature.petals }, (_, i) => (
-          <ellipse key={i} cy="-7" rx="3" ry="7" fill={`hsl(${signature.hue} 28% 64%)`} transform={`rotate(${(360 / signature.petals) * i})`} />
+          <ellipse key={i} cy="-7" rx="3" ry="7" fill={`hsl(${signature.hue} 28% 64%)`} transform={`translate(0, -7) rotate(${(360 / signature.petals) * i})`} />
         ))}
         <circle cx="0" cy="0" r="2.5" fill="#c4a35a" />
       </g>

@@ -35,6 +35,7 @@ interface SpiritualState {
   prayForCandle: (id: string) => void;
   waterGarden: (intention: string) => boolean;
   bulkWaterGarden: (intention: string) => boolean;
+  candleFeedback: { type: "error" | "success"; message: string } | null;
 }
 
 const Ctx = createContext<SpiritualState | null>(null);
@@ -46,6 +47,7 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
   const [candles, setCandles] = useState<Candle[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [gardenEvents, setGardenEvents] = useState<GardenEvent[]>([]);
+  const [candleFeedback, setCandleFeedback] = useState<{ type: "error" | "success"; message: string } | null>(null);
 
   useEffect(() => {
     const client = supabase;
@@ -191,7 +193,16 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
         allowed = true;
         return { ...b, vela: b.vela - 1 };
       });
-      if (!allowed) return null;
+      if (!allowed) {
+        setCandleFeedback({
+          type: "error",
+          message:
+            !user
+              ? "Inicia sesión para encender una vela."
+              : "Te faltan velas 🕯️. Completa el Rosario, Laudes o Ángelus para obtener algunas.",
+        });
+        return null;
+      }
 
       const at = now();
       const c: Candle = {
@@ -209,6 +220,7 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
         ...events,
         { id: `garden-candle-${c.id}`, type: "CANDLE_LIT", value: 1, createdAt: c.litAt },
       ]);
+      setCandleFeedback({ type: "success", message: "Tu vela está encendida 🕯️" });
       if (supabase && user) {
         void supabase
           .rpc("commit_candle", { p_intention: c.intention })
@@ -230,12 +242,22 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
         allowed = true;
         return { ...b, vela: b.vela - 1 };
       });
-      if (!allowed) return;
+      if (!allowed) {
+        setCandleFeedback({
+          type: "error",
+          message:
+            !user
+              ? "Inicia sesión para rezar por esta intención."
+              : "Te faltan velas 🕯️. Completa el Rosario, Laudes o Ángelus para obtener algunas.",
+        });
+        return;
+      }
 
       setCandles((cs) =>
         cs.map((c) => (c.id === id && !c.prayedBy.includes("me") ? { ...c, prayedBy: [...c.prayedBy, "me"] } : c)),
       );
       emit({ type: "pray-for-other" });
+      setCandleFeedback({ type: "success", message: "Estás rezando por esta intención 💧" });
       if (supabase && user) {
         void supabase
           .rpc("commit_gift_candle", { p_candle_id: id, p_amount: 1 })
@@ -351,6 +373,7 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
     prayForCandle,
     waterGarden,
     bulkWaterGarden,
+    candleFeedback,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

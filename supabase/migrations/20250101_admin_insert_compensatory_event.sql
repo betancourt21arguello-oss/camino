@@ -11,7 +11,7 @@ security definer
 as $$
 begin
   if not exists (select 1 from profiles where id = auth.uid() and role = 'admin') then
-    raise exception 'Acceso denegado: Se requieren permisos de administrador';
+    raise exception 'Acceso denegado: Se requieren permisos de administrador (auth.uid=%, perfil=%)', auth.uid(), (select id from profiles where id = auth.uid());
   end if;
 
   insert into garden_events(user_id, event_type, value, intention, created_at)
