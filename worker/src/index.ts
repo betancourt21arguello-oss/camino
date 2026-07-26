@@ -129,7 +129,7 @@ async function supabaseUpsertDaily(env: any, date: string, liturgy: any): Promis
 
 async function generateLiturgy(env: any, targetDate?: string): Promise<any> {
   const target = targetDate || getTodayKey();
-  const prompt = `Eres un asistente litúrgico católico experto. Devuelve SOLO JSON válido, sin markdown, sin explicaciones, utilizando un español hispano/latinoamericano (natural, claro y reverente). Usa estas claves exactas para la fecha ${target}:
+  const prompt = `Eres un asistente litúrgico y catequista católico experto. Devuelve SOLO JSON válido, sin markdown, sin explicaciones, utilizando un español hispano/latinoamericano (natural, claro y reverente). Usa estas claves exactas para la fecha ${target}:
 
 date, weekday, season, liturgicalColor, liturgicalRank, isSolemnity, saint.name, saint.title, saint.initial, saint.story, saint.highlights[3], saint.lessons[2], saint.exampleToday, saint.gospelConnection, saint.venezuelaRelevance, saint.prayer, quote.text, quote.ref, gospel.ref, gospel.title, gospel.body, gospel.evangelist, psalm.ref, psalm.title, psalm.body, firstReading.ref, firstReading.title, firstReading.body, secondReading.ref, secondReading.title, secondReading.body, laudes.title, laudes.hour, laudes.mood, laudes.parts[7], vespers.title/hour/mood, compline.title/hour/mood, angelus.title/verses[3]/closingPrayer, reflection, catechism.number/title/text/applyToday, onThisDay.title/category/text/venezuela, messages[5 max], suggestedNovenas[2], marian.source/text/relevant.
 
@@ -140,8 +140,9 @@ REGLAS ESTRICTAS:
 4) MENSAJES MARIANOS: En el array 'messages', PRIORIZA SIEMPRE incluir al menos un mensaje de la Virgen de Betania (María Virgen y Madre Reconciliadora de todos los Pueblos). Completa el resto con Fátima, Lourdes, Medjugorje, Papas (León XIII, Francisco, Juan Pablo II), San José Gregorio Hernández, Santa Madre Carmen Rendiles, Beata María de San José o Carlo Acutis, que resuenen con el evangelio.
 5) ESTRUCTURA DE ORACIONES: Laudes debe tener exactamente 7 partes. Ángelus debe tener 3 versos exactos y la oración final.
 6) SANTO DEL DÍA: Provee una historia rica, destacando su conexión con el evangelio y su relevancia para Venezuela (venezuelaRelevance).
-7) RANGO: Si es domingo o solemnidad, establece isSolemnity=true y liturgicalRank="solemnidad".
-8) FORMATO: Solo utiliza las claves en camelCase listadas. Cero texto fuera del JSON.`;
+7) CATECISMO DEL DÍA: El campo 'catechism' DEBE contener una lección del Catecismo de la Iglesia Católica (CEC) con un número real de párrafo, un título claro, el texto doctrinal completo basado en el CEC, y una aplicación práctica para la vida del católico hoy (applyToday). La enseñanza debe ser fiel al CEC, accesible y pastoral.
+8) RANGO: Si es domingo o solemnidad, establece isSolemnity=true y liturgicalRank="solemnidad".
+9) FORMATO: Solo utiliza las claves en camelCase listadas. Cero texto fuera del JSON.`;
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${env.GEMINI_API_KEY}`,
@@ -183,6 +184,61 @@ REGLAS ESTRICTAS:
   }
   parsed.date = target;
   return parsed;
+}
+
+async function generateCatequesis(env: any, targetDate?: string): Promise<string> {
+  const target = targetDate || getTodayKey();
+  const prompt = `Eres un catequista católico experto en el Catecismo de la Iglesia Católica (CEC). Para la fecha ${target}, genera UNA lección de catequismo que eduque al católico diariamente con la enseñanza de la Iglesia. Devuelve SOLO JSON válido, sin markdown, sin explicaciones, utilizando un español hispano/latinoamericano (natural, claro y reverente). Usa estas claves exactas:
+
+number (el número del CEC, p. ej. "169" o "1846-1848"), title (título breve del tema), text (el desarrollo catequístico completo basado en el CEC, con referencias al Catecismo), applyToday (una aplicación práctica y directa para la vida del católico hoy, con enfoque en la realidad hispana/latinoamericana).
+
+REGLAS ESTRICTAS:
+1) FECHA EXACTA: La lección debe corresponder al ${target}.
+2) NÚMERO DEL CEC: Usa siempre un número real del Catecismo de la Iglesia Católica. No inventes números.
+3) CONTENIDO DOCTRINAL: El texto debe ser una enseñanza clara, fiel y completa del CEC sobre el tema elegido. Usa un lenguaje accesible pero doctrinalmente preciso.
+4) APLICACIÓN: applyToday debe conectar la enseñanza del CEC con la vida cotidiana del católico, con referencias a la realidad hispana/latinoamericana cuando sea posible.
+5) FORMATO: Solo utiliza las claves listadas. Cero texto fuera del JSON.
+6) TONO: Educativo, pastoral, reverente y esperanzador. Dirigido a un católico que busca crecer en su fe diariamente.`;
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${env.GEMINI_API_KEY}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: "application/json" },
+      }),
+    }
+  );
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Gemini catequesis request failed: ${res.status} ${text}`);
+  }
+
+  const data = await res.json();
+  let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+  text = text.replace(/^```(?:json)?\s*[\r\n]/i, "").replace(/[\r\n]*```$/, "").trim();
+  const parsed = JSON.parse(text);
+  if (parsed && typeof parsed === "object") {
+    const snakeToCamel = (obj: any): any => {
+      if (Array.isArray(obj)) return obj.map(snakeToCamel);
+      if (obj && typeof obj === "object") {
+        const out: Record<string, any> = {};
+        for (const key of Object.keys(obj)) {
+          const camel = key
+            .replace(/_([a-z])/g, (_, c) => c.toUpperCase())
+            .replace(/^([A-Z])/, (c) => c.toLowerCase());
+          out[camel] = snakeToCamel(obj[key]);
+        }
+        return out;
+      }
+      return obj;
+    };
+    Object.assign(parsed, snakeToCamel(parsed));
+  }
+  return JSON.stringify(parsed);
 }
 
 async function cachedOrGenerate(env: any): Promise<any> {
@@ -721,6 +777,19 @@ export default {
         await env.DAILY_CACHE.put(targetDate, JSON.stringify(liturgy), { expirationTtl: 172800 });
         await supabaseUpsertDaily(env, targetDate, liturgy);
         return jsonResponse(liturgy);
+      } catch (e: any) {
+        return jsonResponse({ error: e.message }, 500);
+      }
+    }
+
+    if (url.pathname === "/catequesis/generate" && request.method === "POST") {
+      try {
+        const body = await request.json();
+        const targetDate = (body && typeof body === "object" && "date" in body)
+          ? String(body.date)
+          : getTodayKey();
+        const text = await generateCatequesis(env, targetDate);
+        return jsonResponse({ text });
       } catch (e: any) {
         return jsonResponse({ error: e.message }, 500);
       }

@@ -13,7 +13,19 @@ export const FALLBACK_LITURGY: DailyLiturgy = {
   gospel: { ref: "Mateo 13,10-17", title: "¿Por qué les hablas en parábolas?", body: "En aquel tiempo, se acercaron los discípulos a Jesús y le preguntaron: «¿Por qué les hablas en parábolas?». Él les respondió: «A vosotros se os ha concedido conocer los misterios del reino de los cielos, pero a ellos no.»" },
   psalm: { ref: "Salmo 36(35),6-7ab.8-9.10-11", title: "Tú, Señor, eres mi esperanza.", body: "Señor, tu misericordia llega hasta el cielo, tu fidelidad hasta las nubes." },
   firstReading: { ref: "Jeremías 2,1-3.7-8.12-13", title: "Me abandonaron a mí, manantial de aguas vivas.", body: "La palabra del Señor vino a mí: «Ve y proclama a los oídos de Jerusalén...»" },
-  laudes: { title: "Laudes del día", body: "Señor, abre mis labios, y mi boca proclamará tu alabanza." },
+  laudes: {
+    title: "Laudes del día",
+    body: "Señor, abre mis labios, y mi boca proclamará tu alabanza.",
+    hour: "07:00",
+    mood: "dawn",
+    parts: [
+      {
+        kind: "invitatory",
+        label: "Invitatorio",
+        text: "Venid, aclamemos al Señor,\ndemos júbilo a la Roca que nos salva;\nacudamos a su presencia con himnos de alabanza,\ndemos gracias al Señor con cánticos.\nPorque el Señor es un Dios grande,\nsoberano de todos los dioses.",
+      },
+    ],
+  },
   reflection: "Jesús invita a cultivar una escucha interior que transforme la vida.",
   imagePrompt: "Sacred art scene, gentle light",
   imageUrl: "/images/daily.jpg",

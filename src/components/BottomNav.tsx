@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-export type Tab = "camino" | "biblia" | "regla" | "rosario" | "comunidad" | "perfil";
+export type Tab = "camino" | "regla" | "rosario" | "comunidad" | "perfil";
 
 const items: { id: Tab; label: string; icon: ReactNode }[] = [
   {
@@ -9,16 +9,6 @@ const items: { id: Tab; label: string; icon: ReactNode }[] = [
     icon: (
       <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8}>
         <path d="M12 3v18M8 7h8" strokeLinecap="round" />
-      </svg>
-    ),
-  },
-  {
-    id: "biblia",
-    label: "Biblia",
-    icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8}>
-        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
   },

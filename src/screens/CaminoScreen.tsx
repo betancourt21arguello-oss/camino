@@ -431,18 +431,27 @@ export const CaminoScreen: React.FC<Props> = ({
           <ActionCard icon="🌙" title="Completas" sub="Oración de la noche" onClick={() => onOpenReader("compline")} />
         </div>
 
-        <button
-          onClick={() => onOpenReader("first")}
-          className="mt-3 flex w-full items-center justify-between rounded-2xl border border-[#e6e3db] bg-white p-4 text-left"
-        >
-          <div>
-            <div className="font-medium">Primera lectura</div>
-            <div className="text-sm text-[#8a8a90]">{L?.firstReading?.ref ?? "Pendiente"}</div>
+          <div className="mt-3 flex w-full">
+            {L?.firstReading && (
+              <button
+                onClick={() => onOpenReader("first")}
+                className="flex-1 rounded-2xl border border-[#e6e3db] bg-white p-4 text-left"
+              >
+                <div className="font-medium">Primera lectura</div>
+                <div className="text-sm text-[#8a8a90]">{L.firstReading.ref}</div>
+              </button>
+            )}
+
+            {L?.secondReading && (
+              <button
+                onClick={() => onOpenReader("second")}
+                className="ml-3 flex-1 rounded-2xl border border-[#e6e3db] bg-white p-4 text-left"
+              >
+                <div className="font-medium">Segunda lectura</div>
+                <div className="text-sm text-[#8a8a90]">{L.secondReading.ref}</div>
+              </button>
+            )}
           </div>
-          <svg viewBox="0 0 24 24" className="h-5 w-5 text-[#b0b0b5]" fill="none" stroke="currentColor" strokeWidth={2}>
-            <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
 
         {/* Cada asset de WhatsApp aparece según su tag. Laudes/Ángelus también
             viven dentro de sus portales; Evangelio leído y reflexión son accesos separados. */}
@@ -625,31 +634,28 @@ function RelevantMessagesCarousel({
   return (
     <div className="mt-4 px-6">
       <div
-        className="relative min-h-[160px] overflow-hidden rounded-2xl border border-[#e4dcef] bg-[#f5f1fb] select-none"
+        className="overflow-hidden rounded-2xl border border-[#e4dcef] bg-[#f5f1fb] select-none"
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
       >
-        <div className="grid grid-cols-1">
-          {messages.map((msg, i) => (
-            <div
-              key={i}
-              className="col-start-1 row-start-1 p-4 transition-opacity duration-500 ease-in-out"
-              style={{
-                opacity: i === activeIndex ? 1 : 0,
-                pointerEvents: i === activeIndex ? 'auto' : 'none',
-              }}
-            >
-              <div className="text-[10px] tracking-[0.18em] text-[#8a7ab0]">
-                {msg.label || msg.source.toUpperCase()}
-              </div>
-              <p className="mt-1 font-serif-holy text-[15px] leading-relaxed text-[#4a4360]">
-                “{msg.text}”
-              </p>
+        {messages.map((msg, i) => (
+          <div
+            key={i}
+            className={`p-4 transition-opacity duration-500 ease-in-out ${
+              i === activeIndex ? 'block' : 'hidden'
+            }`}
+            style={{ opacity: i === activeIndex ? 1 : 0 }}
+          >
+            <div className="text-[10px] tracking-[0.18em] text-[#8a7ab0]">
+              {msg.label || msg.source.toUpperCase()}
             </div>
-          ))}
-        </div>
+            <p className="mt-1 font-serif-holy text-[15px] leading-relaxed text-[#4a4360]">
+              “{msg.text}”
+            </p>
+          </div>
+        ))}
       </div>
     </div>
   );

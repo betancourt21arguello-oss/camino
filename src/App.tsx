@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useWhatsAppAssets } from "./media/useWhatsAppAssets";
 import { BottomNav, type Tab } from "./components/BottomNav";
 import { CaminoScreen, type ReaderTarget } from "./screens/CaminoScreen";
 import { RosarioScreen } from "./screens/RosarioScreen";
@@ -17,9 +18,7 @@ import { GalleryScreen } from "./screens/GalleryScreen";
 import { AdminPortal } from "./screens/AdminPortal";
 import { AuthCallbackScreen } from "./screens/AuthCallbackScreen";
 import { JORNADA_CATEGORIES, categoriesForTarget, markCategoriesDone } from "./rule/markTasks";
-import { BibliaHomeScreen } from "./screens/biblia/BibliaHomeScreen";
-import { BibliaOnboardingScreen } from "./screens/biblia/BibliaOnboardingScreen";
-import { AuthProvider } from "./auth/AuthProvider";
+import { AuthProvider, useAuth } from "./auth/AuthProvider";
 
 type PrayerKind = "laudes" | "angelus" | "vespers" | "compline";
 const PRAYER_KINDS = new Set<ReaderTarget>(["laudes", "angelus", "vespers", "compline"]);
@@ -129,13 +128,6 @@ function Shell() {
     }
   }, []);
 
-  useEffect(() => {
-    const hash = window.location.hash;
-    if (hash.startsWith('#/biblia') && tab !== 'biblia') {
-      setTab('biblia');
-    }
-  }, []);
-
   return (
     <div
       className="flex min-h-screen items-center justify-center p-0 sm:p-6"
@@ -161,7 +153,6 @@ function Shell() {
                 onOpenAdmin={() => setAdminOpen(true)}
               />
             )}
-            {tab === "biblia" && <BibliaShell />}
             {tab === "regla" && (
               <ReglaScreen onOpenReader={openReader} onStartRosary={() => setTab("rosario")} liturgy={daily.liturgy} />
             )}
@@ -234,5 +225,5 @@ export default function App() {
 }
 
 if (typeof window !== "undefined") {
-  console.log("[camino] bundle loaded", { ts: Date.now() });
+  console.log("[camino] bundle loaded", { ts: Date.now(), deploy: "2026-07-26T07:20:00-06:00" });
 }
