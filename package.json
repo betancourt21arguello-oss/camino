@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "deploy": "npm run build && wrangler pages deploy dist",
-    "test": "vitest"
+    "test": "vitest run --pool=forks"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.109.0",
