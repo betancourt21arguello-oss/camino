@@ -19,6 +19,7 @@ import { AuthCallbackScreen } from "./screens/AuthCallbackScreen";
 import { JORNADA_CATEGORIES, categoriesForTarget, markCategoriesDone } from "./rule/markTasks";
 import { BibliaHomeScreen } from "./screens/biblia/BibliaHomeScreen";
 import { BibliaOnboardingScreen } from "./screens/biblia/BibliaOnboardingScreen";
+import { AuthProvider } from "./auth/AuthProvider";
 
 type PrayerKind = "laudes" | "angelus" | "vespers" | "compline";
 const PRAYER_KINDS = new Set<ReaderTarget>(["laudes", "angelus", "vespers", "compline"]);
