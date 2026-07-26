@@ -1,3 +1,6 @@
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', () => self.clients.claim());
+
 self.addEventListener("fetch", (event) => {
   if (event.request.url.includes("magiclink") || event.request.url.includes("access_token") || event.request.url.includes("refresh_token")) {
     event.respondWith(

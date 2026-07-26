@@ -231,3 +231,7 @@ export default function App() {
     </AuthProvider>
   );
 }
+
+if (typeof window !== "undefined") {
+  console.log("[camino] bundle loaded", { ts: Date.now() });
+}
