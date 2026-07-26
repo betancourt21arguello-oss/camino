@@ -3,12 +3,14 @@ import { assetsByTag } from "../media/registry";
 import type { WhatsAppAsset } from "../media/types";
 import type { DailyLiturgy, LiturgicalEvent } from "../liturgy/types";
 import { todayDayFromLiturgy } from "../liturgy/useDailyLiturgy";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { AnimatePresence } from "framer-motion";
 import { useDailyPrayerPresence } from "../prayer/useDailyPrayerPresence";
 import { resolveCatholicImage, resolveDailyImage, resolveSaintImage } from "../media/imageResolver";
 import { useInstallPrompt } from "../pwa/useInstallPrompt";
 import { InstallBanner } from "../pwa/InstallBanner";
+import { BibliaShell } from "./biblia/BibliaShell";
+import { WORKER_API_BASE } from "../config";
 
 export type ReaderTarget =
   | "gospel"
@@ -53,6 +55,10 @@ export const CaminoScreen: React.FC<Props> = ({
   const [saintOpen, setSaintOpen] = useState(false);
   const [cateOpen, setCateOpen] = useState(false);
   const [onThisOpen, setOnThisOpen] = useState(false);
+  const [bibliaOpen, setBibliaOpen] = useState(false);
+  const [catequesisOpen, setCatequesisOpen] = useState(false);
+  const [catequesisContent, setCatequesisContent] = useState<string | null>(null);
+  const [generatingCatequesis, setGeneratingCatequesis] = useState(false);
   const [resolvedSaint, setResolvedSaint] = useState<string | null>(null);
   const [resolvedDaily, setResolvedDaily] = useState<string>("/images/daily.jpg");
   const laudesAudio = assetsByTag("laudes", assets)[0];
@@ -85,6 +91,25 @@ export const CaminoScreen: React.FC<Props> = ({
   const laudesPresence = useDailyPrayerPresence("laudes");
   const angelusPresence = useDailyPrayerPresence("angelus");
   const install = useInstallPrompt();
+
+  const generateCatequesis = async () => {
+    setGeneratingCatequesis(true);
+    try {
+      const res = await fetch(`${WORKER_API_BASE}/catequesis/generate`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ date: new Date().toISOString().slice(0, 10) }),
+      });
+      if (!res.ok) throw new Error(`Catequesis generate ${res.status}`);
+      const data = await res.json();
+      setCatequesisContent(data.text ?? "");
+      setCatequesisOpen(true);
+    } catch (e: any) {
+      console.error("Catequesis generate failed:", e);
+    } finally {
+      setGeneratingCatequesis(false);
+    }
+  };
 
   return (
     <div className="min-h-full bg-[#f7f6f3] pb-28 text-[#1c1c1e]">
@@ -224,23 +249,35 @@ export const CaminoScreen: React.FC<Props> = ({
         </div>
       )}
 
-      {L?.marian?.relevant && (
-        <div className="mt-4 px-6">
-          <div className="rounded-2xl border border-[#e4dcef] bg-[#f5f1fb] p-4">
-            <div className="text-[10px] tracking-[0.2em] text-[#8a7ab0]">
-              MENSAJE DE LA VIRGEN · {L.marian.source.toUpperCase()}
-            </div>
-            <p className="mt-1 font-serif-holy text-[15px] leading-relaxed text-[#4a4360]">
-              “{L.marian.text}”
-            </p>
-          </div>
-        </div>
-      )}
+      {(() => {
+        const relevantMessages: Array<{ source: string; text: string; label?: string }> = [];
 
-      {/* Mensajes dinámicos de Gemini: santos, papas, advocaciones marianas */}
-      {L?.messages?.filter((m) => m.relevant && m.text).map((m, i) => (
-        <DailyMessage key={i} label={m.source.toUpperCase()} message={m} />
-      ))}
+        if (L?.marian?.relevant && L.marian.text) {
+          relevantMessages.push({ source: L.marian.source, text: L.marian.text, label: `MENSAJE DE LA VIRGEN · ${L.marian.source.toUpperCase()}` });
+        }
+
+        L?.messages?.forEach((m) => {
+          if (m.relevant && m.text) {
+            relevantMessages.push({ source: m.source, text: m.text, label: m.source.toUpperCase() });
+          }
+        });
+
+        if (relevantMessages.length === 0) return null;
+
+        if (relevantMessages.length === 1) {
+          const msg = relevantMessages[0];
+          return (
+            <div className="mt-4 px-6">
+              <div className="rounded-2xl border border-[#e4dcef] bg-[#f5f1fb] p-4">
+                <div className="text-[10px] tracking-[0.18em] text-[#8a7ab0]">{msg.label}</div>
+                <p className="mt-1 font-serif-holy text-[15px] leading-relaxed text-[#4a4360]">“{msg.text}”</p>
+              </div>
+            </div>
+          );
+        }
+
+        return <RelevantMessagesCarousel messages={relevantMessages} />;
+      })()}
 
       {/* Catecismo del día */}
       {L?.catechism && (
@@ -294,6 +331,34 @@ export const CaminoScreen: React.FC<Props> = ({
         </div>
       )}
 
+      {/* Biblia y Catequesis */}
+      <div className="mt-8 px-6">
+        <div className="text-[11px] font-semibold tracking-[0.18em] text-[#9a9a9f]">
+          RECURSOS
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <button
+            onClick={() => setBibliaOpen(true)}
+            className="flex flex-col items-center gap-2 rounded-2xl border border-[#e6e3db] bg-white p-4 text-center transition active:scale-[0.98]"
+          >
+            <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[#1c1c1e] text-white text-lg">📖</span>
+            <span className="text-sm font-medium text-[#1c1c1e]">Biblia</span>
+            <span className="text-[10px] text-[#8a8a90]">Lectura y plan</span>
+          </button>
+          <button
+            onClick={generateCatequesis}
+            disabled={generatingCatequesis}
+            className="flex flex-col items-center gap-2 rounded-2xl border border-[#e6e3db] bg-white p-4 text-center transition active:scale-[0.98] disabled:opacity-50"
+          >
+            <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[#3f6e7a] text-white text-lg">✝</span>
+            <span className="text-sm font-medium text-[#1c1c1e]">Catequesis del día</span>
+            <span className="text-[10px] text-[#8a8a90]">
+              {generatingCatequesis ? "Generando…" : "Gemini AI"}
+            </span>
+          </button>
+        </div>
+      </div>
+
       {/* CTA */}
       <div className="mt-5 px-6">
         <button
@@ -328,29 +393,29 @@ export const CaminoScreen: React.FC<Props> = ({
           />
           <button
             onClick={() => onOpenReader("laudes")}
-            className="col-span-1 flex items-center gap-3 rounded-2xl border border-[#e8dcc8] bg-gradient-to-r from-[#f5f0e8] to-white p-3 text-left shadow-sm transition active:scale-[0.99]"
+            className="col-span-1 relative overflow-hidden rounded-2xl border border-[#f0e4c8] bg-gradient-to-br from-[#fdf8f0] via-[#faf0e0] to-[#f5e6c8] p-5 text-left shadow-sm transition-all duration-300 hover:shadow-lg hover:scale-[1.01] active:scale-[0.99]"
           >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-xl shadow-inner">
-              ☀️
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-[9px] tracking-[0.2em] text-[#a07a3c] font-semibold uppercase">
-                Oración de la mañana
+            <div className="absolute top-0 right-0 h-20 w-20 rounded-full bg-[#f5d78a]/20 blur-2xl" />
+            <div className="relative flex items-center gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-[#f5d78a] to-[#e8b84a] text-2xl shadow-md">
+                ☀️
               </div>
-              <div className="font-serif-holy text-sm font-semibold text-[#1c1c1e]">Laudes del día</div>
-              <div className="text-xs text-[#8a8a90]">
-                {laudesAudio ? `${laudesAudio.author} · audio disponible` : "Comienza tu jornada"}
+              <div className="min-w-0 flex-1">
+                <div className="text-[10px] tracking-[0.25em] text-[#c49a3c] font-semibold uppercase">
+                  Oración de la mañana
+                </div>
+                <div className="mt-1 font-serif-holy text-lg font-semibold text-[#2a2010]">Laudes</div>
+                <div className="mt-1 text-xs text-[#8a7a5a]">
+                  {laudesAudio ? `${laudesAudio.author} · audio` : "Comienza tu jornada"}
+                </div>
               </div>
-            </div>
-            {!!laudesPresence.count && (
-              <div className="flex flex-col items-end gap-0.5 text-[10px] text-[#6e875e]">
-                <div className="flex items-center gap-1">
-                  <span className="h-1 w-1 animate-pulse rounded-full bg-[#6e9f6f]" />
+              {!!laudesPresence.count && (
+                <div className="flex items-center gap-1.5 rounded-full bg-[#f0e8d0] px-2.5 py-1 text-[10px] font-medium text-[#6e875e]">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#6e9f6f]" />
                   {laudesPresence.count}
                 </div>
-                <span>{laudesPresence.count === 1 ? "persona" : "personas"}</span>
-              </div>
-            )}
+              )}
+            </div>
           </button>
           <ActionCard
             icon="🕊️"
@@ -410,6 +475,18 @@ export const CaminoScreen: React.FC<Props> = ({
         </div>
       </div>
 
+      {bibliaOpen && (
+        <div className="absolute inset-0 z-50 bg-black">
+          <div className="flex items-center justify-between px-6 pt-8">
+            <span className="text-lg font-semibold tracking-[0.3em] text-white">BIBLIA</span>
+            <button onClick={() => setBibliaOpen(false)} className="text-white/60 text-2xl leading-none">✕</button>
+          </div>
+          <div className="h-[calc(100%-60px)]">
+            <BibliaShell />
+          </div>
+        </div>
+      )}
+
       {saintOpen && L?.saint && (
         <div className="absolute inset-0 z-50 flex items-end bg-black/45 p-4 backdrop-blur-sm">
           <div className="no-scrollbar max-h-[82dvh] w-full overflow-y-auto rounded-3xl bg-[#faf9f6] p-6">
@@ -466,6 +543,114 @@ export const CaminoScreen: React.FC<Props> = ({
           </div>
         </div>
       )}
+
+      {catequesisOpen && (
+        <div className="absolute inset-0 z-50 flex items-end bg-black/45 p-4 backdrop-blur-sm">
+          <div className="no-scrollbar max-h-[82dvh] w-full overflow-y-auto rounded-3xl bg-[#faf9f6] p-6">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-lg font-semibold tracking-[0.3em] text-[#1c1c1e]">CATEQUESIS DEL DÍA</span>
+              <button onClick={() => setCatequesisOpen(false)} className="text-[#6b6b70] text-2xl leading-none">✕</button>
+            </div>
+            {catequesisContent ? (
+              <div className="whitespace-pre-line font-serif-holy text-[15px] leading-relaxed text-[#24323a]">{catequesisContent}</div>
+            ) : (
+              <p className="text-sm text-[#8a8a90]">No se pudo generar el contenido.</p>
+            )}
+            <button onClick={() => setCatequesisOpen(false)} className="mt-5 h-12 w-full rounded-full bg-[#1c1c1e] text-white">Cerrar</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RelevantMessagesCarousel({
+  messages,
+}: {
+  messages: Array<{ source: string; text: string; label?: string }>;
+}) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const touchState = useRef({ startX: 0, startY: 0 });
+
+  const resetTimer = () => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (messages.length > 1) {
+      timerRef.current = setInterval(() => {
+        setActiveIndex((prev) => (prev + 1) % messages.length);
+      }, 8000);
+    }
+  };
+
+  useEffect(() => {
+    resetTimer();
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [messages.length]);
+
+  const goTo = (i: number) => {
+    const next = Math.max(0, Math.min(i, messages.length - 1));
+    setActiveIndex(next);
+    resetTimer();
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchState.current = { startX: e.touches[0].clientX, startY: e.touches[0].clientY };
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const diffX = e.changedTouches[0].clientX - touchState.current.startX;
+    const diffY = e.changedTouches[0].clientY - touchState.current.startY;
+    if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 10) {
+      if (diffX > 0) goTo(activeIndex - 1);
+      else goTo(activeIndex + 1);
+    }
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    touchState.current = { startX: e.clientX, startY: e.clientY };
+  };
+
+  const handleMouseUp = (e: React.MouseEvent) => {
+    const diffX = e.clientX - touchState.current.startX;
+    const diffY = e.clientY - touchState.current.startY;
+    if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 10) {
+      if (diffX > 0) goTo(activeIndex - 1);
+      else goTo(activeIndex + 1);
+    }
+  };
+
+  return (
+    <div className="mt-4 px-6">
+      <div
+        className="relative min-h-[160px] overflow-hidden rounded-2xl border border-[#e4dcef] bg-[#f5f1fb] select-none"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
+      >
+        <div className="grid grid-cols-1">
+          {messages.map((msg, i) => (
+            <div
+              key={i}
+              className="col-start-1 row-start-1 p-4 transition-opacity duration-500 ease-in-out"
+              style={{
+                opacity: i === activeIndex ? 1 : 0,
+                pointerEvents: i === activeIndex ? 'auto' : 'none',
+              }}
+            >
+              <div className="text-[10px] tracking-[0.18em] text-[#8a7ab0]">
+                {msg.label || msg.source.toUpperCase()}
+              </div>
+              <p className="mt-1 font-serif-holy text-[15px] leading-relaxed text-[#4a4360]">
+                “{msg.text}”
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
