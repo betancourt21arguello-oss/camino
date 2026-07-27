@@ -1,6 +1,170 @@
 import webpush from "web-push";
 
+// Camino API Worker - resilient AI fallback + JSON repair
 let vapidConfigured = false;
+
+const MODEL_FALLBACK_CHAIN = [
+  "gemini-2.5-flash",
+  "gemini-1.5-flash",
+  "gemini-1.5-flash-8b",
+  "gemini-1.5-pro",
+  "gemini-2.5-pro",
+];
+
+const MAX_RETRIES_PER_MODEL = 2;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function generateWithFallback<T>(
+  apiCallFn: (model: string) => Promise<T>,
+  maxRetriesPerModel: number = MAX_RETRIES_PER_MODEL
+): Promise<T> {
+  let lastError: unknown = null;
+
+  for (const model of MODEL_FALLBACK_CHAIN) {
+    for (let attempt = 1; attempt <= maxRetriesPerModel; attempt++) {
+      try {
+        return await apiCallFn(model);
+      } catch (error: any) {
+        lastError = error;
+        const errorMessage = error?.message || String(error);
+        const isTransientError =
+          errorMessage.includes("503") ||
+          errorMessage.includes("429") ||
+          errorMessage.includes("UNAVAILABLE") ||
+          errorMessage.includes("RESOURCE_EXHAUSTED");
+
+        console.warn(
+          `[AI Fallback] ${model} failed (attempt ${attempt}/${maxRetriesPerModel}):`,
+          errorMessage
+        );
+
+        if (isTransientError && attempt < maxRetriesPerModel) {
+          const backoffDelay = Math.pow(2, attempt) * 1000;
+          console.log(`[AI Fallback] Retrying ${model} in ${backoffDelay}ms...`);
+          await sleep(backoffDelay);
+        } else {
+          break;
+        }
+      }
+    }
+
+    console.warn(`[AI Fallback] Moving to next model in fallback chain...`);
+  }
+
+  throw new Error(
+    `All models in fallback chain failed. Last error: ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`
+  );
+}
+
+function repairJson(text: string): string {
+  let result = "";
+  let inString = false;
+  let escapeNext = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+
+    if (escapeNext) {
+      result += char;
+      escapeNext = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      result += char;
+      escapeNext = true;
+      continue;
+    }
+
+    if (char === '"') {
+      if (inString) {
+        const nextNonSpace = text.slice(i + 1).match(/^\s*/)[0];
+        const nextChar = text[i + 1 + nextNonSpace.length];
+        if (nextChar === "," || nextChar === "}" || nextChar === "]" || nextChar === undefined) {
+          inString = false;
+          result += char;
+        } else {
+          result += "\\" + char;
+        }
+      } else {
+        inString = true;
+        result += char;
+      }
+      continue;
+    }
+
+    if (!inString) {
+      if (char === "'") {
+        result += '"';
+        continue;
+      }
+      if (char === "\n" || char === "\r") {
+        continue;
+      }
+      if (char === "," && i + 1 < text.length) {
+        const next = text[i + 1];
+        if (next === "}" || next === "]") {
+          continue;
+        }
+      }
+      if (char === "/" && i + 1 < text.length) {
+        const next = text[i + 1];
+        if (next === "/") {
+          while (i < text.length && text[i] !== "\n") i++;
+          continue;
+        }
+        if (next === "*") {
+          i += 2;
+          while (i < text.length - 1) {
+            if (text[i] === "*" && text[i + 1] === "/") {
+              i += 2;
+              break;
+            }
+            i++;
+          }
+          continue;
+        }
+      }
+    } else if (char === "'" && text[i - 1] !== "\\") {
+      result += "\\'";
+      continue;
+    }
+
+    result += char;
+  }
+
+  return result;
+}
+
+function parseJsonWithRepair(text: string): any {
+  const strategies = [
+    () => JSON.parse(text),
+    () => JSON.parse(repairJson(text)),
+    () => {
+      const cleaned = text
+        .replace(/```json\s*/i, "")
+        .replace(/```/g, "")
+        .replace(/,\s*([}\]])/g, "$1")
+        .replace(/'((?:[^'\\]|\\.)*)'/g, '"$1"')
+        .replace(/\/\/[^\n]*/g, "")
+        .replace(/\/\*[\s\S]*?\*\//g, "");
+      return JSON.parse(cleaned);
+    },
+  ];
+  for (const strategy of strategies) {
+    try {
+      return strategy();
+    } catch {
+      continue;
+    }
+  }
+  throw new Error("Failed to parse JSON after all repair attempts");
+}
 
 function configureVapid(env: any) {
   if (vapidConfigured) return;
@@ -102,7 +266,6 @@ async function supabaseUpsertDaily(env: any, date: string, liturgy: any): Promis
     season: liturgy.season,
     liturgical_color: liturgy.liturgicalColor,
     liturgical_rank: liturgy.liturgicalRank,
-    is_solemnity: liturgy.isSolemnity,
     saint: liturgy.saint ?? null,
     quote: liturgy.quote,
     gospel: liturgy.gospel,
@@ -215,20 +378,22 @@ Estructura JSON requerida:
   "imagePrompt": "Descripción artística en inglés para generar una imagen sacra de alta calidad"
 }`;
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${env.GEMINI_API_KEY}`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          responseMimeType: "application/json",
-          temperature: 0.2,
-          maxOutputTokens: 8192,
-        },
-      }),
-    }
+  const res = await generateWithFallback((model) =>
+    fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseMimeType: "application/json",
+            temperature: 0.2,
+            maxOutputTokens: 8192,
+          },
+        }),
+      }
+    )
   );
 
   if (!res.ok) {
@@ -239,7 +404,14 @@ Estructura JSON requerida:
   const data = await res.json();
   let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
   text = text.replace(/^```(?:json)?\s*[\r\n]/i, "").replace(/[\r\n]*```$/, "").trim();
-  const parsed = JSON.parse(text);
+
+  let parsed: any;
+  try {
+    parsed = parseJsonWithRepair(text);
+  } catch (e) {
+    console.warn("JSON parse failed, using default liturgy:", e);
+    return getDefaultLiturgy(target);
+  }
 
   parsed.date = target;
 
@@ -351,6 +523,34 @@ function getDefaultCompline(): any {
   };
 }
 
+function getDefaultLiturgy(date: string): any {
+  return {
+    date,
+    weekday: "",
+    season: "",
+    liturgicalColor: "",
+    liturgicalRank: "feria",
+    isSolemnity: false,
+    saint: null,
+    quote: { text: "El Señor es mi pastor, nada me falta.", ref: "Salmo 23:1" },
+    gospel: { ref: "", title: "", body: "", evangelist: "" },
+    psalm: { ref: "", title: "", body: "", response: "" },
+    firstReading: { ref: "", title: "", body: "" },
+    secondReading: null,
+    marian: { source: "San José Gregorio Hernández", text: "Confía en la Providencia como lo hizo el Padre de los Pobres.", relevant: true, reason: "" },
+    reflection: "Síntesis del día: confía en el Señor y vive el evangelio con entrega.",
+    catechism: publicDomainCatechism(date),
+    laudes: getDefaultLaudes(),
+    vespers: getDefaultVespers(),
+    compline: getDefaultCompline(),
+    angelus: { title: "Ángelus", body: "", verses: [], closingPrayer: "" },
+    imagePrompt: "",
+    messages: [{ source: "San José Gregorio Hernández", text: "Dios te invita hoy a vivir el evangelio con mayor entrega.", relevant: true }],
+    onThisDay: null,
+    suggestedNovenas: null,
+  };
+}
+
 async function generateBibleDaily(env: any, userId: string, targetDate?: string): Promise<any> {
   const target = targetDate || getTodayKey();
 
@@ -432,16 +632,18 @@ INSTRUCCIONES:
   "mood": "esperanza|paz|fortaleza|gratitud"
 }`;
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${env.GEMINI_API_KEY}`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { responseMimeType: "application/json", temperature: 0.3 },
-      }),
-    }
+  const res = await generateWithFallback((model) =>
+    fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { responseMimeType: "application/json", temperature: 0.3 },
+        }),
+      }
+    )
   );
 
   if (!res.ok) {
@@ -452,7 +654,26 @@ INSTRUCCIONES:
   const data = await res.json();
   let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
   text = text.replace(/^```(?:json)?\s*[\r\n]/i, "").replace(/[\r\n]*```$/, "").trim();
-  const parsed = JSON.parse(text);
+
+  let parsed: any;
+  try {
+    parsed = parseJsonWithRepair(text);
+  } catch (e) {
+    console.warn("Bible daily JSON parse failed, using default:", e);
+    parsed = {
+      date: target,
+      passageRef: "Salmo 23:1",
+      passageText: "El Señor es mi pastor, nada me falta.",
+      contextNote: "Un salmo de confianza en Dios.",
+      reflection: `Hola ${userName}, confía en el Señor como tu pastor.`,
+      prayer: `Señor, te encomiendo a ${userName}.`,
+      action: "Lee un pasaje de la Biblia hoy.",
+      verseOfDay: "Salmo 23:1",
+      suggestedTime: "mañana",
+      theme: "Confianza",
+      mood: "paz",
+    };
+  }
 
   const dailyContent = {
     user_id: userId,
@@ -725,25 +946,27 @@ async function generateImage(env: any, prompt: string): Promise<string> {
   const apiKey = env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY not configured");
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        instances: [{ prompt }],
-        parameters: {
-          sampleCount: 1,
-          aspectRatio: "1:1",
-          personGeneration: "allow_all",
-        },
-      }),
-    }
+  const res = await generateWithFallback((model) =>
+    fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:predict?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          instances: [{ prompt }],
+          parameters: {
+            sampleCount: 1,
+            aspectRatio: "1:1",
+            personGeneration: "allow_all",
+          },
+        }),
+      }
+    )
   );
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Imagen 3 failed: ${res.status} ${text}`);
+    throw new Error(`Image generation failed: ${res.status} ${text}`);
   }
 
   const data = await res.json();

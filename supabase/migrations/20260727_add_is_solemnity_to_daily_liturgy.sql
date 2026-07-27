@@ -1,0 +1,1 @@
+ALTER TABLE public.daily_liturgy ADD COLUMN IF NOT EXISTS is_solemnity boolean NOT NULL DEFAULT false;
