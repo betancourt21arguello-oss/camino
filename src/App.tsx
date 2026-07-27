@@ -105,6 +105,9 @@ function Shell() {
 
   const settleReader = (target: ReaderTarget) => {
     emit({ type: "task-complete" });
+    if (target === "gospel") {
+      emit({ type: "gospel-read" });
+    }
     void markCategoriesDone(user?.id, categoriesForTarget(target as Parameters<typeof categoriesForTarget>[0]));
     setReader(null);
   };

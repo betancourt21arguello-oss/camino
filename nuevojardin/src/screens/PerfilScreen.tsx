@@ -17,6 +17,7 @@ import { cn } from "@/utils/cn";
 type PerfilTab = "jardin" | "intenciones" | "oratorio";
 interface Props { onOpenAuth: () => void; }
 
+/* ── Avatar ─────────────────────────────────────────────────────────────── */
 function Avatar({ name, size = 44 }: { name: string; size?: number }) {
   const initial = name?.charAt(0).toUpperCase() || "?";
   const colors = ["#7a8a5c", "#5a8a7a", "#8a6a5c", "#6a7a8a", "#8a5a6a", "#5a6a8a"];
@@ -29,6 +30,7 @@ function Avatar({ name, size = 44 }: { name: string; size?: number }) {
   );
 }
 
+/* ── Stat card ──────────────────────────────────────────────────────────── */
 function StatCard({ icon, value, label }: { icon: string; value: number; label: string }) {
   return (
     <div className="flex flex-col items-center gap-0.5 rounded-2xl border border-[#e8e4db] bg-white p-3">
@@ -39,6 +41,7 @@ function StatCard({ icon, value, label }: { icon: string; value: number; label: 
   );
 }
 
+/* ── Barra de medida ────────────────────────────────────────────────────── */
 function Meter({ label, value, icon, from, to }: {
   label: string; value: number; icon: string; from: string; to: string;
 }) {
@@ -60,6 +63,7 @@ function Meter({ label, value, icon, from, to }: {
   );
 }
 
+/* ── Modal de riego ─────────────────────────────────────────────────────── */
 function WaterModal({ mode, water, onClose, onConfirm }: {
   mode: "single" | "bulk"; water: number;
   onClose: () => void; onConfirm: (intention: string) => void;
@@ -113,6 +117,7 @@ function WaterModal({ mode, water, onClose, onConfirm }: {
   );
 }
 
+/* ── Historia viva ──────────────────────────────────────────────────────── */
 function MilestoneAccordion({ milestones }: { milestones: GardenState["milestones"] }) {
   const [open, setOpen] = useState(false);
   const [last, ...rest] = milestones;
@@ -124,7 +129,6 @@ function MilestoneAccordion({ milestones }: { milestones: GardenState["milestone
         <div className="text-left">
           <p className="text-[10px] font-semibold uppercase tracking-widest text-[#9a9a9f]">Último hito</p>
           <p className="mt-0.5 text-sm font-medium text-[#1c1c1e]">{last.label}</p>
-          <p className="text-xs text-[#9a9a9f]">{last.detail}</p>
         </div>
         <motion.svg animate={{ rotate: open ? 180 : 0 }} transition={{ duration: 0.2 }}
           viewBox="0 0 24 24" fill="none" stroke="#9a9a9f" strokeWidth={2} width={18} height={18}>
@@ -154,6 +158,7 @@ function MilestoneAccordion({ milestones }: { milestones: GardenState["milestone
   );
 }
 
+/* ── Eventos de demostración (usuarios nuevos / anónimos) ───────────────── */
 function demoEvents(): GardenEvent[] {
   const now = Date.now();
   const mk = (type: GardenEvent["type"], i: number, h = 0): GardenEvent => ({
@@ -171,6 +176,7 @@ function demoEvents(): GardenEvent[] {
   ];
 }
 
+/* ── Pestaña Jardín ─────────────────────────────────────────────────────── */
 function JardinTab({ onOpenAuth, displayName }: { onOpenAuth: () => void; displayName: string }) {
   const { user } = useAuth();
   const {
@@ -181,6 +187,7 @@ function JardinTab({ onOpenAuth, displayName }: { onOpenAuth: () => void; displa
   const identity = user?.id ?? getAnonIdentity();
   const traits = useGardenDna(identity);
 
+  // Si no hay eventos reales aún, se muestra un jardín de demostración
   const isDemo = gardenEvents.length === 0;
   const demoState = useMemo(
     () => aggregateGardenState(demoEvents(), activeIntentions.length),
@@ -193,6 +200,10 @@ function JardinTab({ onOpenAuth, displayName }: { onOpenAuth: () => void; displa
   const canWater = balance.agua >= 1;
   const canBulk = balance.agua > 1;
 
+  /* ── Datos del usuario que personalizan la geometría del jardín ──
+   *  nombre  → nº de pétalos + matiz dominante
+   *  fecha   → curvatura del tronco (día) + especie floral (mes)
+   *  puntos  → escala, frondosidad y profundidad del fractal            */
   const personalInput: PersonalInput = useMemo(() => ({
     name: displayName,
     registeredAt: user?.created_at ? new Date(user.created_at) : new Date(2026, 0, 15),
@@ -209,18 +220,9 @@ function JardinTab({ onOpenAuth, displayName }: { onOpenAuth: () => void; displa
     4: "Jardín cerrado, fuente sellada. La gracia desborda.",
   };
 
-  const handleSingleWater = async (intention: string) => {
-    await waterGarden(intention);
-    setWaterModal(null);
-  };
-
-  const handleBulkWater = async (intention: string) => {
-    await bulkWaterGarden(intention);
-    setWaterModal(null);
-  };
-
   return (
     <div className="space-y-3 pb-2">
+      {/* ── Lienzo del jardín (click para pantalla completa) ── */}
       <motion.div
         className="relative overflow-hidden rounded-2xl border border-[#e8e4db] bg-[#bfe0ee] cursor-zoom-in"
         whileHover={{ scale: 1.01 }}
@@ -231,6 +233,7 @@ function JardinTab({ onOpenAuth, displayName }: { onOpenAuth: () => void; displa
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setFullscreenOpen(true); }}
         aria-label="Abrir jardín en pantalla completa"
       >
+        {/* Pastilla de ADN */}
         <div className="absolute left-3 top-3 z-10 flex items-center gap-2 rounded-full bg-black/45 px-2.5 py-1 backdrop-blur-sm">
           <span className="font-mono text-[10px] font-semibold text-white/85">
             {traits.dna.slice(0, 8).toUpperCase()}
@@ -240,12 +243,14 @@ function JardinTab({ onOpenAuth, displayName }: { onOpenAuth: () => void; displa
           </span>
         </div>
 
+        {/* Nivel */}
         <div className="absolute right-3 top-3 z-10 rounded-full bg-black/45 px-2.5 py-1 backdrop-blur-sm">
           <span className="text-[10px] font-semibold text-[#e8c98a]">
             Nv. {state.level} · {levelTitle(state.level)}
           </span>
         </div>
 
+        {/* Icono de zoom */}
         <div className="absolute right-3 bottom-3 z-10 rounded-full bg-black/40 p-2 backdrop-blur-sm text-white/80">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} width={16} height={16}>
             <circle cx="11" cy="11" r="8" />
@@ -257,6 +262,7 @@ function JardinTab({ onOpenAuth, displayName }: { onOpenAuth: () => void; displa
           <GardenSvg dna={traits} state={state} justWatered={justWatered} personal={personalInput} />
         </div>
 
+        {/* Momento del día + temporada */}
         <div className="absolute bottom-2 left-3 z-10 flex gap-1.5">
           <span className="rounded-full bg-black/40 px-2 py-0.5 text-[9px] uppercase tracking-wider text-white/80 backdrop-blur-sm">
             {TIME_ICON[state.timeOfDay]} {TIME_LABEL[state.timeOfDay]}
@@ -266,6 +272,7 @@ function JardinTab({ onOpenAuth, displayName }: { onOpenAuth: () => void; displa
           </span>
         </div>
 
+        {/* Insignia de riego fresco (24 h) */}
         {state.freshWater && (
           <motion.div
             initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
@@ -281,6 +288,7 @@ function JardinTab({ onOpenAuth, displayName }: { onOpenAuth: () => void; displa
         {PHASE_QUOTE[state.growthPhase]}
       </p>
 
+      {/* ── Botones de riego ── */}
       <div className="flex gap-2">
         <motion.button
           onClick={() => { if (canWater) setWaterModal("single"); }}
@@ -300,6 +308,7 @@ function JardinTab({ onOpenAuth, displayName }: { onOpenAuth: () => void; displa
         )}
       </div>
 
+      {/* ── Medidores vitales ── */}
       <div className="space-y-3 rounded-2xl border border-[#e8e4db] bg-white p-4">
         <Meter label="Salud"  value={state.health}     icon="🌿" from="#7a8a5c" to="#a8c880" />
         <Meter label="Agua"   value={state.waterLevel} icon="💧" from="#3a7a9a" to="#7ac0e0" />
@@ -310,6 +319,7 @@ function JardinTab({ onOpenAuth, displayName }: { onOpenAuth: () => void; displa
         </div>
       </div>
 
+      {/* ── Estadísticas 3×3 ── */}
       <div className="grid grid-cols-3 gap-2">
         <StatCard icon="📿" value={state.totalRosaries}   label="Rosarios" />
         <StatCard icon="🩷" value={state.totalCoronillas} label="Coronillas" />
@@ -322,6 +332,7 @@ function JardinTab({ onOpenAuth, displayName }: { onOpenAuth: () => void; displa
         <StatCard icon="🚿" value={state.totalWaterings}  label="Riegos" />
       </div>
 
+      {/* ── Tu huella en el jardín ── */}
       <div className="rounded-2xl border border-[#e8e4db] bg-white p-4">
         <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-[#9a9a9f]">
           Tu huella en el jardín
@@ -343,6 +354,7 @@ function JardinTab({ onOpenAuth, displayName }: { onOpenAuth: () => void; displa
         </div>
       </div>
 
+      {/* ── Señales del jardín ── */}
       <div className="rounded-2xl border border-[#e8e4db] bg-white p-4">
         <p className="mb-2.5 text-[10px] font-semibold uppercase tracking-widest text-[#9a9a9f]">
           Señales del jardín
@@ -365,8 +377,10 @@ function JardinTab({ onOpenAuth, displayName }: { onOpenAuth: () => void; displa
         </div>
       </div>
 
+      {/* ── Historia viva ── */}
       {state.milestones.length > 0 && <MilestoneAccordion milestones={state.milestones} />}
 
+      {/* ── Aviso demo / login ── */}
       {(isDemo || !user) && (
         <motion.button onClick={onOpenAuth} whileTap={{ scale: 0.98 }}
           className="w-full rounded-2xl border border-[#e6e3db] bg-white p-4 text-center">
@@ -383,10 +397,11 @@ function JardinTab({ onOpenAuth, displayName }: { onOpenAuth: () => void; displa
         {waterModal && (
           <WaterModal mode={waterModal} water={balance.agua}
             onClose={() => setWaterModal(null)}
-            onConfirm={(i) => (waterModal === "bulk" ? handleBulkWater(i) : handleSingleWater(i))} />
+            onConfirm={(i) => (waterModal === "bulk" ? bulkWaterGarden(i) : waterGarden(i))} />
         )}
       </AnimatePresence>
 
+      {/* Pantalla completa del jardín */}
       <GardenFullscreen
         open={fullscreenOpen}
         onClose={() => setFullscreenOpen(false)}
@@ -398,6 +413,7 @@ function JardinTab({ onOpenAuth, displayName }: { onOpenAuth: () => void; displa
   );
 }
 
+/* Rasgo derivado de los datos del usuario */
 function Trait({ icon, label, value, from, swatch }: {
   icon: string; label: string; value: string; from: string; swatch?: string;
 }) {
@@ -429,6 +445,7 @@ function Signal({ ok, text, hint }: { ok: boolean; text: string; hint: string })
   );
 }
 
+/* ── Intenciones ────────────────────────────────────────────────────────── */
 function IntencionesTab() {
   const { activeIntentions } = useSpiritual();
   if (activeIntentions.length === 0) {
@@ -461,6 +478,7 @@ function IntencionesTab() {
   );
 }
 
+/* ── Oratorio ───────────────────────────────────────────────────────────── */
 function OratorioTab() {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -475,6 +493,7 @@ function OratorioTab() {
   );
 }
 
+/* ── Pantalla ───────────────────────────────────────────────────────────── */
 export function PerfilScreen({ onOpenAuth }: Props) {
   const { user, signOut } = useAuth();
   const [tab, setTab] = useState<PerfilTab>("jardin");

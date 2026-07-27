@@ -3,7 +3,7 @@
 //  Tabla en Supabase: spiritual_tasks
 // ============================================================
 
-export type TaskCadence = "daily" | "weekly" | "monthly";
+export type TaskCadence = "daily" | "weekly" | "monthly" | "once";
 export type TaskCategory =
   | "ofrecimiento"
   | "laudes"
@@ -32,6 +32,8 @@ export interface SpiritualTask {
   icon: string;
   /** Días de la semana: 0=dom..6=sáb. Sin definir = todos los días. */
   days?: number[];
+  /** Fecha ISO (YYYY-MM-DD) para la que está programada la tarea. */
+  task_date?: string;
 }
 
 // ============================================================

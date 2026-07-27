@@ -43,31 +43,6 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
   const [syncError, setSyncError] = useState<string | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const waterTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [dailyVelaEvents, setDailyVelaEvents] = useState<Set<string>>(new Set());
-  const dailyVelaRef = useRef<Set<string>>(new Set());
-
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("camino_daily_vela_events");
-      if (saved) {
-        const parsed = new Set(JSON.parse(saved));
-        dailyVelaRef.current = parsed;
-        setDailyVelaEvents(parsed);
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem("camino_daily_vela_events", JSON.stringify([...dailyVelaRef.current]));
-    } catch {
-      // ignore
-    }
-  }, [dailyVelaEvents]);
-
-  const todayKey = () => new Date().toISOString().slice(0, 10);
 
   const activeIntentions = useMemo(
     () => candles.filter((c) => new Date(c.expires_at).getTime() > Date.now()),
@@ -154,18 +129,7 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
 
   /* ── emit ──────────────────────────────────────────────────────────── */
   const emit = useCallback((e: SpiritualEvent) => {
-    let reward = rewardFor(e.type);
-
-    if ((e.type === "gospel-read" || e.type === "rosary-complete") && reward.vela > 0) {
-      const key = `${todayKey()}:${e.type}`;
-      if (dailyVelaRef.current.has(key)) {
-        reward = { ...reward, vela: 0 };
-      } else {
-        dailyVelaRef.current.add(key);
-        setDailyVelaEvents(new Set(dailyVelaRef.current));
-      }
-    }
-
+    const reward = rewardFor(e.type);
     setBalance((prev) => applyReward(prev, reward));
 
     const gType = gardenEventType(e.type);

@@ -8,10 +8,12 @@ interface TaskRow {
   id: string;
   title: string;
   category: TaskCategory;
-  cadence: "daily" | "weekly" | "monthly";
+  cadence: "daily" | "weekly" | "monthly" | "once";
   time: string | null;
   required: boolean;
   done: boolean;
+  task_date: string;
+  days: number[] | null;
 }
 
 const iconFor = (category: TaskCategory) =>
@@ -42,6 +44,8 @@ const mapRow = (row: TaskRow): SpiritualTask => ({
   required: row.required,
   done: row.done,
   icon: iconFor(row.category),
+  task_date: row.task_date,
+  days: row.days ?? undefined,
 });
 
 export function useSpiritualTasks(liturgy: DailyLiturgy | null) {
@@ -71,9 +75,10 @@ export function useSpiritualTasks(liturgy: DailyLiturgy | null) {
         p_is_fasting_day: isFastingDay,
         p_day_of_month: new Date(`${today}T00:00:00`).getDate(),
       });
+      await client.rpc("ensure_recurring_custom_tasks", { p_date: today });
       const { data } = await client
         .from("spiritual_tasks")
-        .select("id,title,category,cadence,time,required,done")
+        .select("id,title,category,cadence,time,required,done,task_date,days")
         .eq("profile_id", user.id)
         .eq("task_date", today)
         .order("time");
@@ -108,18 +113,92 @@ export function useSpiritualTasks(liturgy: DailyLiturgy | null) {
     return !error;
   }, [user]);
 
-  const add = useCallback(async (title: string) => {
+  const add = useCallback(async (title: string, time?: string, taskDate?: string, cadence?: "daily" | "weekly" | "monthly" | "once") => {
     if (!supabase || !user || !title.trim()) return false;
+    const date = taskDate || new Date().toISOString().slice(0, 10);
+    const finalCadence = cadence || "once";
     const { error } = await supabase.from("spiritual_tasks").insert({
       profile_id: user.id,
       title: title.trim(),
       category: "custom",
-      cadence: "daily",
-      task_date: new Date().toISOString().slice(0, 10),
+      cadence: finalCadence,
+      time: time || null,
+      task_date: date,
+      days: null,
+      required: false,
       done: false,
     });
-    return !error;
+    if (error) {
+      console.warn("[camino] Failed to insert custom task:", error.message);
+      return false;
+    }
+    if (finalCadence === "weekly" || finalCadence === "monthly") {
+      await generateRecurringInstances(user.id, title.trim(), time, date, finalCadence);
+    }
+    return true;
   }, [user]);
 
   return { tasks, loading, authenticated: !!user, toggle, add, templates: defaultTasks };
+}
+
+function generateRecurringInstances(
+  userId: string,
+  title: string,
+  time: string | undefined,
+  startDate: string,
+  cadence: "weekly" | "monthly",
+) {
+  if (!supabase) return;
+  const start = new Date(`${startDate}T00:00:00`);
+  const instances: Array<{
+    p_profile_id: string;
+    p_title: string;
+    p_category: string;
+    p_cadence: string;
+    p_time: string | null;
+    p_task_date: string;
+    p_days: number[] | null;
+    p_required: boolean;
+    p_done: boolean;
+  }> = [];
+  if (cadence === "weekly") {
+    for (let i = 7; i <= 28; i += 7) {
+      const d = new Date(start);
+      d.setDate(d.getDate() + i);
+      const dateStr = d.toISOString().slice(0, 10);
+      instances.push({
+        p_profile_id: userId,
+        p_title: title,
+        p_category: "custom",
+        p_cadence: cadence,
+        p_time: time || null,
+        p_task_date: dateStr,
+        p_days: null,
+        p_required: false,
+        p_done: false,
+      });
+    }
+  } else if (cadence === "monthly") {
+    for (let m = 1; m <= 3; m++) {
+      const d = new Date(start);
+      d.setMonth(d.getMonth() + m);
+      const dateStr = d.toISOString().slice(0, 10);
+      instances.push({
+        p_profile_id: userId,
+        p_title: title,
+        p_category: "custom",
+        p_cadence: cadence,
+        p_time: time || null,
+        p_task_date: dateStr,
+        p_days: null,
+        p_required: false,
+        p_done: false,
+      });
+    }
+  }
+  for (const instance of instances) {
+    void supabase.rpc("insert_spiritual_task", instance).catch((err) => {
+      console.warn("[camino] Failed to insert recurring instance:", err);
+    });
+  }
 }

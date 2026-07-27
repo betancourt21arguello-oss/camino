@@ -13,7 +13,6 @@ export const REWARD_TABLE: Record<SpiritualEventType, RewardEntry> = {
   "novena-complete":    { vela: 2, semilla: 3, agua: 2, note: "Novena completada" },
   "coronilla-complete": { vela: 1, semilla: 1, agua: 1, note: "Coronilla rezada" },
   "task-complete":      { vela: 0, semilla: 1, agua: 0, note: "Tarea de la Regla cumplida" },
-  "gospel-read":        { vela: 1, semilla: 0, agua: 0, note: "Evangelio del día leído" },
   "daily-streak":       { vela: 0, semilla: 1, agua: 1, note: "Racha diaria mantenida" },
   "community-join":     { vela: 1, semilla: 1, agua: 1, note: "Oración en comunidad" },
   "candle-lit":         { vela: 0, semilla: 0, agua: 0, note: "Vela encendida" },

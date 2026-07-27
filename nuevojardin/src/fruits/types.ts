@@ -3,7 +3,6 @@ export type SpiritualEventType =
   | "novena-complete"
   | "coronilla-complete"
   | "task-complete"
-  | "gospel-read"
   | "daily-streak"
   | "community-join"
   | "candle-lit"

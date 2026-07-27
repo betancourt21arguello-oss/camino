@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { SpiritualTask } from "../rule/tasks";
+import type { SpiritualTask, TaskCadence } from "../rule/tasks";
 import { useSpiritual } from "../fruits/store";
 import { NotificationsPanel } from "../notifications/NotificationsPanel";
 import { useSpiritualTasks } from "../rule/useSpiritualTasks";
@@ -18,6 +18,9 @@ export function ReglaScreen({ onOpenReader, onStartRosary, liturgy }: Props) {
   const tasks = taskStore.tasks;
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState("");
+  const [taskTime, setTaskTime] = useState("");
+  const [taskDate, setTaskDate] = useState(new Date().toISOString().slice(0, 10));
+  const [taskCadence, setTaskCadence] = useState<TaskCadence>("once");
 
   const daily = useMemo(() => tasks.filter((t) => t.cadence === "daily"), [tasks]);
   const weekly = useMemo(() => tasks.filter((t) => t.cadence === "weekly"), [tasks]);
@@ -27,7 +30,12 @@ export function ReglaScreen({ onOpenReader, onStartRosary, liturgy }: Props) {
     const task = tasks.find((item) => item.id === id);
     if (!task) return;
     const ok = await taskStore.toggle(id, !task.done);
-    if (ok && !task.done) emit({ type: "task-complete" });
+    if (ok && !task.done) {
+      emit({ type: "task-complete" });
+      if (task.category === "gospel") {
+        emit({ type: "gospel-read" });
+      }
+    }
   };
 
   const openTask = (t: SpiritualTask) => {
@@ -42,8 +50,11 @@ export function ReglaScreen({ onOpenReader, onStartRosary, liturgy }: Props) {
 
   const addCustom = async () => {
     if (!draft.trim()) return;
-    await taskStore.add(draft);
+    await taskStore.add(draft, taskTime, taskDate, taskCadence);
     setDraft("");
+    setTaskTime("");
+    setTaskDate(new Date().toISOString().slice(0, 10));
+    setTaskCadence("once");
     setAdding(false);
   };
 
@@ -109,6 +120,40 @@ export function ReglaScreen({ onOpenReader, onStartRosary, liturgy }: Props) {
               placeholder="Nuevo compromiso…"
               className="h-11 w-full bg-transparent px-2 text-sm focus:outline-none"
             />
+            <div className="mt-2 flex gap-2">
+              <input
+                type="time"
+                value={taskTime}
+                onChange={(e) => setTaskTime(e.target.value)}
+                className="h-10 flex-1 rounded-full border border-[#e0ddd4] bg-transparent px-3 text-xs text-[#1c1c1e]"
+              />
+              <input
+                type="date"
+                value={taskDate}
+                onChange={(e) => setTaskDate(e.target.value)}
+                className="h-10 flex-1 rounded-full border border-[#e0ddd4] bg-transparent px-3 text-xs text-[#1c1c1e]"
+              />
+            </div>
+            <div className="mt-2 flex gap-2">
+              {[
+                { value: "once", label: "Una sola vez" },
+                { value: "daily", label: "Diaria" },
+                { value: "weekly", label: "Semanal" },
+                { value: "monthly", label: "Mensual" },
+              ].map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => setTaskCadence(option.value as TaskCadence)}
+                  className={`h-8 flex-1 rounded-full border text-xs ${
+                    taskCadence === option.value
+                      ? "border-[#1c1c1e] bg-[#1c1c1e] text-white"
+                      : "border-[#e0ddd4] text-[#8a8a90]"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
             <div className="mt-2 flex gap-2">
               <button
                 onClick={() => void addCustom()}
