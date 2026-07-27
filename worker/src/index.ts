@@ -80,7 +80,17 @@ async function generateWithProviderFallback<T>(
 
     try {
       console.log(`[AI Provider] Intentando con ${provider.name}...`);
-      return await generateWithFallback((model) => apiCallFn(model, provider.key));
+      const result = await generateWithFallback(async (model) => {
+        const res = await apiCallFn(model, provider.key);
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(
+            `HTTP Error ${res.status} - ${res.statusText}: ${errorText}`
+          );
+        }
+        return res;
+      });
+      return result;
     } catch (error: any) {
       lastError = error;
       console.warn(`[AI Provider] ${provider.name} falló:`, error?.message || error);
@@ -299,6 +309,7 @@ async function supabaseUpsertDaily(env: any, date: string, liturgy: any): Promis
     season: liturgy.season,
     liturgical_color: liturgy.liturgicalColor,
     liturgical_rank: liturgy.liturgicalRank,
+    is_solemnity: liturgy.isSolemnity ?? false,
     saint: liturgy.saint ?? null,
     quote: liturgy.quote,
     gospel: liturgy.gospel,
@@ -634,11 +645,6 @@ Estructura JSON requerida:
     env
   );
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Gemini request failed: ${res.status} ${text}`);
-  }
-
   const data = await res.json();
   let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
   text = text.replace(/^```(?:json)?\s*[\r\n]/i, "").replace(/[\r\n]*```$/, "").trim();
@@ -671,6 +677,18 @@ Estructura JSON requerida:
   }
   if (!parsed.marian || !parsed.marian.text) {
     parsed.marian = parsed.messages[0];
+  }
+  if (!parsed.saint || typeof parsed.saint !== "object" || !parsed.saint.name) {
+    parsed.saint = {
+      name: "San José Gregorio Hernández",
+      title: "Padre de los Pobres",
+      story: "Modelo de caridad y entrega.",
+      highlights: [],
+      lessons: [],
+      gospelConnection: "Entrega y misericordia.",
+      venezuelaRelevance: "Patrono de Venezuela.",
+      prayer: "Intercede por nosotros.",
+    };
   }
 
   if (
@@ -769,7 +787,7 @@ function getDefaultLiturgy(date: string): any {
     liturgicalColor: "",
     liturgicalRank: "feria",
     isSolemnity: false,
-    saint: null,
+    saint: { name: "San José Gregorio Hernández", title: "Padre de los Pobres", story: "Modelo de caridad y entrega.", highlights: [], lessons: [], gospelConnection: "Entrega y misericordia.", venezuelaRelevance: "Patrono de Venezuela.", prayer: "Intercede por nosotros." },
     quote: { text: "El Señor es mi pastor, nada me falta.", ref: "Salmo 23:1" },
     gospel: { ref: "", title: "", body: "", evangelist: "" },
     psalm: { ref: "", title: "", body: "", response: "" },
@@ -884,11 +902,6 @@ INSTRUCCIONES:
     ),
     env
   );
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Gemini bible daily request failed: ${res.status} ${text}`);
-  }
 
   const data = await res.json();
   let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
@@ -1290,11 +1303,6 @@ async function generateImage(env: any, prompt: string): Promise<string> {
     env
   );
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Image generation failed: ${res.status} ${text}`);
-  }
-
   const data = await res.json();
   const prediction = data?.predictions?.[0] ?? data?.candidates?.[0];
   const image = prediction?.image ?? prediction?.bytesBase64Encoded;
@@ -1549,6 +1557,22 @@ export default {
           ? String(body.date)
           : getTodayKey();
         const liturgy = await generateLiturgy(env, targetDate);
+        await env.DAILY_CACHE.put(targetDate, JSON.stringify(liturgy), { expirationTtl: 172800 });
+        await supabaseUpsertDaily(env, targetDate, liturgy);
+        return jsonResponse(liturgy);
+      } catch (e: any) {
+        return jsonResponse({ error: e.message }, 500);
+      }
+    }
+
+    if (url.pathname === "/daily" && request.method === "POST") {
+      try {
+        const body = await request.json();
+        const targetDate = (body && typeof body === "object" && "date" in body)
+          ? String(body.date)
+          : getTodayKey();
+        const liturgy = body;
+        delete liturgy.date;
         await env.DAILY_CACHE.put(targetDate, JSON.stringify(liturgy), { expirationTtl: 172800 });
         await supabaseUpsertDaily(env, targetDate, liturgy);
         return jsonResponse(liturgy);

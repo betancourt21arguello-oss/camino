@@ -161,7 +161,7 @@ export const GardenSvg = memo(function GardenSvg({
         <CentralTree tree={tree} justWatered={justWatered} rawId={rawId} barkGradId={barkGradId} canopyGlowId={canopyGlowId} />
 
         {/* Efectos temporales */}
-        <TransientEffects showRain={showRain} justWatered={justWatered} state={state} />
+        <TransientEffects showRain={showRain} justWatered={justWatered} state={state} lightRays={lightRays} />
       </FilteredEnvironment>
 
       <SignatureBlock signature={signature} />
@@ -399,12 +399,12 @@ function LightsLayer({ lights, contentOpacity }: { lights: any[]; contentOpacity
   );
 }
 
-function TransientEffects({ showRain, justWatered, state }: { showRain: boolean; justWatered: boolean; state: GardenState }) {
+function TransientEffects({ showRain, justWatered, state, lightRays }: { showRain: boolean; justWatered: boolean; state: GardenState; lightRays: Array<{ x: number; width: number; opacity: number }> }) {
   const health = state.health;
   const isDrought = health < 0.25;
   return (
     <>
-      {state.lightRays.map((ray, i) => (
+      {lightRays.map((ray, i) => (
         <motion.path
           key={`ray-${i}`}
           d={`M ${ray.x} 0 L ${ray.x + ray.width} 400 L ${ray.x - ray.width / 2} 400 Z`}
@@ -1167,3 +1167,4 @@ const GardenSignatureGlyph = memo(function GardenSignatureGlyph({ signature }: {
   }
   return <path d="M-9 5 Q0 -12 10 -5 Q3 10 -9 5Z" fill={`hsl(${signature.hue} 28% 52%)`} transform={`rotate(${signature.angle})`} />;
 });
+

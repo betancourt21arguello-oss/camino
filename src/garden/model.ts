@@ -611,7 +611,7 @@ export function buildWildGarden(traits: DnaTraits, state: GardenState): GardenMo
   const sacredGeometry = state.growthPhase === 3 ? (() => {
     const sgRng = createPrng(`${traits.dna}:sacred-geometry`);
     const cx = tree.x;
-    const cy = tree.y - trunkHeight * 0.35;
+    const cy = tree.y - tree.trunkHeight * 0.35;
     const rx = 55 + sgRng() * 20;
     const ry = 28 + sgRng() * 12;
     const rotation = sgRng() * Math.PI;
@@ -706,3 +706,4 @@ export function signatureFromDna(traits: DnaTraits): GardenSignature {
     code: Math.floor(rng() * 65535),
   };
 }
+

@@ -43,7 +43,9 @@ export function AdminPortal({ onClose }: { onClose: () => void }) {
 function GeminiPanel() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState("");
-  const date = new Date().toISOString().slice(0, 10);
+  const [editing, setEditing] = useState(false);
+  const [content, setContent] = useState("");
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
 
   const trigger = async () => {
     setBusy(true);
@@ -62,17 +64,93 @@ function GeminiPanel() {
     setBusy(false);
   };
 
+  const fetchContent = async () => {
+    setBusy(true);
+    setResult("");
+    try {
+      const res = await fetch(`${WORKER_API_BASE}/daily?date=${date}`, {
+        method: "GET",
+      });
+      const data = await res.json();
+      if (res.ok && data) {
+        setContent(JSON.stringify(data, null, 2));
+        setEditing(true);
+        setResult(`✅ Contenido cargado para ${date}`);
+      } else {
+        setResult(`❌ Error ${res.status}: ${data?.error || "Contenido no encontrado"}`);
+      }
+    } catch (e) {
+      setResult(`❌ ${e instanceof Error ? e.message : "Error"}`);
+    }
+    setBusy(false);
+  };
+
+  const saveContent = async () => {
+    setBusy(true);
+    setResult("");
+    try {
+      const parsedContent = JSON.parse(content);
+      const res = await fetch(`${WORKER_API_BASE}/daily`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ date, ...parsedContent }),
+      });
+      const text = await res.text();
+      setResult(res.ok ? `✅ Guardado para ${date}` : `❌ Error ${res.status}: ${text}`);
+      if (res.ok) setEditing(false);
+    } catch (e) {
+      setResult(`❌ ${e instanceof Error ? e.message : "Error al parsear JSON"}`);
+    }
+    setBusy(false);
+  };
+
   return (
     <div className="space-y-4">
       <h2 className="text-lg font-semibold">Push manual de Gemini API</h2>
-      <p className="text-sm text-white/60">Genera el contenido litúrgico para hoy ({date}).</p>
-      <button
-        onClick={trigger}
-        disabled={busy}
-        className="h-12 w-full rounded-2xl bg-[var(--gold)] font-medium text-black disabled:opacity-50"
-      >
-        {busy ? "Generando…" : "Generar contenido del día"}
-      </button>
+      <p className="text-sm text-white/60">Genera o edita el contenido litúrgico para una fecha específica.</p>
+
+      <div className="flex gap-2">
+        <input
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          className="h-12 flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white"
+        />
+        <button
+          onClick={trigger}
+          disabled={busy}
+          className="h-12 w-32 rounded-2xl bg-[var(--gold)] font-medium text-black disabled:opacity-50"
+        >
+          {busy ? "Generando…" : "Generar"}
+        </button>
+        <button
+          onClick={fetchContent}
+          disabled={busy}
+          className="h-12 w-32 rounded-2xl bg-white/10 font-medium text-white disabled:opacity-50"
+        >
+          {busy ? "Cargando…" : "Cargar"}
+        </button>
+      </div>
+
+      {editing && (
+        <div className="space-y-2">
+          <textarea
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-white/30"
+            rows={15}
+            placeholder="Contenido en formato JSON"
+          />
+          <button
+            onClick={saveContent}
+            disabled={busy}
+            className="h-12 w-full rounded-2xl bg-[var(--gold)] font-medium text-black disabled:opacity-50"
+          >
+            {busy ? "Guardando…" : "Guardar cambios"}
+          </button>
+        </div>
+      )}
+
       {result && <p className="text-sm">{result}</p>}
     </div>
   );
