@@ -8,13 +8,23 @@
     "ses_05ccfa793ffeB04VpQ3dgtSUYg": {
       "worktreeId": null,
       "createdAt": "2026-07-27T10:48:02.452Z"
+    },
+    "ses_05c986e6fffeavPm33zDnro1JQ": {
+      "worktreeId": null,
+      "createdAt": "2026-07-27T11:48:21.557Z"
+    },
+    "ses_05c8d5ea6ffeIJNez7fD51rnWG": {
+      "worktreeId": null,
+      "createdAt": "2026-07-27T12:00:26.514Z"
     }
   },
   "tabOrder": {
     "local": [
       "ses_06bdd29b5ffeysXjZLfpmRJwPZ",
       "ses_05ecf0f52ffeMmbh99m51y757m",
-      "ses_05ccfa793ffeB04VpQ3dgtSUYg"
+      "ses_05ccfa793ffeB04VpQ3dgtSUYg",
+      "ses_05c986e6fffeavPm33zDnro1JQ",
+      "ses_05c8d5ea6ffeIJNez7fD51rnWG"
     ]
   },
   "sessionsCollapsed": true

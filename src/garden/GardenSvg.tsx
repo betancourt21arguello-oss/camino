@@ -152,7 +152,7 @@ export const GardenSvg = memo(function GardenSvg({
         <FaunaLayer deer={deer} dove={dove} butterflies={butterflies} particles={particles} health={health} />
 
         {/* Nodos sagrados y estructuras */}
-        <SacredElements sacredNodes={sacredNodes} state={state} />
+        <SacredElements sacredNodes={sacredNodes} state={state} tree={tree} grottoArch={grottoArch} sacredGeometry={sacredGeometry} />
 
         {/* Luces */}
         <LightsLayer lights={lights} contentOpacity={contentOpacity} />
@@ -343,7 +343,7 @@ function FaunaLayer({ deer, dove, butterflies, particles, health }: { deer: any;
   );
 }
 
-function SacredElements({ sacredNodes, state }: { sacredNodes?: any[]; state: GardenState }) {
+function SacredElements({ sacredNodes, state, tree, grottoArch, sacredGeometry }: { sacredNodes?: any[]; state: GardenState; tree: any; grottoArch: any; sacredGeometry: any }) {
   return (
     <>
       {sacredNodes?.map((node, idx) => (
@@ -351,28 +351,28 @@ function SacredElements({ sacredNodes, state }: { sacredNodes?: any[]; state: Ga
       ))}
       {state.growthPhase === 3 && (
         <>
-          {state.grottoArch && (
+          {grottoArch && (
             <GrottoArch
-              x={state.grottoArch.x}
-              width={state.grottoArch.width}
-              height={state.grottoArch.height}
-              treeY={state.treeY}
-              trunkHeight={state.trunkHeight}
-              pillarHang={state.grottoArch.pillarHang}
-              vineCount={state.grottoArch.vineCount}
-              altarX={state.grottoArch.altarX}
-              altarY={state.grottoArch.altarY}
-              vineSeeds={state.grottoArch.vineSeeds}
+              x={grottoArch.x}
+              width={grottoArch.width}
+              height={grottoArch.height}
+              treeY={tree.y}
+              trunkHeight={tree.trunkHeight}
+              pillarHang={grottoArch.pillarHang}
+              vineCount={grottoArch.vineCount}
+              altarX={grottoArch.altarX}
+              altarY={grottoArch.altarY}
+              vineSeeds={grottoArch.vineSeeds}
             />
           )}
-          {state.sacredGeometry && (
+          {sacredGeometry && (
             <SacredGeometry
-              cx={state.sacredGeometry.cx}
-              cy={state.sacredGeometry.cy}
-              rx={state.sacredGeometry.rx}
-              ry={state.sacredGeometry.ry}
-              rotation={state.sacredGeometry.rotation}
-              nodes={state.sacredGeometry.nodes}
+              cx={sacredGeometry.cx}
+              cy={sacredGeometry.cy}
+              rx={sacredGeometry.rx}
+              ry={sacredGeometry.ry}
+              rotation={sacredGeometry.rotation}
+              nodes={sacredGeometry.nodes}
             />
           )}
         </>

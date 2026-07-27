@@ -61,6 +61,39 @@ async function generateWithFallback<T>(
   );
 }
 
+async function generateWithProviderFallback<T>(
+  apiCallFn: (model: string, apiKey: string) => Promise<T>,
+  env: any
+): Promise<T> {
+  const providers = [
+    { name: "AI Studio", key: env.GEMINI_API_KEY },
+    { name: "Vertex AI", key: env.VERTEX_API_KEY },
+  ];
+
+  let lastError: unknown = null;
+
+  for (const provider of providers) {
+    if (!provider.key) {
+      console.warn(`[AI Provider] ${provider.name} no configurado, continuando...`);
+      continue;
+    }
+
+    try {
+      console.log(`[AI Provider] Intentando con ${provider.name}...`);
+      return await generateWithFallback((model) => apiCallFn(model, provider.key));
+    } catch (error: any) {
+      lastError = error;
+      console.warn(`[AI Provider] ${provider.name} falló:`, error?.message || error);
+    }
+  }
+
+  throw new Error(
+    `All AI providers failed. Last error: ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`
+  );
+}
+
 function repairJson(text: string): string {
   let result = "";
   let inString = false;
@@ -318,6 +351,11 @@ async function generateLiturgy(env: any, targetDate?: string): Promise<any> {
 Genera el contenido litúrgico completo y coherente para la fecha: ${target}.
 Devuelve ÚNICAMENTE un objeto JSON válido (sin markdown, sin bloques \`\`\`json).
 
+REGLAS ESTRICTAS DE GENERACIÓN (¡IMPORTANTE!):
+1. EL SANTO DEL DÍA ES OBLIGATORIO: Incluso si el rango litúrgico es "feria", debes buscar el santo de memoria libre o del martirologio romano correspondiente a esta fecha. El objeto "saint" NO PUEDE SER NULL bajo ninguna circunstancia.
+2. TEXTOS BÍBLICOS COMPLETOS: No dejes los campos "body" del Evangelio, Salmo o Primera Lectura vacíos (""). Escribe el texto bíblico completo correspondiente a la fecha.
+3. LONGITUD: Mantén la historia del santo ("story") concisa, máximo 150 palabras para garantizar la correcta formación del JSON.
+
 CONTEXTO DE FUENTES MARIANAS Y SANTO DEL DÍA:
 Fuentes permitidas para el mensaje diario:
 1. Virgen de Betania (Venezuela)
@@ -378,9 +416,9 @@ Estructura JSON requerida:
   "imagePrompt": "Descripción artística en inglés para generar una imagen sacra de alta calidad"
 }`;
 
-  const res = await generateWithFallback((model) =>
+  const res = await generateWithProviderFallback((model, apiKey) =>
     fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -393,7 +431,8 @@ Estructura JSON requerida:
           },
         }),
       }
-    )
+    ),
+    env
   );
 
   if (!res.ok) {
@@ -632,9 +671,9 @@ INSTRUCCIONES:
   "mood": "esperanza|paz|fortaleza|gratitud"
 }`;
 
-  const res = await generateWithFallback((model) =>
+  const res = await generateWithProviderFallback((model, apiKey) =>
     fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -643,7 +682,8 @@ INSTRUCCIONES:
           generationConfig: { responseMimeType: "application/json", temperature: 0.3 },
         }),
       }
-    )
+    ),
+    env
   );
 
   if (!res.ok) {
@@ -861,13 +901,98 @@ async function sendEmail(to: string, subject: string, html: string, env: any) {
 async function processReminders(env: any): Promise<void> {
   const now = new Date();
   const utcHour = now.getUTCHours();
+  const utcMinute = now.getUTCMinutes();
   const today = getTodayKey();
 
-  // Mapa de horas UTC a tipo de tarea
+  // Venezuela is UTC-4
+  const localHour = ((utcHour - 4) % 24 + 24) % 24;
+  const localTimeMinutes = localHour * 60 + utcMinute;
+
+  // 1. 15-minute-before-deadline notifications for pending tasks with a time
+  const allPendingTasks = await supabaseSelect(env, "spiritual_tasks", {
+    task_date: `eq.${today}`,
+    done: "eq.false",
+  });
+
+  for (const task of (allPendingTasks || [])) {
+    if (!task.profile_id || !task.time) continue;
+
+    const [taskHour, taskMinute] = task.time.split(":").map(Number);
+    const taskTimeMinutes = taskHour * 60 + taskMinute;
+    const minutesUntilTask = taskTimeMinutes - localTimeMinutes;
+
+    if (minutesUntilTask === 15) {
+      const notifiedKey = `notified:${today}:${task.profile_id}:${task.id}`;
+      const alreadySent = await env.DAILY_CACHE.get(notifiedKey);
+      if (alreadySent) continue;
+
+      const subs = await supabaseSelect(env, "push_subscriptions", {
+        profile_id: `eq.${task.profile_id}`,
+      });
+
+      for (const sub of subs) {
+        try {
+          const subscription = JSON.parse(sub.subscription || "{}");
+          if (subscription?.endpoint) {
+            await sendPushNotification(env, subscription, {
+              title: "Camino · Recordatorio",
+              body: `Tu tarea "${task.title}" vence en 15 minutos`,
+              url: "/regla",
+            });
+          }
+        } catch (e) {
+          console.error("Push failed for", sub.endpoint, e);
+        }
+      }
+
+      await env.DAILY_CACHE.put(notifiedKey, "1", { expirationTtl: 3600 });
+    }
+  }
+
+  // 2. 6 PM (18:00 local = 22:00 UTC) garden watering reminder
+  if (localHour === 18 && utcMinute === 0) {
+    const allSubs = await supabaseSelect(env, "push_subscriptions", {});
+
+    for (const sub of (allSubs || [])) {
+      if (!sub.profile_id) continue;
+
+      const notifiedKey = `notified:garden:${today}:${sub.profile_id}`;
+      const alreadySent = await env.DAILY_CACHE.get(notifiedKey);
+      if (alreadySent) continue;
+
+      const events = await supabaseSelect(env, "garden_events", {
+        user_id: `eq.${sub.profile_id}`,
+        created_at: `gte.${today}T00:00:00`,
+      });
+
+      const hasWateredToday = (events || []).some(
+        (e: any) => e.event_type === "WATER_GARDEN",
+      );
+
+      if (!hasWateredToday) {
+        try {
+          const subscription = JSON.parse(sub.subscription || "{}");
+          if (subscription?.endpoint) {
+            await sendPushNotification(env, subscription, {
+              title: "Camino · 🌱 Jardín",
+              body: "Aún no has regado tu jardín. ¿Te falta un momento?",
+              url: "/jardin",
+            });
+          }
+        } catch (e) {
+          console.error("Garden push failed for", sub.endpoint, e);
+        }
+
+        await env.DAILY_CACHE.put(notifiedKey, "1", { expirationTtl: 3600 });
+      }
+    }
+  }
+
+  // 3. Hourly task reminders (correct UTC mapping for Venezuela UTC-4)
   const hourTaskMap: Record<number, string> = {
-    7: "laudes",
-    12: "angelus",
-    20: "rosario",
+    11: "laudes",
+    16: "angelus",
+    0: "rosary",
   };
 
   const taskType = hourTaskMap[utcHour];
@@ -877,7 +1002,7 @@ async function processReminders(env: any): Promise<void> {
   const tasks = await supabaseSelect(env, "spiritual_tasks", {
     task_date: `eq.${today}`,
     done: "eq.false",
-    task_type: `eq.${taskType}`,
+    category: `eq.${taskType}`,
   });
 
   if (!tasks || tasks.length === 0) return;
@@ -943,10 +1068,11 @@ async function processReminders(env: any): Promise<void> {
 }
 
 async function generateImage(env: any, prompt: string): Promise<string> {
-  const apiKey = env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error("GEMINI_API_KEY not configured");
+  if (!env.GEMINI_API_KEY && !env.VERTEX_API_KEY) {
+    throw new Error("GEMINI_API_KEY or VERTEX_API_KEY not configured");
+  }
 
-  const res = await generateWithFallback((model) =>
+  const res = await generateWithProviderFallback((model, apiKey) =>
     fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:predict?key=${apiKey}`,
       {
@@ -961,7 +1087,8 @@ async function generateImage(env: any, prompt: string): Promise<string> {
           },
         }),
       }
-    )
+    ),
+    env
   );
 
   if (!res.ok) {
