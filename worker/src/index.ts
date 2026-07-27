@@ -1574,7 +1574,45 @@ export default {
         const liturgy = body;
         delete liturgy.date;
         await env.DAILY_CACHE.put(targetDate, JSON.stringify(liturgy), { expirationTtl: 172800 });
-        await supabaseUpsertDaily(env, targetDate, liturgy);
+        const payload: Record<string, any> = {
+          date: targetDate,
+          weekday: liturgy.weekday,
+          season: liturgy.season,
+          liturgical_color: liturgy.liturgicalColor,
+          liturgical_rank: liturgy.liturgicalRank,
+          saint: liturgy.saint ?? null,
+          quote: liturgy.quote,
+          gospel: liturgy.gospel,
+          psalm: liturgy.psalm,
+          first_reading: liturgy.firstReading ?? liturgy.first_reading ?? null,
+          second_reading: liturgy.secondReading ?? liturgy.second_reading ?? null,
+          laudes: liturgy.laudes ?? null,
+          vespers: liturgy.vespers ?? null,
+          compline: liturgy.compline ?? null,
+          angelus: liturgy.angelus ?? null,
+          catechism: liturgy.catechism ?? null,
+          on_this_day: liturgy.onThisDay ?? null,
+          reflection: liturgy.reflection,
+          image_url: liturgy.imageUrl ?? liturgy.image_url ?? null,
+          messages: liturgy.messages && liturgy.messages.length > 0 ? liturgy.messages : (liturgy.marian ? [liturgy.marian] : null),
+          suggested_novenas: liturgy.suggestedNovenas ?? null,
+          generated_at: new Date().toISOString(),
+        };
+        const url = `${env.SUPABASE_URL}/rest/v1/daily_liturgy`;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: env.SUPABASE_SERVICE_ROLE,
+            Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE}`,
+            Prefer: "resolution=merge-duplicates,return=representation",
+          },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          return jsonResponse({ error: `Supabase upsert failed: ${res.status} ${text}` }, 500);
+        }
         return jsonResponse(liturgy);
       } catch (e: any) {
         return jsonResponse({ error: e.message }, 500);
