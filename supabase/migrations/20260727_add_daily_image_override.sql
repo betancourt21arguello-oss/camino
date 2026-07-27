@@ -9,14 +9,3 @@
 -- This migration documents the feature and ensures columns exist.
 
 ALTER TABLE public.daily_liturgy ADD COLUMN IF NOT EXISTS image_url text;
-
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'daily_liturgy' AND column_name = 'image_url'
-  ) THEN
-    ALTER TABLE public.daily_liturgy ADD COLUMN image_url text;
-  END IF;
-END
-$$;

@@ -99,14 +99,18 @@ export const CaminoScreen: React.FC<Props> = ({
         const r = await resolveSaintImage(L.saint.name, L.saint.imageUrl);
         if (active && r.url) setResolvedSaint(r.url);
       }
-      // Imagen del Evangelio / del día desde ARTE SACRO CATÓLICO (dominio público),
-      // con respaldo genérico si no hay coincidencia.
-      const catholic = await resolveCatholicImage(
-        L?.saint?.name || L?.gospel?.ref || L?.imagePrompt,
-        L?.gospel?.ref,
-      );
-      const daily = catholic ?? (await resolveDailyImage(L?.imageUrl, L?.gospel?.ref, L?.quote?.text));
-      if (active) setResolvedDaily(daily);
+      // Prioridad 1: imagen personalizada desde image_url de daily_liturgy.
+      // Solo si no hay image_url, se resuelve desde arte sacro católico o Wikimedia.
+      if (L?.imageUrl && /^https?:\/\//i.test(L.imageUrl)) {
+        if (active) setResolvedDaily(L.imageUrl);
+      } else {
+        const catholic = await resolveCatholicImage(
+          L?.saint?.name || L?.gospel?.ref || L?.imagePrompt,
+          L?.gospel?.ref,
+        );
+        const daily = catholic ?? (await resolveDailyImage(L?.imageUrl, L?.gospel?.ref, L?.quote?.text));
+        if (active) setResolvedDaily(daily);
+      }
     };
     void run();
     return () => {
