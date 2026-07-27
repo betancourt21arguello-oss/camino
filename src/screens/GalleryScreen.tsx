@@ -1,12 +1,25 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CommunityWorkSvg } from "../community/CommunityWorkSvg";
 import { COMPOSITION_LABELS } from "../community/composition";
-import { loadGallery } from "../community/gallery";
+import { loadGallery, loadGalleryFromSupabase } from "../community/gallery";
 import type { CommunityWorkSeed } from "../community/types";
 
 export function GalleryScreen({ onClose }: { onClose: () => void }) {
-  const works = useMemo(() => loadGallery(), []);
+  const [works, setWorks] = useState<CommunityWorkSeed[]>([]);
   const [selected, setSelected] = useState<CommunityWorkSeed | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const local = loadGallery();
+    loadGalleryFromSupabase().then((remote) => {
+      if (cancelled) return;
+      const merged = new Map<string, CommunityWorkSeed>();
+      for (const w of remote) merged.set(w.id, w);
+      for (const w of local) merged.set(w.id, w);
+      setWorks(Array.from(merged.values()).sort((a, b) => b.completedAt - a.completedAt).slice(0, 40));
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   return (
     <div className="absolute inset-0 z-50 flex flex-col bg-[#f7f6f3] text-[#1c1c1e]">

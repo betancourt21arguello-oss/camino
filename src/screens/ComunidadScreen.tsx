@@ -47,7 +47,7 @@ function CandleGlyph({
 }
 
 export function ComunidadScreen() {
-  const { candles, lightCandle, prayForCandle, candleFeedback, balance } = useSpiritual();
+  const { candles, lightCandle, prayForCandle, candleFeedback, balance, syncError } = useSpiritual();
   const [tab, setTab] = useState<"intenciones" | "reflexiones">("intenciones");
   const [selected, setSelected] = useState<Candle | null>(null);
   const [composing, setComposing] = useState(false);
@@ -60,6 +60,12 @@ export function ComunidadScreen() {
   return (
     <div className="min-h-full bg-[#f7f6f3] pb-28 text-[#1c1c1e]">
       <h1 className="pt-10 text-center text-2xl font-semibold">Comunidad</h1>
+
+      {syncError && (
+        <div className="mx-auto mt-4 max-w-sm rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-center text-sm text-red-800">
+          {syncError.message}
+        </div>
+      )}
 
       <div className="mt-6 flex justify-center">
         <div className="flex rounded-full bg-[#e9e7e0] p-1">

@@ -36,6 +36,7 @@ interface SpiritualState {
   waterGarden: (intention: string) => boolean;
   bulkWaterGarden: (intention: string) => boolean;
   candleFeedback: { type: "error" | "success"; message: string } | null;
+  syncError: { message: string } | null;
 }
 
 const Ctx = createContext<SpiritualState | null>(null);
@@ -48,6 +49,77 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [gardenEvents, setGardenEvents] = useState<GardenEvent[]>([]);
   const [candleFeedback, setCandleFeedback] = useState<{ type: "error" | "success"; message: string } | null>(null);
+  const [syncError, setSyncError] = useState<{ message: string } | null>(null);
+
+  const reload = useCallback(async () => {
+    const client = supabase;
+    if (!client || !user) return;
+    const [fruitRes, candleRes, eventRes, prayedRes] = await Promise.all([
+      client.from("fruits").select("vela,semilla,agua").eq("profile_id", user.id).maybeSingle(),
+      client
+        .from("candles")
+        .select("id,intention,lit_at,expires_at,owner_id")
+        .gt("expires_at", new Date().toISOString()),
+      client
+        .from("garden_events")
+        .select("id,event_type,value,created_at,intention")
+        .eq("user_id", user.id)
+        .order("created_at"),
+      client
+        .from("intentions")
+        .select("candle_id")
+        .eq("pray_for_id", user.id),
+    ]);
+    if (fruitRes.error) {
+      setSyncError({ message: `Error cargando frutas: ${fruitRes.error.message}` });
+    } else {
+      const f = fruitRes.data;
+      setBalance({ vela: f?.vela ?? 0, semilla: f?.semilla ?? 0, agua: f?.agua ?? 0 });
+    }
+    if (candleRes.error) {
+      setSyncError({ message: `Error cargando velas: ${candleRes.error.message}` });
+      setCandles([]);
+    } else {
+      const prayed = new Set((prayedRes.data ?? []).map((row: { candle_id: string }) => row.candle_id));
+      setCandles(
+        ((candleRes.data ?? []) as Array<{
+          id: string;
+          intention: string;
+          lit_at: string;
+          expires_at: string;
+          owner_id: string;
+        }>).map((row) => ({
+          id: row.id,
+          intention: row.intention,
+          ownerName: row.owner_id === user.id ? "Tú" : "Comunidad",
+          ownerHue: row.owner_id === user.id ? 45 : 210,
+          litAt: new Date(row.lit_at).getTime(),
+          expiresAt: new Date(row.expires_at).getTime(),
+          prayedBy: prayed.has(row.id) ? ["me"] : [],
+          mine: row.owner_id === user.id,
+        })),
+      );
+    }
+    if (eventRes.error) {
+      setSyncError({ message: `Error cargando eventos del jardín: ${eventRes.error.message}` });
+    } else {
+      setGardenEvents(
+        ((eventRes.data ?? []) as Array<{
+          id: string;
+          event_type: GardenEvent["type"];
+          value: number;
+          created_at: string;
+          intention?: string | null;
+        }>).map((row) => ({
+          id: row.id,
+          type: row.event_type,
+          value: row.value,
+          createdAt: new Date(row.created_at).getTime(),
+          meta: row.intention ? { intention: row.intention } : undefined,
+        })),
+      );
+    }
+  }, [user]);
 
   useEffect(() => {
     const client = supabase;
@@ -55,95 +127,30 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
       setBalance({ vela: 0, semilla: 0, agua: 0 });
       setCandles([]);
       setGardenEvents([]);
+      setSyncError(null);
       return;
     }
     let active = true;
-    const load = async () => {
-      const [fruitRes, candleRes, eventRes, prayedRes] = await Promise.all([
-        client.from("fruits").select("vela,semilla,agua").eq("profile_id", user.id).maybeSingle(),
-        client
-          .from("candles")
-          .select("id,intention,lit_at,expires_at,owner_id")
-          .gt("expires_at", new Date().toISOString()),
-        client
-          .from("garden_events")
-          .select("id,event_type,value,created_at,intention")
-          .eq("user_id", user.id)
-          .order("created_at"),
-        client
-          .from("intentions")
-          .select("candle_id")
-          .eq("pray_for_id", user.id),
-      ]);
-      if (!active) return;
-
-      if (!fruitRes.error) {
-        const f = fruitRes.data;
-        setBalance({ vela: f?.vela ?? 0, semilla: f?.semilla ?? 0, agua: f?.agua ?? 0 });
-      }
-
-      if (!candleRes.error) {
-        const prayed = new Set((prayedRes.data ?? []).map((row: { candle_id: string }) => row.candle_id));
-        setCandles(
-          ((candleRes.data ?? []) as Array<{
-            id: string;
-            intention: string;
-            lit_at: string;
-            expires_at: string;
-            owner_id: string;
-          }>).map((row) => ({
-            id: row.id,
-            intention: row.intention,
-            ownerName: row.owner_id === user.id ? "Tú" : "Comunidad",
-            ownerHue: row.owner_id === user.id ? 45 : 210,
-            litAt: new Date(row.lit_at).getTime(),
-            expiresAt: new Date(row.expires_at).getTime(),
-            prayedBy: prayed.has(row.id) ? ["me"] : [],
-            mine: row.owner_id === user.id,
-          })),
-        );
-      } else {
-        setCandles([]);
-      }
-
-      if (!eventRes.error) {
-        setGardenEvents(
-          ((eventRes.data ?? []) as Array<{
-            id: string;
-            event_type: GardenEvent["type"];
-            value: number;
-            created_at: string;
-            intention?: string | null;
-          }>).map((row) => ({
-            id: row.id,
-            type: row.event_type,
-            value: row.value,
-            createdAt: new Date(row.created_at).getTime(),
-            meta: row.intention ? { intention: row.intention } : undefined,
-          })),
-        );
-      }
-    };
-    void load();
+    void reload();
     const channel = client
       .channel(`spiritual-state-${user.id}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "fruits", filter: `profile_id=eq.${user.id}` },
-        load,
+        reload,
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "garden_events", filter: `user_id=eq.${user.id}` },
-        load,
+        reload,
       )
-      .on("postgres_changes", { event: "*", schema: "public", table: "candles" }, load)
+      .on("postgres_changes", { event: "*", schema: "public", table: "candles" }, reload)
       .subscribe();
     return () => {
       active = false;
       void client.removeChannel(channel);
     };
-  }, [user]);
+  }, [user, reload]);
 
   const applyFruits = useCallback((fruits: Partial<FruitBalance>, note: string) => {
     setBalance((b: FruitBalance) => ({
@@ -178,11 +185,15 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
           })
           .then(
             () => {},
-            (error) => console.error("Failed to emit spiritual event:", error),
+            (error) => {
+              console.error("Failed to emit spiritual event:", error);
+              setSyncError({ message: `No se pudo guardar el progreso: ${error.message}` });
+              void reload();
+            },
           );
       }
     },
-    [applyFruits, user],
+    [applyFruits, user, reload],
   );
 
   const lightCandle = useCallback(
@@ -226,12 +237,17 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
           .rpc("commit_candle", { p_intention: c.intention })
           .then(
             () => {},
-            (error) => console.error("Failed to light candle:", error),
+            (error) => {
+              console.error("Failed to light candle:", error);
+              setCandleFeedback({ type: "error", message: `No se pudo encender la vela: ${error.message}` });
+              setSyncError({ message: `No se pudo guardar la vela: ${error.message}` });
+              void reload();
+            },
           );
       }
       return c;
     },
-    [user],
+    [user, reload],
   );
 
   const prayForCandle = useCallback(
@@ -263,11 +279,16 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
           .rpc("commit_gift_candle", { p_candle_id: id, p_amount: 1 })
           .then(
             () => {},
-            (error) => console.error("Failed to pray for candle:", error),
+            (error) => {
+              console.error("Failed to pray for candle:", error);
+              setCandleFeedback({ type: "error", message: `No se pudo registrar la oración: ${error.message}` });
+              setSyncError({ message: `No se pudo guardar la oración: ${error.message}` });
+              void reload();
+            },
           );
       }
     },
-    [emit, user],
+    [emit, user, reload],
   );
 
   const waterGarden = useCallback(
@@ -303,12 +324,16 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
           .rpc("water_garden", { p_intention: intention || "Paz" })
           .then(
             () => {},
-            (error) => console.error("Failed to water garden:", error),
+            (error) => {
+              console.error("Failed to water garden:", error);
+              setSyncError({ message: `No se pudo regar el jardín: ${error.message}` });
+              void reload();
+            },
           );
       }
       return true;
     },
-    [user],
+    [user, reload],
   );
 
   const bulkWaterGarden = useCallback(
@@ -343,12 +368,16 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
           })
           .then(
             () => {},
-            (error) => console.error("Failed to bulk water garden:", error),
+            (error) => {
+              console.error("Failed to bulk water garden:", error);
+              setSyncError({ message: `No se pudo regar el jardín: ${error.message}` });
+              void reload();
+            },
           );
       }
       return true;
     },
-    [balance.agua, user],
+    [balance.agua, user, reload],
   );
 
   const activeIntentions = useMemo(
@@ -374,6 +403,7 @@ export function SpiritualProvider({ children }: { children: ReactNode }) {
     waterGarden,
     bulkWaterGarden,
     candleFeedback,
+    syncError,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

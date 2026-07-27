@@ -58,7 +58,7 @@ function groupLastMilestones(events: GardenEvent[]) {
 }
 
 export function PerfilScreen({ onOpenAuth }: { onOpenAuth: () => void }) {
-  const { balance, gardenEvents, gardenState, activeIntentions, waterGarden, bulkWaterGarden } = useSpiritual();
+  const { balance, gardenEvents, gardenState, activeIntentions, waterGarden, bulkWaterGarden, syncError } = useSpiritual();
   const { user, signOut } = useAuth();
   const [tab, setTab] = useState<ProfileTab>("jardin");
 
@@ -87,6 +87,12 @@ export function PerfilScreen({ onOpenAuth }: { onOpenAuth: () => void }) {
           </div>
         </div>
       </header>
+
+      {syncError && (
+        <div className="mx-6 mb-3 shrink-0 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-center text-sm text-red-800">
+          {syncError.message}
+        </div>
+      )}
 
       {!user && (
         <div className="mx-6 mb-3 shrink-0 rounded-2xl border border-[#e5dcc3] bg-[#f6efdd] p-3.5">
