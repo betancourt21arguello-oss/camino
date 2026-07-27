@@ -173,7 +173,9 @@ export async function resolveDailyImage(
   quote: string | undefined,
 ): Promise<string> {
   const fallback = "/images/daily.jpg";
+  // Prioritize the custom image URL if it exists
   if (isHttpUrl(imagePromptOrUrl)) return imagePromptOrUrl!;
+
   const subject = imagePromptOrUrl || gospelRef || quote || "Jesus Christ Gospel";
   const catholic = await resolveCatholicImage(subject, gospelRef);
   if (catholic) return catholic;

@@ -4,7 +4,7 @@ import { WORKER_API_BASE } from "../config";
 import { defaultTasks, type TaskCategory } from "../rule/tasks";
 
 export function AdminPortal({ onClose }: { onClose: () => void }) {
-  const [tab, setTab] = useState<"garden" | "gemini" | "upload" | "telegram" | "tasks">("gemini");
+  const [tab, setTab] = useState<"garden" | "gemini" | "upload" | "telegram" | "tasks" | "images">("gemini");
 
   return (
     <div className="absolute inset-0 z-[70] flex flex-col bg-[#0e0e10] text-white">
@@ -15,7 +15,7 @@ export function AdminPortal({ onClose }: { onClose: () => void }) {
       </header>
 
       <nav className="flex shrink-0 gap-1 px-3 pt-3">
-        {(["gemini", "upload", "tasks", "garden", "telegram"] as const).map((t) => (
+        {(["gemini", "upload", "tasks", "garden", "telegram", "images"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -23,7 +23,7 @@ export function AdminPortal({ onClose }: { onClose: () => void }) {
               tab === t ? "bg-[var(--gold)] text-black" : "bg-white/[0.06] text-white/60"
             }`}
           >
-            {t === "gemini" ? "Gemini" : t === "upload" ? "Subir audio" : t === "tasks" ? "Tareas" : t === "garden" ? "Jardín" : "Telegram"}
+            {t === "gemini" ? "Gemini" : t === "upload" ? "Subir audio" : t === "tasks" ? "Tareas" : t === "garden" ? "Jardín" : t === "telegram" ? "Telegram" : "Imágenes"}
           </button>
         ))}
       </nav>
@@ -34,6 +34,7 @@ export function AdminPortal({ onClose }: { onClose: () => void }) {
         {tab === "tasks" && <TasksPanel />}
         {tab === "garden" && <GardenEditor />}
         {tab === "telegram" && <TelegramPanel />}
+        {tab === "images" && <ImagePanel />}
       </div>
     </div>
   );
@@ -637,9 +638,125 @@ function TelegramPanel() {
         <p><strong>4.</strong> Define <code>TELEGRAM_ADMIN_CHAT_ID</code> con tu chat ID.</p>
         <p><strong>5.</strong> El Worker procesa el audio igual que WhatsApp: descarga → R2 → Supabase → Realtime.</p>
       </div>
-      <p className="text-xs text-white/40">
-        El endpoint <code>/telegram</code> usa la misma lógica que <code>/whatsapp</code>. Ver whatsapp.md.
-      </p>
+<p className="text-xs text-white/40">
+         El endpoint <code>/telegram</code> usa la misma lógica que <code>/whatsapp</code>. Ver whatsapp.md.
+       </p>
+     </div>
+   );
+ }
+
+// Image management panel — override saint and daily images
+function ImagePanel() {
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [saintUrl, setSaintUrl] = useState<string>("");
+  const [dailyUrl, setDailyUrl] = useState<string>("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState("");
+
+  const fetchImages = async () => {
+    setBusy(true);
+    setResult("");
+    try {
+      const res = await fetch(`${WORKER_API_BASE}/admin/daily-images?date=${encodeURIComponent(date)}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setSaintUrl(data.saintImageUrl ?? "");
+      setDailyUrl(data.dailyImageUrl ?? "");
+      setResult(`✅ Imágenes cargadas para ${date}`);
+    } catch (e) {
+      setResult(`❌ ${e instanceof Error ? e.message : "Error"}`);
+    }
+    setBusy(false);
+  };
+
+  const saveImages = async () => {
+    if (!saintUrl && !dailyUrl) {
+      setResult("⚠️ No hay imágenes para guardar. Ingresa al menos una URL.");
+      return;
+    }
+    setBusy(true);
+    setResult("");
+    try {
+      const res = await fetch(`${WORKER_API_BASE}/admin/daily-images`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ date, saintImageUrl: saintUrl || null, dailyImageUrl: dailyUrl || null }),
+      });
+      const text = await res.text();
+      setResult(res.ok ? `✅ Imágenes guardadas para ${date}` : `❌ Error ${res.status}: ${text}`);
+    } catch (e) {
+      setResult(`❌ ${e instanceof Error ? e.message : "Error"}`);
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div className="space-y-4">
+      <h2 className="text-lg font-semibold">Gestionar imágenes del día</h2>
+      <p className="text-sm text-white/60">Ingresa las URLs de imágenes publicadas para el santo del día y la imagen principal del evangelio.</p>
+
+      <div className="space-y-2">
+        <label className="text-xs font-medium uppercase tracking-wider text-white/50">Fecha</label>
+        <div className="flex gap-2">
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="h-11 flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white"
+          />
+          <button
+            onClick={fetchImages}
+            disabled={busy}
+            className="h-11 w-32 rounded-2xl bg-white/10 font-medium text-white disabled:opacity-50"
+          >
+            {busy ? "Cargando…" : "Cargar"}
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+          <p className="text-xs font-medium uppercase tracking-wider text-white/50">Imagen del Santo</p>
+          {saintUrl ? (
+            <img src={saintUrl} alt="Santo del día" className="h-24 w-24 rounded-xl object-cover" />
+          ) : (
+            <div className="flex h-24 w-24 items-center justify-center rounded-xl bg-white/5 text-white/30">Sin imagen</div>
+          )}
+          <input
+            value={saintUrl}
+            onChange={(e) => setSaintUrl(e.target.value)}
+            placeholder="URL de la imagen del santo"
+            className="h-10 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/30"
+          />
+        </div>
+
+        <div className="space-y-2 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+          <p className="text-xs font-medium uppercase tracking-wider text-white/50">Imagen del Evangelio</p>
+          {dailyUrl ? (
+            <img src={dailyUrl} alt="Evangelio del día" className="h-24 w-24 rounded-xl object-cover" />
+          ) : (
+            <div className="flex h-24 w-24 items-center justify-center rounded-xl bg-white/5 text-white/30">Sin imagen</div>
+          )}
+          <input
+            value={dailyUrl}
+            onChange={(e) => setDailyUrl(e.target.value)}
+            placeholder="URL de la imagen del día"
+            className="h-10 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/30"
+          />
+        </div>
+      </div>
+
+      {(saintUrl || dailyUrl) && (
+        <button
+          onClick={saveImages}
+          disabled={busy}
+          className="h-12 w-full rounded-2xl bg-[var(--gold)] font-medium text-black disabled:opacity-50"
+        >
+          {busy ? "Guardando…" : "Guardar imágenes"}
+        </button>
+      )}
+
+      {result && <p className="text-sm">{result}</p>}
     </div>
   );
 }

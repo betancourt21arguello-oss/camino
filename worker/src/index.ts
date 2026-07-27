@@ -1628,34 +1628,107 @@ export default {
     }
 
     if (url.pathname === "/bible/daily" && request.method === "POST") {
-      try {
-        const body: any = await request.json().catch(() => ({}));
-        const userId = typeof body?.user_id === "string" ? body.user_id : "";
-        const targetDate = typeof body?.date === "string" && body.date ? body.date : getTodayKey();
-        if (!userId) return jsonResponse({ error: "Missing user_id" }, 400);
+       try {
+         const body: any = await request.json().catch(() => ({}));
+         const userId = typeof body?.user_id === "string" ? body.user_id : "";
+         const targetDate = typeof body?.date === "string" && body.date ? body.date : getTodayKey();
+         if (!userId) return jsonResponse({ error: "Missing user_id" }, 400);
 
-        let content = null;
-        try {
-          const existing = await supabaseSelect(env, 'user_bible_daily_content', {
-            user_id: `eq.${encodeURIComponent(userId)}`,
-            date: `eq.${encodeURIComponent(targetDate)}`,
-          });
-          content = existing?.[0] || null;
-        } catch {
-          content = null;
-        }
+         let content = null;
+         try {
+           const existing = await supabaseSelect(env, 'user_bible_daily_content', {
+             user_id: `eq.${encodeURIComponent(userId)}`,
+             date: `eq.${encodeURIComponent(targetDate)}`,
+           });
+           content = existing?.[0] || null;
+         } catch {
+           content = null;
+         }
 
-        if (!content) {
-          content = await generateBibleDaily(env, userId, targetDate);
-        }
+         if (!content) {
+           content = await generateBibleDaily(env, userId, targetDate);
+         }
 
-        return jsonResponse(content);
-      } catch (e: any) {
-        return jsonResponse({ error: e.message }, 500);
-      }
-    }
+         return jsonResponse(content);
+       } catch (e: any) {
+         return jsonResponse({ error: e.message }, 500);
+       }
+     }
 
-    return new Response("Not Found", { status: 404, headers: corsHeaders() });
+     if (url.pathname === "/admin/upload-image" && request.method === "POST") {
+       try {
+         const formData = await request.formData();
+         const file = formData.get("file") as File | null;
+         const kind = (formData.get("kind") as string) || "daily";
+         const targetDate = (formData.get("date") as string) || getTodayKey();
+
+         if (!file || !(file instanceof Blob)) {
+           return jsonResponse({ error: "Missing file" }, 400);
+         }
+
+         const ext = file.name.split(".").pop() || "jpg";
+         const mimeType = file.type || "image/jpeg";
+         const key = `images/${kind}/${targetDate}/${Date.now()}.${ext}`;
+         const bytes = new Uint8Array(await file.arrayBuffer());
+         await env.CAMINO_IMAGES.put(key, bytes, {
+           httpMetadata: { contentType: mimeType },
+         });
+
+         const baseUrl = env.R2_IMAGES_BASE_URL || "https://images.camino.app";
+         const imageUrl = `${baseUrl}/${key}`;
+         return jsonResponse({ url: imageUrl });
+       } catch (e: any) {
+         return jsonResponse({ error: e.message }, 500);
+       }
+     }
+
+     if (url.pathname === "/admin/daily-images" && request.method === "GET") {
+       try {
+         const targetDate = url.searchParams.get("date") || getTodayKey();
+         const row = await supabaseFetchDaily(env, targetDate);
+         if (!row) return jsonResponse({ error: "Not found" }, 404);
+         return jsonResponse({
+           saintImageUrl: row.saint?.imageUrl ?? null,
+           dailyImageUrl: row.imageUrl ?? null,
+         });
+       } catch (e: any) {
+         return jsonResponse({ error: e.message }, 500);
+       }
+     }
+
+     if (url.pathname === "/admin/daily-images" && request.method === "POST") {
+       try {
+         const body: any = await request.json().catch(() => ({}));
+         const targetDate = typeof body?.date === "string" && body.date ? body.date : getTodayKey();
+         const saintImageUrl = typeof body?.saintImageUrl === "string" ? body.saintImageUrl : null;
+         const dailyImageUrl = typeof body?.dailyImageUrl === "string" ? body.dailyImageUrl : null;
+
+         let existing: any = null;
+         try {
+           existing = await supabaseFetchDaily(env, targetDate);
+         } catch {
+           // no existing record
+         }
+
+         if (!existing) {
+           return jsonResponse({ error: "No daily liturgy record found for this date. Generate it first." }, 404);
+         }
+
+         if (saintImageUrl !== null) {
+           existing.saint = { ...(existing.saint || {}), imageUrl: saintImageUrl };
+         }
+         if (dailyImageUrl !== null) {
+           existing.imageUrl = dailyImageUrl;
+         }
+
+         await supabaseUpsertDaily(env, targetDate, existing);
+         return jsonResponse(existing);
+       } catch (e: any) {
+         return jsonResponse({ error: e.message }, 500);
+       }
+     }
+
+     return new Response("Not Found", { status: 404, headers: corsHeaders() });
   },
 
   async scheduled(_event: any, env: any, _ctx: ExecutionContext): Promise<void> {
