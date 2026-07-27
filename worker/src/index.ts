@@ -1655,34 +1655,93 @@ export default {
        }
      }
 
-     if (url.pathname === "/admin/upload-image" && request.method === "POST") {
-       try {
-         const formData = await request.formData();
-         const file = formData.get("file") as File | null;
-         const kind = (formData.get("kind") as string) || "daily";
-         const targetDate = (formData.get("date") as string) || getTodayKey();
+      if (url.pathname === "/admin/upload-image" && request.method === "POST") {
+        try {
+          const formData = await request.formData();
+          const file = formData.get("file") as File | null;
+          const kind = (formData.get("kind") as string) || "daily";
+          const targetDate = (formData.get("date") as string) || getTodayKey();
 
-         if (!file || !(file instanceof Blob)) {
-           return jsonResponse({ error: "Missing file" }, 400);
-         }
+          if (!file || !(file instanceof Blob)) {
+            return jsonResponse({ error: "Missing file" }, 400);
+          }
 
-         const ext = file.name.split(".").pop() || "jpg";
-         const mimeType = file.type || "image/jpeg";
-         const key = `images/${kind}/${targetDate}/${Date.now()}.${ext}`;
-         const bytes = new Uint8Array(await file.arrayBuffer());
-         await env.CAMINO_IMAGES.put(key, bytes, {
-           httpMetadata: { contentType: mimeType },
-         });
+          const ext = file.name.split(".").pop() || "jpg";
+          const mimeType = file.type || "image/jpeg";
+          const key = `images/${kind}/${targetDate}/${Date.now()}.${ext}`;
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          await env.CAMINO_IMAGES.put(key, bytes, {
+            httpMetadata: { contentType: mimeType },
+          });
 
-         const baseUrl = env.R2_IMAGES_BASE_URL || "https://images.camino.app";
-         const imageUrl = `${baseUrl}/${key}`;
-         return jsonResponse({ url: imageUrl });
-       } catch (e: any) {
-         return jsonResponse({ error: e.message }, 500);
-       }
-     }
+          const baseUrl = env.R2_IMAGES_BASE_URL || "https://images.camino.app";
+          const imageUrl = `${baseUrl}/${key}`;
+          return jsonResponse({ url: imageUrl });
+        } catch (e: any) {
+          return jsonResponse({ error: e.message }, 500);
+        }
+      }
 
-     if (url.pathname === "/admin/daily-images" && request.method === "GET") {
+      if (url.pathname === "/admin/upload-audio" && request.method === "POST") {
+        try {
+          const formData = await request.formData();
+          const file = formData.get("file") as File | null;
+          const tag = (formData.get("tag") as string || "canto").toLowerCase().trim();
+          const title = (formData.get("title") as string || "").trim();
+          const author = (formData.get("author") as string || "Admin").trim();
+
+          if (!file || !(file instanceof Blob)) {
+            return jsonResponse({ error: "Missing file" }, 400);
+          }
+          if (!title) {
+            return jsonResponse({ error: "Missing title" }, 400);
+          }
+
+          const allowed = new Set(["laudes", "angelus", "evangelio", "salmo", "reflexion", "canto"]);
+          if (!allowed.has(tag)) {
+            return jsonResponse({ error: "Invalid tag" }, 400);
+          }
+
+          const ext = file.name.split(".").pop() || "ogg";
+          const mimeType = file.type || "audio/ogg";
+          const key = `audio/${tag}/${Date.now()}.${ext}`;
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          await env.CAMINO_AUDIO.put(key, bytes, {
+            httpMetadata: { contentType: mimeType },
+          });
+
+          const supabaseUrl = `${env.SUPABASE_URL}/rest/v1/assets`;
+          const assetRes = await fetch(supabaseUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: env.SUPABASE_SERVICE_ROLE,
+              Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE}`,
+              Prefer: "return=representation",
+            },
+            body: JSON.stringify({
+              tag,
+              title,
+              author,
+              r2_key: key,
+              uploaded_by: "admin",
+              status: "published",
+            }),
+          });
+
+          if (!assetRes.ok) {
+            const text = await assetRes.text();
+            return jsonResponse({ error: `Supabase insert failed: ${assetRes.status} ${text}` }, 500);
+          }
+
+          const assetData = await assetRes.json();
+          return jsonResponse({ ok: true, asset: Array.isArray(assetData) ? assetData[0] : assetData });
+        } catch (e: any) {
+          return jsonResponse({ error: e.message }, 500);
+        }
+      }
+
+      if (url.pathname === "/admin/daily-images" && request.method === "GET") {
        try {
          const targetDate = url.searchParams.get("date") || getTodayKey();
          const row = await supabaseFetchDaily(env, targetDate);
