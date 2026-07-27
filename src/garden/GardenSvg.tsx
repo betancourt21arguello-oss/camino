@@ -209,7 +209,7 @@ function Shadows({ shadows }: { shadows: Array<{ x: number; y: number; rx: numbe
   return (
     <>
       {shadows.map((shadow, i) => (
-        <ellipse key={`shadow-${i}`} cx={shadow.x} cy={shadow.y} rx={shadow.rx} ry={shadow.ry} fill={SHADOW_COLOR} />
+        <ellipse key={`shadow-${i}`} cx={shadow.x} cy={shadow.y} rx={shadow.rx ?? 14} ry={shadow.ry ?? 6} fill={SHADOW_COLOR} />
       ))}
     </>
   );
@@ -501,7 +501,7 @@ function CentralTree({ tree, justWatered, rawId, barkGradId, canopyGlowId }: { t
     <>
       <CedarTree tree={tree} justWatered={justWatered} rawId={rawId} barkGradId={barkGradId} />
       <Robin x={tree.x - 25} y={tree.y - tree.trunkHeight * 0.7} />
-      <ellipse cx={tree.x} cy={tree.y - tree.trunkHeight * 0.35} rx={60 * tree.canopyScale} ry={40 * tree.canopyScale} fill={`url(#${canopyGlowId})`} />
+      <ellipse cx={tree.x} cy={tree.y - tree.trunkHeight * 0.35} rx={60 * (tree.canopyScale ?? 1)} ry={40 * (tree.canopyScale ?? 1)} fill={`url(#${canopyGlowId})`} />
     </>
   );
 }
@@ -1167,4 +1167,5 @@ const GardenSignatureGlyph = memo(function GardenSignatureGlyph({ signature }: {
   }
   return <path d="M-9 5 Q0 -12 10 -5 Q3 10 -9 5Z" fill={`hsl(${signature.hue} 28% 52%)`} transform={`rotate(${signature.angle})`} />;
 });
+
 

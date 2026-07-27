@@ -4,11 +4,11 @@ import webpush from "web-push";
 let vapidConfigured = false;
 
 const MODEL_FALLBACK_CHAIN = [
-  "gemini-2.5-flash",
   "gemini-1.5-flash",
   "gemini-1.5-flash-8b",
   "gemini-1.5-pro",
-  "gemini-2.5-pro",
+  "gemini-1.0-pro",
+  "gemini-pro",
 ];
 
 const MAX_RETRIES_PER_MODEL = 2;
@@ -308,7 +308,6 @@ async function supabaseUpsertDaily(env: any, date: string, liturgy: any): Promis
     weekday: liturgy.weekday,
     season: liturgy.season,
     liturgical_color: liturgy.liturgicalColor,
-    liturgical_rank: liturgy.liturgicalRank,
     is_solemnity: liturgy.isSolemnity ?? false,
     saint: liturgy.saint ?? null,
     quote: liturgy.quote,
@@ -321,11 +320,9 @@ async function supabaseUpsertDaily(env: any, date: string, liturgy: any): Promis
     compline: liturgy.compline ?? null,
     angelus: liturgy.angelus ?? null,
     catechism: liturgy.catechism ?? null,
-    on_this_day: liturgy.onThisDay ?? null,
     reflection: liturgy.reflection,
     image_url: liturgy.imageUrl ?? liturgy.image_url ?? null,
     messages: liturgy.messages && liturgy.messages.length > 0 ? liturgy.messages : (liturgy.marian ? [liturgy.marian] : null),
-    suggested_novenas: liturgy.suggestedNovenas ?? null,
     generated_at: new Date().toISOString(),
   };
   const res = await fetch(url, {
@@ -1574,45 +1571,7 @@ export default {
         const liturgy = body;
         delete liturgy.date;
         await env.DAILY_CACHE.put(targetDate, JSON.stringify(liturgy), { expirationTtl: 172800 });
-        const payload: Record<string, any> = {
-          date: targetDate,
-          weekday: liturgy.weekday,
-          season: liturgy.season,
-          liturgical_color: liturgy.liturgicalColor,
-          liturgical_rank: liturgy.liturgicalRank,
-          saint: liturgy.saint ?? null,
-          quote: liturgy.quote,
-          gospel: liturgy.gospel,
-          psalm: liturgy.psalm,
-          first_reading: liturgy.firstReading ?? liturgy.first_reading ?? null,
-          second_reading: liturgy.secondReading ?? liturgy.second_reading ?? null,
-          laudes: liturgy.laudes ?? null,
-          vespers: liturgy.vespers ?? null,
-          compline: liturgy.compline ?? null,
-          angelus: liturgy.angelus ?? null,
-          catechism: liturgy.catechism ?? null,
-          on_this_day: liturgy.onThisDay ?? null,
-          reflection: liturgy.reflection,
-          image_url: liturgy.imageUrl ?? liturgy.image_url ?? null,
-          messages: liturgy.messages && liturgy.messages.length > 0 ? liturgy.messages : (liturgy.marian ? [liturgy.marian] : null),
-          suggested_novenas: liturgy.suggestedNovenas ?? null,
-          generated_at: new Date().toISOString(),
-        };
-        const url = `${env.SUPABASE_URL}/rest/v1/daily_liturgy`;
-        const res = await fetch(url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            apikey: env.SUPABASE_SERVICE_ROLE,
-            Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE}`,
-            Prefer: "resolution=merge-duplicates,return=representation",
-          },
-          body: JSON.stringify(payload),
-        });
-        if (!res.ok) {
-          const text = await res.text();
-          return jsonResponse({ error: `Supabase upsert failed: ${res.status} ${text}` }, 500);
-        }
+        await supabaseUpsertDaily(env, targetDate, liturgy);
         return jsonResponse(liturgy);
       } catch (e: any) {
         return jsonResponse({ error: e.message }, 500);
