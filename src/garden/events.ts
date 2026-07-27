@@ -44,8 +44,19 @@ export function aggregateGardenState(
   const butterflyCount = Math.min(6, Math.floor(waterLevel / 18));
 
   const lastActivityTime = events.at(-1)?.createdAt ?? 0;
-  const elapsedHours = (Date.now() - lastActivityTime) / (1000 * 60 * 60);
+  const lastWateredAt = events
+    .filter((e) => e.type === "WATER_GARDEN")
+    .sort((a, b) => b.createdAt - a.createdAt)[0]?.createdAt;
+
+  const twentyFourHours = 24 * 60 * 60 * 1000;
+  const recentWatering = !!lastWateredAt && Date.now() - lastWateredAt < twentyFourHours;
+  const healthReferenceTime = recentWatering ? lastWateredAt : lastActivityTime;
+  const elapsedHours = (Date.now() - healthReferenceTime) / (1000 * 60 * 60);
   const health = clamp(1 - elapsedHours / 48, 0, 1);
+
+  const totalDevotional = rosaries + novenas + coronillas;
+  const maturityTier: 1 | 2 | 3 = totalDevotional >= 20 ? 3 : totalDevotional >= 8 ? 2 : 1;
+  const growthPhase: 1 | 2 | 3 = totalDevotional >= 20 ? 3 : totalDevotional >= 8 ? 2 : 1;
 
   const pointsScore =
     rosaries * 10 +
@@ -57,6 +68,22 @@ export function aggregateGardenState(
     streak * 3;
 
   const level = Math.max(0, Math.floor(Math.sqrt(pointsScore / 15)));
+
+  const showEphemeralFlower = !!lastWateredAt && Date.now() - lastWateredAt < twentyFourHours;
+  const showDove = streak >= 7 || community >= 5;
+  const showDeer = waterLevel > 40;
+  const consolidatedRosal = rosaries > 10;
+  const elapsedSinceWater = lastWateredAt ? Date.now() - lastWateredAt : 0;
+  const lifeRatio = Math.max(0, 1 - elapsedSinceWater / twentyFourHours);
+  const wateringEffectStrength = clamp(lifeRatio * health, 0, 1);
+
+  const dewPoints = wateringEffectStrength > 0.05
+    ? [
+        { x: 360, y: 360, r: 120, opacity: 0.12 * wateringEffectStrength },
+        { x: 260, y: 310, r: 80, opacity: 0.08 * wateringEffectStrength },
+        { x: 460, y: 320, r: 90, opacity: 0.09 * wateringEffectStrength },
+      ]
+    : [];
 
   return {
     totalRosaries: rosaries,
@@ -81,5 +108,15 @@ export function aggregateGardenState(
     health,
     pointsScore,
     level,
+    lastWateredAt,
+    maturityTier,
+    growthPhase,
+    showEphemeralFlower,
+    showDove,
+    showDeer,
+    dewPoints,
+    consolidatedRosal,
+    wateringEffectStrength,
+    lifeRatio,
   };
 }

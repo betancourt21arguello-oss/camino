@@ -32,6 +32,7 @@ async function supabaseSelect(env: any, table: string, params: Record<string, st
   const url = `${env.SUPABASE_URL}/rest/v1/${table}?${qs.toString()}`;
   const res = await fetch(url, {
     headers: {
+      Accept: "application/json",
       apikey: env.SUPABASE_SERVICE_ROLE,
       Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE}`,
       Prefer: body ? "return=representation" : "",
@@ -50,6 +51,7 @@ async function supabaseUpsert(env: any, table: string, row: any): Promise<void> 
   const res = await fetch(url, {
     method: "POST",
     headers: {
+      Accept: "application/json",
       "Content-Type": "application/json",
       apikey: env.SUPABASE_SERVICE_ROLE,
       Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE}`,
@@ -67,6 +69,7 @@ async function supabaseFetchDaily(env: any, date: string): Promise<any> {
   const url = `${env.SUPABASE_URL}/rest/v1/daily_liturgy?date=eq.${encodeURIComponent(date)}`;
   const res = await fetch(url, {
     headers: {
+      Accept: "application/json",
       apikey: env.SUPABASE_SERVICE_ROLE,
       Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE}`,
     },
@@ -98,17 +101,24 @@ async function supabaseUpsertDaily(env: any, date: string, liturgy: any): Promis
     weekday: liturgy.weekday,
     season: liturgy.season,
     liturgical_color: liturgy.liturgicalColor,
+    liturgical_rank: liturgy.liturgicalRank,
+    is_solemnity: liturgy.isSolemnity,
     saint: liturgy.saint ?? null,
     quote: liturgy.quote,
     gospel: liturgy.gospel,
     psalm: liturgy.psalm,
     first_reading: liturgy.firstReading ?? liturgy.first_reading ?? null,
     second_reading: liturgy.secondReading ?? liturgy.second_reading ?? null,
-    laudes: liturgy.laudes,
+    laudes: liturgy.laudes ?? null,
+    vespers: liturgy.vespers ?? null,
+    compline: liturgy.compline ?? null,
     angelus: liturgy.angelus ?? null,
+    catechism: liturgy.catechism ?? null,
+    on_this_day: liturgy.onThisDay ?? null,
     reflection: liturgy.reflection,
-    image_url: liturgy.imageUrl ?? null,
-    messages: liturgy.messages ?? (liturgy.marian ? [liturgy.marian] : null),
+    image_url: liturgy.imageUrl ?? liturgy.image_url ?? null,
+    messages: liturgy.messages && liturgy.messages.length > 0 ? liturgy.messages : (liturgy.marian ? [liturgy.marian] : null),
+    suggested_novenas: liturgy.suggestedNovenas ?? null,
     generated_at: new Date().toISOString(),
   };
   const res = await fetch(url, {
@@ -129,20 +139,81 @@ async function supabaseUpsertDaily(env: any, date: string, liturgy: any): Promis
 
 async function generateLiturgy(env: any, targetDate?: string): Promise<any> {
   const target = targetDate || getTodayKey();
-  const prompt = `Eres un asistente litúrgico y catequista católico experto. Devuelve SOLO JSON válido, sin markdown, sin explicaciones, utilizando un español hispano/latinoamericano (natural, claro y reverente). Usa estas claves exactas para la fecha ${target}:
 
-date, weekday, season, liturgicalColor, liturgicalRank, isSolemnity, saint.name, saint.title, saint.initial, saint.story, saint.highlights[3], saint.lessons[2], saint.exampleToday, saint.gospelConnection, saint.venezuelaRelevance, saint.prayer, quote.text, quote.ref, gospel.ref, gospel.title, gospel.body, gospel.evangelist, psalm.ref, psalm.title, psalm.body, firstReading.ref, firstReading.title, firstReading.body, secondReading.ref, secondReading.title, secondReading.body, laudes.title, laudes.hour, laudes.mood, laudes.parts[7], vespers.title/hour/mood, compline.title/hour/mood, angelus.title/verses[3]/closingPrayer, reflection, catechism.number/title/text/applyToday, onThisDay.title/category/text/venezuela, messages[5 max], suggestedNovenas[2], marian.source/text/relevant.
+  let previousSource = "";
+  try {
+    const yesterday = new Date(new Date(target).getTime() - 86400000).toISOString().slice(0, 10);
+    const prevLiturgy = await supabaseFetchDaily(env, yesterday);
+    if (prevLiturgy?.marian?.source) {
+      previousSource = prevLiturgy.marian.source;
+    }
+  } catch (e) {
+    console.warn("No se pudo obtener la liturgia anterior para el filtro de variedad:", e);
+  }
 
-REGLAS ESTRICTAS:
-1) FECHA EXACTA: La información debe corresponder litúrgicamente al ${target}.
-2) LECTURAS COMPLETAS: Genera SIEMPRE el texto real y completo de la primera lectura (firstReading), el salmo (psalm) y el evangelio (gospel). NUNCA uses null o textos vacíos. Si el día (${target}) es domingo o solemnidad, genera también la segunda lectura (secondReading) con su texto real; si es un día ferial sin segunda lectura oficial, déjala en null pero asegúrate de que la primera lectura no falle.
-3) REFLEXIÓN: El campo 'reflection' DEBE ser una síntesis que conecte tres elementos: el mensaje del Evangelio del día, el ejemplo de vida del Santo del día y una aplicación directa a la realidad, esperanza o cultura de Venezuela.
-4) MENSAJES MARIANOS: En el array 'messages', PRIORIZA SIEMPRE incluir al menos un mensaje de la Virgen de Betania (María Virgen y Madre Reconciliadora de todos los Pueblos). Completa el resto con Fátima, Lourdes, Medjugorje, Papas (León XIII, Francisco, Juan Pablo II), San José Gregorio Hernández, Santa Madre Carmen Rendiles, Beata María de San José o Carlo Acutis, que resuenen con el evangelio.
-5) ESTRUCTURA DE ORACIONES: Laudes debe tener exactamente 7 partes. Ángelus debe tener 3 versos exactos y la oración final.
-6) SANTO DEL DÍA: Provee una historia rica, destacando su conexión con el evangelio y su relevancia para Venezuela (venezuelaRelevance).
-7) CATECISMO DEL DÍA: El campo 'catechism' DEBE contener una lección del Catecismo de la Iglesia Católica (CEC) con un número real de párrafo, un título claro, el texto doctrinal completo basado en el CEC, y una aplicación práctica para la vida del católico hoy (applyToday). La enseñanza debe ser fiel al CEC, accesible y pastoral.
-8) RANGO: Si es domingo o solemnidad, establece isSolemnity=true y liturgicalRank="solemnidad".
-9) FORMATO: Solo utiliza las claves en camelCase listadas. Cero texto fuera del JSON.`;
+  const prompt = `Eres un asistente litúrgico, teólogo y catequista católico experto para la aplicación "Camino" en Venezuela.
+Genera el contenido litúrgico completo y coherente para la fecha: ${target}.
+Devuelve ÚNICAMENTE un objeto JSON válido (sin markdown, sin bloques \`\`\`json).
+
+CONTEXTO DE FUENTES MARIANAS Y SANTO DEL DÍA:
+Fuentes permitidas para el mensaje diario:
+1. Virgen de Betania (Venezuela)
+2. Mensajes de Medjugorje (selección pastoral)
+3. Apariciones de Fátima
+4. Mensajes de Lourdes
+5. Virgen de Coromoto (Venezuela)
+6. San José Gregorio Hernández
+7. Santa Madre Carmen Rendiles
+8. Beata María de San José
+9. Magisterio: Papa Francisco, Benedicto XVI, San Juan Pablo II o Vaticano.
+
+REGLA DE FUENTE ANTERIOR: La fuente utilizada ayer fue "${previousSource || 'Ninguna'}". NO repitas esta misma fuente hoy a menos que sea estrictamente necesario por solemnidad.
+
+PROCESO DE GENERACIÓN E INTEGRACIÓN:
+1. Identifica el Evangelio y Santo correspondiente a la fecha ${target}.
+2. Evalúa cuál de las Fuentes Permitidas guarda la mayor relación temática, litúrgica o espiritual con el Evangelio de hoy.
+3. Redacta la REFLEXIÓN GENERAL conectando: El Evangelio + La realidad y fe de Venezuela + El mensaje/fuente seleccionado.
+4. Genera las oraciones de la Liturgia de las Horas (Laudes, Vísperas, Completas), Lecturas completas y Catecismo (CEC real directamente relacionado con el Evangelio del día).
+
+Estructura JSON requerida:
+{
+  "date": "${target}",
+  "weekday": "día de la semana",
+  "season": "tiempo liturgico",
+  "liturgicalColor": "color litúrgico",
+  "liturgicalRank": "solemnidad|fiesta|memoria|feria",
+  "isSolemnity": false,
+  "saint": {
+    "name": "nombre del santo",
+    "title": "título",
+    "initial": "inicial",
+    "story": "historia resumida (200-300 palabras)",
+    "highlights": ["hito1", "hito2"],
+    "lessons": ["lección1", "lección2"],
+    "exampleToday": "ejemplo práctico para hoy",
+    "gospelConnection": "relación directa con el evangelio de hoy",
+    "venezuelaRelevance": "relevancia espiritual para Venezuela",
+    "prayer": "oración de intercesión"
+  },
+  "quote": { "text": "cita bíblica o de un padre de la iglesia", "ref": "referencia" },
+  "gospel": { "ref": "referencia", "title": "título", "body": "texto completo del evangelio", "evangelist": "nombre del evangelista" },
+  "psalm": { "ref": "referencia", "title": "título", "body": "texto completo del salmo con respuestas" },
+  "firstReading": { "ref": "referencia", "title": "título", "body": "texto completo" },
+  "secondReading": null,
+  "marian": {
+    "source": "Nombre exacto de la fuente elegida de la lista",
+    "reason": "Explicación breve de por qué se conectó con el evangelio de hoy",
+    "text": "Mensaje o reflexión mariana/vocacional (max 100 palabras)",
+    "relevant": true
+  },
+  "reflection": "Síntesis integradora de la jornada (Evangelio + Fuente escogida + Aplicación pastoral a Venezuela)",
+  "catechism": { "number": "Número CEC temáticamente ligado al Evangelio", "title": "Título", "text": "Texto doctrinal", "applyToday": "Aplicación" },
+  "laudes": { "title": "Laudes", "hour": "07:00", "mood": "dawn", "parts": [] },
+  "vespers": { "title": "Vísperas", "hour": "18:00", "mood": "dusk", "parts": [] },
+  "compline": { "title": "Completas", "hour": "21:00", "mood": "night", "parts": [] },
+  "angelus": { "title": "Ángelus", "body": "texto", "verses": [], "closingPrayer": "oración" },
+  "imagePrompt": "Descripción artística en inglés para generar una imagen sacra de alta calidad"
+}`;
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${env.GEMINI_API_KEY}`,
@@ -151,7 +222,11 @@ REGLAS ESTRICTAS:
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { responseMimeType: "application/json" },
+        generationConfig: {
+          responseMimeType: "application/json",
+          temperature: 0.2,
+          maxOutputTokens: 8192,
+        },
       }),
     }
   );
@@ -165,40 +240,197 @@ REGLAS ESTRICTAS:
   let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
   text = text.replace(/^```(?:json)?\s*[\r\n]/i, "").replace(/[\r\n]*```$/, "").trim();
   const parsed = JSON.parse(text);
-  if (parsed && typeof parsed === "object") {
-    const snakeToCamel = (obj: any): any => {
-      if (Array.isArray(obj)) return obj.map(snakeToCamel);
-      if (obj && typeof obj === "object") {
-        const out: Record<string, any> = {};
-        for (const key of Object.keys(obj)) {
-          const camel = key
-            .replace(/_([a-z])/g, (_, c) => c.toUpperCase())
-            .replace(/^([A-Z])/, (c) => c.toLowerCase());
-          out[camel] = snakeToCamel(obj[key]);
-        }
-        return out;
-      }
-      return obj;
-    };
-    Object.assign(parsed, snakeToCamel(parsed));
-  }
+
   parsed.date = target;
+
+  if (!parsed.laudes?.parts?.length) parsed.laudes = getDefaultLaudes();
+  if (!parsed.vespers?.parts?.length) parsed.vespers = getDefaultVespers();
+  if (!parsed.compline?.parts?.length) parsed.compline = getDefaultCompline();
+  if (!parsed.catechism || typeof parsed.catechism !== "object") {
+    parsed.catechism = publicDomainCatechism(target);
+  }
+
+  if (!parsed.messages || !Array.isArray(parsed.messages) || parsed.messages.length === 0) {
+    parsed.messages = [
+      {
+        source: "San José Gregorio Hernández",
+        text: `Dios te invita hoy a vivir el evangelio con mayor entrega. En ${target || 'este día'}, confía en la Providencia como lo hizo el Padre de los Pobres.`,
+        relevant: true,
+      },
+    ];
+  }
+  if (!parsed.marian || !parsed.marian.text) {
+    parsed.marian = parsed.messages[0];
+  }
+
+  if (
+    parsed.marian?.source === "San Jose Gregorio Hernandez" ||
+    parsed.marian?.source === "San Jose Gregorio"
+  ) {
+    parsed.marian.source = "San José Gregorio Hernández";
+  }
+  parsed.messages = parsed.messages.map((m: any) => {
+    if (m.source === "San Jose Gregorio Hernandez" || m.source === "San Jose Gregorio") {
+      return { ...m, source: "San José Gregorio Hernández" };
+    }
+    return m;
+  });
+
   return parsed;
 }
 
-async function generateCatequesis(env: any, targetDate?: string): Promise<string> {
+const PUBLIC_DOMAIN_CATECHISM: Record<string, { number: string; title: string; text: string; applyToday: string }> = {
+  default: {
+    number: "169",
+    title: "La oración cristiana",
+    text: "La oración es la elevación del alma a Dios. Es un don de Dios y una respuesta del hombre. En la oración, el hombre se dirige a Dios para adorarlo, pedirle perdón, darle gracias y pedirle sus dones. La oración cristiana es una relación personal con Dios en Cristo Jesús, por la cual el Espíritu Santo nos hace participar en la filiación divina de Jesús.",
+    applyToday: "Hoy dedica 10 minutos a orar con tus propias palabras. Habla con Dios como un amigo: agradécele, pídele perdón y encomiéndale tu día.",
+  },
+};
+
+function publicDomainCatechism(date: string): { number: string; title: string; text: string; applyToday: string } {
+  const key = date || "default";
+  return PUBLIC_DOMAIN_CATECHISM[key] ?? PUBLIC_DOMAIN_CATECHISM.default;
+}
+
+function getDefaultLaudes(): any {
+  return {
+    title: "Laudes del día",
+    hour: "07:00",
+    mood: "dawn",
+    body: "Señor, abre mis labios, y mi boca proclamará tu alabanza.",
+    parts: [
+      { kind: "invitatory", label: "Invitatorio", text: "Ven, Espíritu Santo, ven por medio de la poderosa intercesión del Inmaculado Corazón de María." },
+      { kind: "hymn", label: "Himno", text: "Cantemos al Señor con alegría, celebremos su amor infinito." },
+      { kind: "psalmody", label: "Salmo 1", text: "Bendito seas, Señor, Dios de nuestros padres, por siempre bendito.", response: "Te alabamos, Señor." },
+      { kind: "psalmody", label: "Salmo 2", text: "El Señor es mi pastor, nada me falta. En pastos verdes me hace reposar.", response: "Te alabamos, Señor." },
+      { kind: "reading", label: "Lectura breve", text: "Lectura breve del día según la liturgia.", rubric: "Leer en silencio y meditar." },
+      { kind: "gospelCanticle", label: "Cántico evangélico", text: "Bendito sea el Señor, Dios de Israel, porque ha visitado a su pueblo.", response: "Te alabamos, Señor." },
+      { kind: "intercessions", label: "Preces", text: "Oremos por la Iglesia, por Venezuela, por nuestros seres queridos.", response: "Te rogamos, Señor." },
+      { kind: "concludingPrayer", label: "Oración conclusiva", text: "Señor, te ofrecemos este día con todo lo que somos. Amén." },
+    ],
+  };
+}
+
+function getDefaultVespers(): any {
+  return {
+    title: "Vísperas del día",
+    hour: "18:00",
+    mood: "dusk",
+    body: "Dios mío, ven en mi auxilio.",
+    parts: [
+      { kind: "hymn", label: "Himno", text: "Cantemos la alabanza del Señor que nos ha salvado." },
+      { kind: "psalmody", label: "Salmo 1", text: "El Señor es mi luz y mi salvación, ¿a quién temeré?", response: "Te alabamos, Señor." },
+      { kind: "psalmody", label: "Salmo 2", text: "Bendito el que viene en nombre del Señor. Hosanna en el cielo.", response: "Te alabamos, Señor." },
+      { kind: "reading", label: "Lectura breve", text: "Lectura breve del día según la liturgia.", rubric: "Leer en silencio y meditar." },
+      { kind: "gospelCanticle", label: "Cántico evangélico", text: "Mi alma magnifica al Señor, y mi espíritu se alegra en Dios mi Salvador.", response: "Te alabamos, Señor." },
+      { kind: "intercessions", label: "Preces", text: "Oremos por el mundo, por Venezuela, por los que sufren.", response: "Te rogamos, Señor." },
+      { kind: "ourFather", label: "Padre nuestro", text: "Padre nuestro, que estás en el cielo, santificado sea tu nombre." },
+      { kind: "concludingPrayer", label: "Oración conclusiva", text: "Señor, te entregamos esta jornada. Que todo sea para tu gloria. Amén." },
+      { kind: "marianAntiphon", label: "Antífona mariana", text: "Dios te salve, María, llena eres de gracia, el Señor es contigo." },
+    ],
+  };
+}
+
+function getDefaultCompline(): any {
+  return {
+    title: "Completas del día",
+    hour: "21:00",
+    mood: "night",
+    body: "En tus manos, Señor, encomiendo mi espíritu.",
+    parts: [
+      { kind: "examination", label: "Examen de conciencia", text: "Revisa tu día con gratitud y perdón. En silencio, examina tu conciencia." },
+      { kind: "hymn", label: "Himno", text: "Ante el descanso, Señor, te confío mi alma y mi corazón." },
+      { kind: "psalmody", label: "Salmo", text: "En tus manos, Señor, encomiendo mi espíritu. Tú me redimes, Señor, Dios fiel.", response: "Te alabamos, Señor." },
+      { kind: "reading", label: "Lectura breve", text: "Lectura breve del día según la liturgia.", rubric: "Leer en silencio y meditar." },
+      { kind: "response", label: "Responsorio", text: "Protégenos, Señor, mientras dormimos.", response: "Ten piedad de nosotros." },
+      { kind: "gospelCanticle", label: "Cántico de Simeón", text: "Ahora, Señor, despides a tu siervo en paz, según tu palabra.", response: "Te alabamos, Señor." },
+      { kind: "concludingPrayer", label: "Oración conclusiva", text: "Señor, bajo la sombra de tu amor me duermo. Amén." },
+      { kind: "commendation", label: "Encomienda", text: "En tus manos, Señor, encomiendo mi vida. Amén." },
+    ],
+  };
+}
+
+async function generateBibleDaily(env: any, userId: string, targetDate?: string): Promise<any> {
   const target = targetDate || getTodayKey();
-  const prompt = `Eres un catequista católico experto en el Catecismo de la Iglesia Católica (CEC). Para la fecha ${target}, genera UNA lección de catequismo que eduque al católico diariamente con la enseñanza de la Iglesia. Devuelve SOLO JSON válido, sin markdown, sin explicaciones, utilizando un español hispano/latinoamericano (natural, claro y reverente). Usa estas claves exactas:
 
-number (el número del CEC, p. ej. "169" o "1846-1848"), title (título breve del tema), text (el desarrollo catequístico completo basado en el CEC, con referencias al Catecismo), applyToday (una aplicación práctica y directa para la vida del católico hoy, con enfoque en la realidad hispana/latinoamericana).
+  let todayLiturgy: any = null;
+  try {
+    todayLiturgy = await supabaseFetchDaily(env, target);
+    if (!todayLiturgy) {
+      todayLiturgy = await cachedOrGenerate(env);
+    }
+  } catch (e) {
+    console.warn("No se pudo obtener la liturgia diaria para context bíblico:", e);
+  }
 
-REGLAS ESTRICTAS:
-1) FECHA EXACTA: La lección debe corresponder al ${target}.
-2) NÚMERO DEL CEC: Usa siempre un número real del Catecismo de la Iglesia Católica. No inventes números.
-3) CONTENIDO DOCTRINAL: El texto debe ser una enseñanza clara, fiel y completa del CEC sobre el tema elegido. Usa un lenguaje accesible pero doctrinalmente preciso.
-4) APLICACIÓN: applyToday debe conectar la enseñanza del CEC con la vida cotidiana del católico, con referencias a la realidad hispana/latinoamericana cuando sea posible.
-5) FORMATO: Solo utiliza las claves listadas. Cero texto fuera del JSON.
-6) TONO: Educativo, pastoral, reverente y esperanzador. Dirigido a un católico que busca crecer en su fe diariamente.`;
+  let profile: any = null;
+  try {
+    const profiles = await supabaseSelect(env, 'user_bible_profile', { user_id: `eq.${userId}` });
+    profile = profiles?.[0] || null;
+  } catch (e: any) {
+    console.warn('Bible profile fetch failed, using defaults', e.message);
+    profile = null;
+  }
+
+  const level = profile?.level || 'nunca_lei';
+  const minutes = profile?.minutes_per_day || 10;
+  const goal = profile?.goal || 'conocer_a_jesus';
+  const topic = profile?.topic || '';
+  const userName = profile?.full_name || 'hermano/a';
+
+  const goalLabels: Record<string, string> = {
+    conocer_a_jesus: 'conocer a Jesús',
+    orar_mejor: 'orar mejor',
+    entender_la_biblia: 'entender la Biblia',
+    seguir_la_misa: 'seguir la liturgia y la Misa',
+    perdon: 'el perdón y la misericordia',
+    ansiedad: 'la ansiedad y la paz interior',
+    duelo: 'el duelo y la esperanza',
+    familia: 'la familia',
+    vocacion: 'la vocación',
+    esperanza: 'la esperanza',
+  };
+
+  const goalText = goalLabels[goal] || 'crecer en la fe';
+
+  const gospelRef = todayLiturgy?.gospel?.ref || "Evangelio del día";
+  const gospelText = todayLiturgy?.gospel?.body || "";
+  const marianSource = todayLiturgy?.marian?.source || "";
+  const marianText = todayLiturgy?.marian?.text || "";
+
+  const prompt = `Eres un guía espiritual católico y acompañante pastoral en la aplicación "Camino".
+Genera un mensaje bíblico DIARIO Y PERSONALIZADO para hoy (${target}) para el usuario.
+
+DATOS DEL USUARIO:
+- Nombre: ${userName}
+- Nivel de lectura: ${level}
+- Tiempo disponible: ${minutes} minutos
+- Intención/Objetivo: ${goalText}
+- Tema personal de interés: ${topic || 'Vida espiritual diaria'}
+
+CONTEXTO LITÚRGICO DEL DÍA (Mismo mensaje que la comunidad lee hoy):
+- Evangelio: ${gospelRef} - "${gospelText.slice(0, 300)}..."
+- Inspiración Mariana/Santo del día (${marianSource}): "${marianText}"
+
+INSTRUCCIONES:
+1. Saluda a ${userName} de forma cálida y fraterna.
+2. Relaciona el Evangelio del día con la situación o meta del usuario (${goalText}).
+3. Devuelve SOLO JSON estricto con las siguientes claves:
+
+{
+  "date": "${target}",
+  "passageRef": "${gospelRef}",
+  "passageText": "Texto adaptado o pasaje clave relevante para el usuario",
+  "contextNote": "Explicación breve del pasaje según su nivel (${level})",
+  "reflection": "Mensaje personalizado para ${userName} conectando el evangelio con su vida (max 150 palabras)",
+  "prayer": "Oración breve personalizada mencionando las necesidades de ${userName}",
+  "action": "Un compromiso o acción sencilla para realizar hoy",
+  "verseOfDay": "Versículo clave",
+  "suggestedTime": "mañana|mediodia|noche",
+  "theme": "Tema espiritual principal",
+  "mood": "esperanza|paz|fortaleza|gratitud"
+}`;
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${env.GEMINI_API_KEY}`,
@@ -207,38 +439,32 @@ REGLAS ESTRICTAS:
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { responseMimeType: "application/json" },
+        generationConfig: { responseMimeType: "application/json", temperature: 0.3 },
       }),
     }
   );
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Gemini catequesis request failed: ${res.status} ${text}`);
+    throw new Error(`Gemini bible daily request failed: ${res.status} ${text}`);
   }
 
   const data = await res.json();
   let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
   text = text.replace(/^```(?:json)?\s*[\r\n]/i, "").replace(/[\r\n]*```$/, "").trim();
   const parsed = JSON.parse(text);
-  if (parsed && typeof parsed === "object") {
-    const snakeToCamel = (obj: any): any => {
-      if (Array.isArray(obj)) return obj.map(snakeToCamel);
-      if (obj && typeof obj === "object") {
-        const out: Record<string, any> = {};
-        for (const key of Object.keys(obj)) {
-          const camel = key
-            .replace(/_([a-z])/g, (_, c) => c.toUpperCase())
-            .replace(/^([A-Z])/, (c) => c.toLowerCase());
-          out[camel] = snakeToCamel(obj[key]);
-        }
-        return out;
-      }
-      return obj;
-    };
-    Object.assign(parsed, snakeToCamel(parsed));
-  }
-  return JSON.stringify(parsed);
+
+  const dailyContent = {
+    user_id: userId,
+    date: target,
+    content: parsed,
+    generated_by: 'gemini',
+    created_at: new Date().toISOString(),
+  };
+
+  await supabaseUpsert(env, 'user_bible_daily_content', dailyContent);
+
+  return dailyContent;
 }
 
 async function cachedOrGenerate(env: any): Promise<any> {
@@ -782,19 +1008,6 @@ export default {
       }
     }
 
-    if (url.pathname === "/catequesis/generate" && request.method === "POST") {
-      try {
-        const body = await request.json();
-        const targetDate = (body && typeof body === "object" && "date" in body)
-          ? String(body.date)
-          : getTodayKey();
-        const text = await generateCatequesis(env, targetDate);
-        return jsonResponse({ text });
-      } catch (e: any) {
-        return jsonResponse({ error: e.message }, 500);
-      }
-    }
-
     if (url.pathname === "/generate-image" && request.method === "POST") {
       try {
         const body = await request.json();
@@ -827,6 +1040,49 @@ export default {
 
     if (url.pathname === "/admin/tasks" && request.method === "POST") {
       return handleAdminAssignTasks(request, env);
+    }
+
+    if (url.pathname === "/bible/daily" && request.method === "GET") {
+      try {
+        const userId = url.searchParams.get("user_id");
+        const date = url.searchParams.get("date") || getTodayKey();
+        if (!userId) return jsonResponse({ error: "Missing user_id" }, 400);
+        const data = await supabaseSelect(env, 'user_bible_daily_content', {
+          user_id: `eq.${encodeURIComponent(userId)}`,
+          date: `eq.${encodeURIComponent(date)}`,
+        });
+        return jsonResponse(data?.[0] || null);
+      } catch (e: any) {
+        return jsonResponse({ error: e.message }, 500);
+      }
+    }
+
+    if (url.pathname === "/bible/daily" && request.method === "POST") {
+      try {
+        const body: any = await request.json().catch(() => ({}));
+        const userId = typeof body?.user_id === "string" ? body.user_id : "";
+        const targetDate = typeof body?.date === "string" && body.date ? body.date : getTodayKey();
+        if (!userId) return jsonResponse({ error: "Missing user_id" }, 400);
+
+        let content = null;
+        try {
+          const existing = await supabaseSelect(env, 'user_bible_daily_content', {
+            user_id: `eq.${encodeURIComponent(userId)}`,
+            date: `eq.${encodeURIComponent(targetDate)}`,
+          });
+          content = existing?.[0] || null;
+        } catch {
+          content = null;
+        }
+
+        if (!content) {
+          content = await generateBibleDaily(env, userId, targetDate);
+        }
+
+        return jsonResponse(content);
+      } catch (e: any) {
+        return jsonResponse({ error: e.message }, 500);
+      }
     }
 
     return new Response("Not Found", { status: 404, headers: corsHeaders() });

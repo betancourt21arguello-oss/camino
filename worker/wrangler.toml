@@ -4,7 +4,8 @@ compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
 
 [triggers]
-crons = ["0 7,12,20 * * *"]
+crons = ["0 8 * * *"]
+timezone = "America/Caracas"
 
 [[kv_namespaces]]
 binding = "DAILY_CACHE"

@@ -63,11 +63,13 @@ export interface FloraCluster {
   id: string;
   x: number;
   y: number;
-  type: "lavender" | "daisy" | "rosemary" | "thyme" | "olive_shrub" | "rose" | "floral_wreath" | "lily";
+  type: "lavender" | "daisy" | "rosemary" | "thyme" | "olive_shrub" | "rose" | "floral_wreath" | "lily" | "rosal_de_gracia";
   scale: number;
   tone: number;
   delay: number;
   rotation: number;
+  dewPoints?: { dx: number; dy: number; r: number; opacity: number }[];
+  wateringEffectStrength?: number;
 }
 
 export interface PondModel {
@@ -109,6 +111,27 @@ export interface GardenModel {
   lightRays: { x: number; width: number; opacity: number }[];
   shadows: ShadowDef[];
   floraClusters: FloraCluster[];
+  dove?: { x: number; y: number; scale: number };
+  deer?: { x: number; y: number; scale: number; angle: number };
+  sacredNodes?: { x: number; y: number; type: string; scale: number }[];
+  grottoArch?: {
+    x: number;
+    width: number;
+    height: number;
+    pillarHang: number;
+    vineCount: number;
+    altarX: number;
+    altarY: number;
+    vineSeeds: number[];
+  };
+  sacredGeometry?: {
+    cx: number;
+    cy: number;
+    rx: number;
+    ry: number;
+    rotation: number;
+    nodes: { x: number; y: number }[];
+  };
 }
 
 const clampCount = (value: number, max: number) => Math.max(0, Math.min(value, max));
@@ -413,30 +436,70 @@ function buildCedarTree(traits: DnaTraits, state: GardenState): TreeModel & { ce
 function buildFloraClusters(traits: DnaTraits, state: GardenState, exclude?: Set<string>): FloraCluster[] {
   const rng = createPrng(`${traits.dna}:flora`);
   const clusters: FloraCluster[] = [];
-
   const baseTypes: FloraCluster["type"][] = ["lavender", "daisy", "rosemary", "thyme", "olive_shrub"];
-  const devotionTypes: FloraCluster["type"][] = ["rose", "floral_wreath", "lily"];
 
-  const roseBudget = Math.min(10, Math.floor(state.totalRosaries / 2));
-  const wreathBudget = Math.min(8, Math.floor(state.totalCoronillas / 3));
-  const lilyBudget = Math.min(6, Math.floor(state.totalNovenas / 2));
-  const totalBudget = Math.min(26, roseBudget + wreathBudget + lilyBudget + 6 + Math.floor(state.totalSeeds / 5) + Math.floor(state.totalSilenceMinutes / 10));
+  const baseBudget = Math.min(26, 6 + Math.floor(state.totalSeeds / 5) + Math.floor(state.totalSilenceMinutes / 10));
+
+  const devotionBaseRose = Math.floor(state.totalRosaries / 2);
+  const devotionBaseWreath = Math.floor(state.totalCoronillas / 3);
+  const devotionBaseLily = Math.floor(state.totalNovenas / 2);
+
+  const effectiveRoseBase = state.consolidatedRosal ? 0 : devotionBaseRose;
+  const roseBudget = Math.min(5, effectiveRoseBase);
+  const wreathBudget = Math.min(4, devotionBaseWreath);
+  const lilyBudget = Math.min(4, devotionBaseLily);
+
+  const isFase1 = state.growthPhase === 1;
+  const isFase2 = state.growthPhase === 2;
+  const isFase3 = state.growthPhase === 3;
+
+  const phaseRoseBudget = isFase1 ? 0 : isFase2 ? Math.min(3, effectiveRoseBase) : roseBudget;
+  const phaseWreathBudget = isFase1 ? 0 : isFase2 ? Math.min(2, devotionBaseWreath) : wreathBudget;
+  const phaseLilyBudget = isFase1 ? 0 : isFase2 ? Math.min(2, devotionBaseLily) : lilyBudget;
+
+  const totalBudget = Math.min(26, phaseRoseBudget + phaseWreathBudget + phaseLilyBudget + baseBudget);
 
   const typeBag: FloraCluster["type"][] = [];
-  for (let r = 0; r < roseBudget; r++) typeBag.push("rose");
-  for (let r = 0; r < wreathBudget; r++) typeBag.push("floral_wreath");
-  for (let r = 0; r < lilyBudget; r++) typeBag.push("lily");
+  for (let r = 0; r < phaseRoseBudget; r++) typeBag.push("rose");
+  for (let r = 0; r < phaseWreathBudget; r++) typeBag.push("floral_wreath");
+  for (let r = 0; r < phaseLilyBudget; r++) typeBag.push("lily");
   while (typeBag.length < totalBudget) {
     typeBag.push(baseTypes[Math.floor(rng() * baseTypes.length)]);
   }
   typeBag.sort(() => rng() - 0.5);
 
+  const nodeRng = createPrng(`${traits.dna}:nodes`);
+  const sacredNodes: { x: number; y: number; type: string; scale: number }[] = [];
+  if (isFase2 || isFase3) {
+    const nodeCount = isFase2 ? 2 : 4;
+    for (let i = 0; i < nodeCount; i++) {
+      const along = (i + 1) / (nodeCount + 1);
+      sacredNodes.push({
+        x: 200 + along * 320 + (nodeRng() - 0.5) * 30,
+        y: 355 + along * 50 + (nodeRng() - 0.5) * 15,
+        type: nodeRng() > 0.5 ? "cross" : "stone_altar",
+        scale: 0.6 + nodeRng() * 0.3,
+      });
+    }
+  }
+
   for (let i = 0; i < totalBudget; i++) {
     const type = typeBag[i] || baseTypes[Math.floor(rng() * baseTypes.length)];
-    const cx = 45 + rng() * 630;
-    const cy = 325 + rng() * 95;
+    const posRng = createPrng(`${traits.dna}:flora-pos-${i}`);
+    const cx = 200 + posRng() * 280;
+    const cy = 325 + posRng() * 80;
 
     if (exclude && exclude.has(`${type}-${cx.toFixed(0)}-${cy.toFixed(0)}`)) continue;
+
+    const clusterRng = createPrng(`${traits.dna}:flora-dew-${i}`);
+    const dewPoints = state.wateringEffectStrength > 0.05
+      ? Array.from({ length: 2 + Math.floor(clusterRng() * 2) }, (_, j) => ({
+          dx: (clusterRng() - 0.5) * 18,
+          dy: -12 - clusterRng() * 22,
+          r: 0.4 + clusterRng() * 0.5,
+          opacity: (0.35 + clusterRng() * 0.35) * state.wateringEffectStrength,
+        }))
+      : undefined;
 
     clusters.push({
       id: `flora-${i}`,
@@ -447,18 +510,57 @@ function buildFloraClusters(traits: DnaTraits, state: GardenState, exclude?: Set
       tone: Math.floor(rng() * 4),
       delay: rng() * 5,
       rotation: rng() * 360,
+      dewPoints,
+      wateringEffectStrength: state.wateringEffectStrength,
     });
   }
-  return clusters;
+
+  if (state.consolidatedRosal) {
+    const rng2 = createPrng(`${traits.dna}:rosal-gracia`);
+    clusters.push({
+      id: `rosal-de-gracia-${clusters.length}`,
+      x: 360 + (rng2() - 0.5) * 160,
+      y: 340 + rng2() * 30,
+      type: "rosal_de_gracia",
+      scale: 1.2 + rng2() * 0.4,
+      tone: Math.floor(rng2() * 4),
+      delay: rng2() * 5,
+      rotation: rng2() * 30 - 15,
+    });
+  }
+
+  return { clusters, sacredNodes };
 }
 
-function buildShadows(elements: Array<{ x: number; y: number; w?: number; h?: number }>): ShadowDef[] {
+function buildDove(traits: DnaTraits, state: GardenState): { x: number; y: number; scale: number } | undefined {
+  if (!state.showDove) return undefined;
+  const rng = createPrng(`${traits.dna}:dove`);
+  return {
+    x: 340 + rng() * 40,
+    y: 250 + rng() * 30,
+    scale: 0.7 + rng() * 0.3,
+  };
+}
+
+function buildDeer(traits: DnaTraits, state: GardenState): { x: number; y: number; scale: number; angle: number } | undefined {
+  if (!state.showDeer || !traits.riverAngle) return undefined;
+  const rng = createPrng(`${traits.dna}:deer`);
+  return {
+    x: 120 + rng() * 80,
+    y: 390 + rng() * 20,
+    scale: 0.6 + rng() * 0.3,
+    angle: (rng() - 0.5) * 20,
+  };
+}
+
+function buildShadows(elements: Array<{ x: number; y: number; w?: number; h?: number }>, health: number = 1): ShadowDef[] {
+  const softness = Math.max(0, Math.min(1, health));
   return elements.map((el) => ({
     x: el.x + (el.w ? 5 : 4),
     y: el.y + (el.h ? 4 : 3),
-    rx: el.w ? el.w * 0.75 : 14,
-    ry: el.h ? el.h * 0.4 : 6,
-    opacity: 0.22,
+    rx: el.w ? el.w * (0.75 + 0.15 * softness) : 14 + 2 * softness,
+    ry: el.h ? el.h * (0.4 + 0.2 * softness) : 6 + 2 * softness,
+    opacity: 0.22 - 0.06 * softness,
   }));
 }
 
@@ -486,8 +588,44 @@ export function buildWildGarden(traits: DnaTraits, state: GardenState): GardenMo
 
   const terrainLayers = buildIsometricTerrain(traits);
   const pond = buildIsometricPond(traits, state);
-  const floraClusters = buildFloraClusters(traits, state);
-  const shadows = buildShadows(floraClusters);
+  const floraResult = buildFloraClusters(traits, state);
+  const floraClusters = floraResult.clusters;
+
+  const shadows = buildShadows(floraClusters, state.health);
+  const dove = buildDove(traits, state);
+  const deer = buildDeer(traits, state);
+  const grottoRng = createPrng(`${traits.dna}:grotto`);
+  const grottoArch = state.growthPhase === 3
+    ? {
+        x: tree.x,
+        width: 70 + grottoRng() * 40,
+        height: 35 + grottoRng() * 25,
+        pillarHang: 18 + grottoRng() * 18,
+        vineCount: 3 + Math.floor(grottoRng() * 4),
+        altarX: tree.x + (grottoRng() - 0.5) * 30,
+        altarY: tree.y - 14,
+        vineSeeds: Array.from({ length: 5 }, () => Math.floor(grottoRng() * 1000)),
+      }
+    : undefined;
+
+  const sacredGeometry = state.growthPhase === 3 ? (() => {
+    const sgRng = createPrng(`${traits.dna}:sacred-geometry`);
+    const cx = tree.x;
+    const cy = tree.y - trunkHeight * 0.35;
+    const rx = 55 + sgRng() * 20;
+    const ry = 28 + sgRng() * 12;
+    const rotation = sgRng() * Math.PI;
+    const nodeCount = 4;
+    const nodes: { x: number; y: number }[] = [];
+    for (let i = 0; i < nodeCount; i++) {
+      const angle = rotation + (i / nodeCount) * Math.PI * 2;
+      nodes.push({
+        x: cx + Math.cos(angle) * rx,
+        y: cy + Math.sin(angle) * ry * 0.6,
+      });
+    }
+    return { cx, cy, rx, ry, rotation, nodes };
+  })() : undefined;
 
   return {
     terrain: `M 0 460 L 0 314 C 180 286 520 296 720 266 L 720 460 Z`,
@@ -501,8 +639,8 @@ export function buildWildGarden(traits: DnaTraits, state: GardenState): GardenMo
     },
     pond,
     rocks: makePoints(createPrng(`${traits.dna}:rocks`), "rock", stoneCount, {
-      x0: 60,
-      x1: 660,
+      x0: 160,
+      x1: 560,
       y0: 330,
       y1: 420,
     }),
@@ -510,30 +648,30 @@ export function buildWildGarden(traits: DnaTraits, state: GardenState): GardenMo
       createPrng(`${traits.dna}:ambient-plants`),
       "ambient-plant",
       clampCount(smallVegCount, 30),
-      { x0: 35, x1: 685, y0: 320, y1: 434 },
+      { x0: 160, x1: 560, y0: 320, y1: 434 },
     ),
     ambientFlowers: makePoints(
       createPrng(`${traits.dna}:ambient-flowers`),
       "ambient-flower",
       clampCount(flowerCount, 24),
-      { x0: 55, x1: 665, y0: 292, y1: 405 },
+      { x0: 160, x1: 560, y0: 292, y1: 405 },
     ),
     lights: makePoints(
       createPrng(`${traits.dna}:lights`),
       "light",
       clampCount(lightCount, 16),
-      { x0: 100, x1: 620, y0: 280, y1: 380 },
+      { x0: 180, x1: 540, y0: 280, y1: 380 },
     ),
     tree,
     butterflies: makePoints(createPrng(`${traits.dna}:butterflies`), "butterfly", Math.min(7, Math.floor(state.waterLevel / 15)) + levelConfig.butterflyBonus, {
-      x0: 80,
-      x1: 640,
+      x0: 160,
+      x1: 560,
       y0: 140,
       y1: 285,
     }),
     particles: makePoints(createPrng(`${traits.dna}:particles`), "particle", 20 + levelConfig.particleBonus, {
-      x0: 25,
-      x1: 695,
+      x0: 160,
+      x1: 560,
       y0: 70,
       y1: 350,
     }),
@@ -550,6 +688,10 @@ export function buildWildGarden(traits: DnaTraits, state: GardenState): GardenMo
     })(),
     shadows,
     floraClusters,
+    sacredNodes: floraResult.sacredNodes,
+    dove,
+    deer,
+    grottoArch,
   };
 }
 

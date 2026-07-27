@@ -200,7 +200,7 @@ export function DailyPrayerPortal({ kind, liturgy, assets, onClose, onComplete }
     cardShadow: "rgba(0,0,0,0.3)",
   };
 
-  const palette = { dawn: dawnColors, noon: noonColors, dusk: duskColors, night: nightColors }[mood];
+  const palette = { dawn: dawnColors, noon: noonColors, dusk: duskColors, night: nightColors }[mood] ?? dawnColors;
 
   return (
     <div className="absolute inset-0 z-40 flex flex-col overflow-hidden bg-gradient-to-b from-[#fef3e2] via-[#fde4c8] to-[#f5d5a0] text-[#2a1f0e]">
@@ -273,6 +273,8 @@ export function DailyPrayerPortal({ kind, liturgy, assets, onClose, onComplete }
             laudesPlaying={laudesPlaying}
             onPlayPause={toggleLaudesPlay}
             palette={palette}
+            label={meta.label}
+            icon={meta.icon}
           />
         )}
       </div>
@@ -316,6 +318,8 @@ function LaudesView({
   laudesPlaying,
   onPlayPause,
   palette,
+  label,
+  icon,
 }: {
   hour?: HourLiturgy;
   partIndex: number;
@@ -323,6 +327,8 @@ function LaudesView({
   laudesPlaying: boolean;
   onPlayPause: () => void;
   palette: Record<string, string>;
+  label: string;
+  icon: string;
 }) {
   const part = hour?.parts?.[partIndex];
   const hasParts = Array.isArray(hour?.parts) && hour.parts.length > 0;
@@ -333,11 +339,11 @@ function LaudesView({
         <div className="relative mb-6">
           <div className="absolute inset-0 rounded-full" style={{ background: `radial-gradient(circle, ${palette.accentGlow}, transparent 70%)` }} />
           <div className="relative flex h-20 w-20 items-center justify-center rounded-full" style={{ background: `linear-gradient(135deg, ${palette.accentLight}, ${palette.accent})`, boxShadow: `0 8px 32px ${palette.accentGlow}` }}>
-            <span className="text-3xl">🌅</span>
+            <span className="text-3xl">{icon}</span>
           </div>
         </div>
         <p className="font-serif-holy text-[22px] leading-relaxed" style={{ color: palette.text }}>
-          Los Laudes aún no están disponibles.
+          {label} aún no están disponibles.
         </p>
       </div>
     );
@@ -349,11 +355,11 @@ function LaudesView({
         <div className="relative mb-6">
           <div className="absolute inset-0 rounded-full" style={{ background: `radial-gradient(circle, ${palette.accentGlow}, transparent 70%)` }} />
           <div className="relative flex h-20 w-20 items-center justify-center rounded-full" style={{ background: `linear-gradient(135deg, ${palette.accentLight}, ${palette.accent})`, boxShadow: `0 8px 32px ${palette.accentGlow}` }}>
-            <span className="text-3xl">🌅</span>
+            <span className="text-3xl">{icon}</span>
           </div>
         </div>
         <p className="font-serif-holy text-[22px] leading-relaxed" style={{ color: palette.text }}>
-          La oración de Laudes está en preparación.
+          La oración de {label} está en preparación.
         </p>
       </div>
     );

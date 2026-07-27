@@ -84,6 +84,17 @@ export interface GardenState {
   health: number;
   pointsScore: number;
   level: number;
+  // madurez / riego
+  lastWateredAt?: number;
+  maturityTier: 1 | 2 | 3;
+  showEphemeralFlower: boolean;
+  showDove: boolean;
+  showDeer: boolean;
+  dewPoints: { x: number; y: number; r: number; opacity: number }[];
+  consolidatedRosal: boolean;
+  growthPhase: 1 | 2 | 3;
+  wateringEffectStrength: number;
+  lifeRatio: number;
 }
 
 export interface GardenSignature {

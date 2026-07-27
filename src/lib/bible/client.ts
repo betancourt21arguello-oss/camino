@@ -62,8 +62,13 @@ export async function getPlanBySlug(slug: string): Promise<(BiblePlan & { days: 
 }
 
 export async function getUserProfile(userId: string): Promise<UserBibleProfile | null> {
-  const { data, error } = await supabase!.from('user_bible_profile').select('*').eq('user_id', userId).single();
-  if (error && error.code !== 'PGRST116') throw error;
+  const { data, error } = await supabase!
+    .from('user_bible_profile')
+    .select('*')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) throw error;
   return data as UserBibleProfile | null;
 }
 
@@ -115,8 +120,13 @@ export async function getUserSessions(userId: string, limit = 50) {
 }
 
 export async function getUserStreak(userId: string): Promise<UserBibleStreak | null> {
-  const { data, error } = await supabase!.from('user_bible_streak').select('*').eq('user_id', userId).single();
-  if (error && error.code !== 'PGRST116') throw error;
+  const { data, error } = await supabase!
+    .from('user_bible_streak')
+    .select('*')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) throw error;
   return data as UserBibleStreak | null;
 }
 

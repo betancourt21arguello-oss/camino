@@ -37,6 +37,7 @@ type Props = {
   loadingDaily?: boolean;
   generatingDaily?: boolean;
   onGenerateDaily: () => void;
+  error?: string | null;
 };
 
 export const CaminoScreen: React.FC<Props> = ({
@@ -50,20 +51,47 @@ export const CaminoScreen: React.FC<Props> = ({
   loadingDaily,
   onGenerateDaily,
   generatingDaily,
+  error,
 }: Props) => {
   const [showPopup, setShowPopup] = useState(false);
   const [saintOpen, setSaintOpen] = useState(false);
   const [cateOpen, setCateOpen] = useState(false);
   const [onThisOpen, setOnThisOpen] = useState(false);
   const [bibliaOpen, setBibliaOpen] = useState(false);
-  const [catequesisOpen, setCatequesisOpen] = useState(false);
-  const [catequesisContent, setCatequesisContent] = useState<string | null>(null);
-  const [generatingCatequesis, setGeneratingCatequesis] = useState(false);
   const [resolvedSaint, setResolvedSaint] = useState<string | null>(null);
   const [resolvedDaily, setResolvedDaily] = useState<string>("/images/daily.jpg");
+  const [catechismDone, setCatechismDone] = useState<Set<string>>(new Set());
   const laudesAudio = assetsByTag("laudes", assets)[0];
   const angelusAudio = assetsByTag("angelus", assets)[0];
   const todayDay = todayDayFromLiturgy(L);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("camino_catechism_done");
+      if (saved) setCatechismDone(new Set(JSON.parse(saved)));
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const markCatechismDone = () => {
+    if (!L?.date) return;
+    setCatechismDone((prev) => {
+      const next = new Set(prev);
+      next.add(L.date);
+      try { localStorage.setItem("camino_catechism_done", JSON.stringify([...next])); } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
+
+  const openCatechesis = () => {
+    if (L?.catechism?.text) {
+      setCateOpen(true);
+      markCatechismDone();
+    }
+  };
   useEffect(() => {
     let active = true;
     const run = async () => {
@@ -91,25 +119,6 @@ export const CaminoScreen: React.FC<Props> = ({
   const laudesPresence = useDailyPrayerPresence("laudes");
   const angelusPresence = useDailyPrayerPresence("angelus");
   const install = useInstallPrompt();
-
-  const generateCatequesis = async () => {
-    setGeneratingCatequesis(true);
-    try {
-      const res = await fetch(`${WORKER_API_BASE}/catequesis/generate`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ date: new Date().toISOString().slice(0, 10) }),
-      });
-      if (!res.ok) throw new Error(`Catequesis generate ${res.status}`);
-      const data = await res.json();
-      setCatequesisContent(data.text ?? "");
-      setCatequesisOpen(true);
-    } catch (e: any) {
-      console.error("Catequesis generate failed:", e);
-    } finally {
-      setGeneratingCatequesis(false);
-    }
-  };
 
   return (
     <div className="min-h-full bg-[#f7f6f3] pb-28 text-[#1c1c1e]">
@@ -150,6 +159,18 @@ export const CaminoScreen: React.FC<Props> = ({
           </div>
         )}
       </div>
+
+      {error && (
+        <div className="mx-6 mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          <p className="font-semibold">⚠️ Error de contenido</p>
+          <p className="mt-1">{error}</p>
+          {error.includes("image") || error.includes("model does not support") ? (
+            <p className="mt-2 text-xs text-red-600">
+              Nota: El modelo utilizado no soporta entrada de imágenes. El contenido litúrgico se genera solo con texto.
+            </p>
+          ) : null}
+        </div>
+      )}
 
       {/* Today's full date + weekday */}
       <div className="mt-6 text-center">
@@ -214,18 +235,7 @@ export const CaminoScreen: React.FC<Props> = ({
           </div>
           <span className="ml-auto text-[#b0b0b5]">›</span>
         </button>
-        {L?.secondReading && (
-          <button
-            onClick={() => onOpenReader("second")}
-            className="mt-3 flex w-full items-center justify-between rounded-2xl border border-[#e6e3db] bg-white p-4 text-left"
-          >
-            <div>
-              <div className="font-medium">Segunda lectura</div>
-              <div className="text-sm text-[#8a8a90]">{L.secondReading.ref}</div>
-            </div>
-            <span className="text-[#b0b0b5]">›</span>
-          </button>
-        )}
+
       </div>
 
       {/* Marian message (if relevant) */}
@@ -284,22 +294,25 @@ export const CaminoScreen: React.FC<Props> = ({
         <div className="mt-5 px-6">
           <button
             onClick={() => setCateOpen((v) => !v)}
-            className="flex w-full items-center gap-4 rounded-2xl border border-[#cfe0e3] bg-[#eef5f6] p-4 text-left transition hover:bg-[#e6f0f1]"
+            className="flex w-full items-center gap-4 rounded-2xl border border-[#d0e0e3] bg-[#eef5f6] p-5 text-left transition hover:bg-[#e6f0f1]"
           >
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#3f6e7a] font-serif-holy text-sm text-white">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#3f6e7a] font-serif-holy text-base text-white">
               CEC
             </span>
             <div className="min-w-0 flex-1">
-              <div className="text-[10px] tracking-[0.2em] text-[#3f6e7a]">CATECISMO DEL DÍA · {L.catechism.number}</div>
-              <div className="font-medium text-[#1c1c1e]">{L.catechism.title}</div>
+              <div className="text-[10px] tracking-[0.25em] text-[#3f6e7a] uppercase">Catecismo · {L.catechism.number}</div>
+              <div className="mt-1 font-serif-holy text-base font-semibold text-[#1c1c1e] leading-snug">{L.catechism.title}</div>
             </div>
-            <span className={`text-[#3f6e7a] transition-transform ${cateOpen ? "rotate-90" : ""}`}>›</span>
+            <span className={`text-[#3f6e7a] transition-transform duration-300 ${cateOpen ? "rotate-90" : ""}`}>›</span>
           </button>
           {cateOpen && (
-            <div className="mt-2 rounded-2xl border border-[#cfe0e3] bg-white p-4">
-              <p className="whitespace-pre-line font-serif-holy text-[15px] leading-relaxed text-[#24323a]">{L.catechism.text}</p>
+            <div className="mt-3 rounded-2xl border border-[#d0e0e3] bg-white p-5">
+              <p className="whitespace-pre-line font-serif-holy text-[16px] leading-[1.8] text-[#1c1c1e]">{L.catechism.text}</p>
               {L.catechism.applyToday && (
-                <p className="mt-3 border-l-2 border-[#3f6e7a] pl-3 text-[13px] italic text-[#3f6e7a]">{L.catechism.applyToday}</p>
+                <div className="mt-4 rounded-xl border-l-2 border-[#3f6e7a] bg-[#f0f7f8] p-4">
+                  <div className="text-[10px] font-semibold tracking-[0.2em] text-[#3f6e7a] uppercase">Aplicación hoy</div>
+                  <p className="mt-1 text-[14px] leading-relaxed text-[#3f6e7a]">{L.catechism.applyToday}</p>
+                </div>
               )}
             </div>
           )}
@@ -346,15 +359,15 @@ export const CaminoScreen: React.FC<Props> = ({
             <span className="text-[10px] text-[#8a8a90]">Lectura y plan</span>
           </button>
           <button
-            onClick={generateCatequesis}
-            disabled={generatingCatequesis}
+            onClick={openCatechesis}
+            disabled={!L?.catechism?.text}
             className="flex flex-col items-center gap-2 rounded-2xl border border-[#e6e3db] bg-white p-4 text-center transition active:scale-[0.98] disabled:opacity-50"
           >
-            <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[#3f6e7a] text-white text-lg">✝</span>
+            <span className="relative flex h-11 w-11 items-center justify-center rounded-full bg-[#3f6e7a] text-white text-lg">✝</span>
             <span className="text-sm font-medium text-[#1c1c1e]">Catequesis del día</span>
-            <span className="text-[10px] text-[#8a8a90]">
-              {generatingCatequesis ? "Generando…" : "Gemini AI"}
-            </span>
+            {L?.date && catechismDone.has(L.date) && (
+              <span className="text-[10px] font-medium text-[#3f6e7a]">Leído ✓</span>
+            )}
           </button>
         </div>
       </div>
@@ -405,9 +418,11 @@ export const CaminoScreen: React.FC<Props> = ({
                   Oración de la mañana
                 </div>
                 <div className="mt-1 font-serif-holy text-lg font-semibold text-[#2a2010]">Laudes</div>
-                <div className="mt-1 text-xs text-[#8a7a5a]">
-                  {laudesAudio ? `${laudesAudio.author} · audio` : "Comienza tu jornada"}
-                </div>
+                {laudesAudio && (
+                  <div className="mt-1 text-xs text-[#8a7a5a]">
+                    {`${laudesAudio.author} · audio`}
+                  </div>
+                )}
               </div>
               {!!laudesPresence.count && (
                 <div className="flex items-center gap-1.5 rounded-full bg-[#f0e8d0] px-2.5 py-1 text-[10px] font-medium text-[#6e875e]">
@@ -553,22 +568,6 @@ export const CaminoScreen: React.FC<Props> = ({
         </div>
       )}
 
-      {catequesisOpen && (
-        <div className="absolute inset-0 z-50 flex items-end bg-black/45 p-4 backdrop-blur-sm">
-          <div className="no-scrollbar max-h-[82dvh] w-full overflow-y-auto rounded-3xl bg-[#faf9f6] p-6">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-lg font-semibold tracking-[0.3em] text-[#1c1c1e]">CATEQUESIS DEL DÍA</span>
-              <button onClick={() => setCatequesisOpen(false)} className="text-[#6b6b70] text-2xl leading-none">✕</button>
-            </div>
-            {catequesisContent ? (
-              <div className="whitespace-pre-line font-serif-holy text-[15px] leading-relaxed text-[#24323a]">{catequesisContent}</div>
-            ) : (
-              <p className="text-sm text-[#8a8a90]">No se pudo generar el contenido.</p>
-            )}
-            <button onClick={() => setCatequesisOpen(false)} className="mt-5 h-12 w-full rounded-full bg-[#1c1c1e] text-white">Cerrar</button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

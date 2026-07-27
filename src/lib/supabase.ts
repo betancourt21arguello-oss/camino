@@ -13,11 +13,6 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
         autoRefreshToken: true,
         detectSessionInUrl: true,
       },
-      global: {
-        headers: {
-          Accept: 'application/json',
-        },
-      },
     })
   : null;
 

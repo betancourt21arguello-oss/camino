@@ -3,24 +3,47 @@ import { useBibliaRouter } from '@/hooks/useBibliaRouter';
 import { useAuth } from '@/auth/AuthProvider';
 import { getMethods, getPlans, getUserEnrollment, getUserProfile } from '@/lib/bible/client';
 import type { BibleEnrollmentStatus, BibleMethod, BiblePlan, UserBibleEnrollment, UserBibleProfile } from '@/types/bible';
+import { useBibliaDaily } from './useBibliaDaily';
 
-export function useBibliaHome() {
+type UseBibliaHomeResult = {
+  loading: boolean;
+  hasActivePlan: boolean;
+  enrollment: UserBibleEnrollment | null;
+  profile: UserBibleProfile | null;
+  methods: BibleMethod[];
+  plans: BiblePlan[];
+  navigate: ReturnType<typeof useBibliaRouter>['navigate'];
+  dailyContent: BibleDailyContent | null;
+};
+
+export function useBibliaHome(): UseBibliaHomeResult {
   const { user } = useAuth();
   const { navigate } = useBibliaRouter();
   const [enrollment, setEnrollment] = useState<UserBibleEnrollment | null>(null);
   const [profile, setProfile] = useState<UserBibleProfile | null>(null);
   const [methods, setMethods] = useState<BibleMethod[]>([]);
   const [plans, setPlans] = useState<BiblePlan[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const { content: dailyContent, loading: dailyLoading } = useBibliaDaily(user?.id);
+
+  const loading = useMemo(() => {
+    if (!user) return false;
+    return initialLoading || dailyLoading;
+  }, [user, initialLoading, dailyLoading]);
 
   useEffect(() => {
     let active = true;
     const run = async () => {
       if (!user) {
-        setLoading(false);
+        setEnrollment(null);
+        setProfile(null);
+        setMethods([]);
+        setPlans([]);
+        setInitialLoading(false);
         return;
       }
 
+      setInitialLoading(true);
       const [profileRes, enrollmentRes, methodsRes, plansRes] = await Promise.all([
         getUserProfile(user.id),
         getUserEnrollment(user.id),
@@ -34,7 +57,7 @@ export function useBibliaHome() {
       if (enrollmentRes && enrollmentRes.status === 'active') setEnrollment(enrollmentRes);
       setMethods(methodsRes);
       setPlans(plansRes);
-      setLoading(false);
+      setInitialLoading(false);
     };
 
     void run();
@@ -56,5 +79,6 @@ export function useBibliaHome() {
     methods,
     plans,
     navigate,
+    dailyContent,
   };
 }

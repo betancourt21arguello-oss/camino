@@ -31,9 +31,9 @@ export const GardenSvg = memo(function GardenSvg({
   const barkGradId = `bark-${rawId}`;
 
   const health = state.health;
-  const saturate = 0.45 + 0.55 * health;
-  const contentOpacity = 0.65 + 0.35 * health;
-  const isDrought = health < 0.3;
+  const saturate = 0.6 + 0.3 * health;
+  const contentOpacity = 0.7 + 0.25 * health;
+  const wateringBoost = Math.max(0, Math.min(1, state.wateringEffectStrength));
   const tree = model.tree;
   const showPond = model.pond?.visible ?? false;
 
@@ -124,12 +124,12 @@ export const GardenSvg = memo(function GardenSvg({
         {model.ambientPlants
           .filter((p) => isFinite(p.x) && isFinite(p.y))
           .map((plant) => (
-            <Plant key={plant.id} plant={plant} color="#3d8b40" />
+            <Plant key={plant.id} plant={plant} color="#3d8b40" wateringBoost={wateringBoost} />
           ))}
         {model.ambientFlowers
           .filter((f) => isFinite(f.x) && isFinite(f.y))
           .map((flower) => (
-            <Flower key={flower.id} flower={flower} color={["#ff69b4", "#da70d6", "#87ceeb", "#ffd700"][flower.tone % 4]} />
+            <Flower key={flower.id} flower={flower} color={["#ff69b4", "#da70d6", "#87ceeb", "#ffd700"][flower.tone % 4]} wateringBoost={wateringBoost} />
           ))}
 
         {model.floraClusters.map((cluster) => (
@@ -150,6 +150,13 @@ export const GardenSvg = memo(function GardenSvg({
             <path d={model.river.d} fill="none" stroke="#e0f0f5" strokeWidth="2.5" opacity=".55" />
           </motion.g>
         )}
+        {model.deer && (
+          <Deer x={model.deer.x} y={model.deer.y} scale={model.deer.scale} angle={model.deer.angle} />
+        )}
+
+        {model.sacredNodes?.map((node, idx) => (
+          <SacredNode key={`sacred-${idx}`} x={node.x} y={node.y} type={node.type} scale={node.scale} />
+        ))}
 
         {model.lights.map((light) => (
           <motion.g
@@ -168,6 +175,33 @@ export const GardenSvg = memo(function GardenSvg({
         <Robin x={tree.x - 25} y={tree.y - tree.trunkHeight * 0.7} />
 
         <ellipse cx={tree.x} cy={tree.y - tree.trunkHeight * 0.35} rx={60 * tree.canopyScale} ry={40 * tree.canopyScale} fill={`url(#${canopyGlowId})`} />
+        {model.dove && (
+          <Dove x={model.dove.x} y={model.dove.y} scale={model.dove.scale} />
+        )}
+        {model.grottoArch && state.growthPhase === 3 && (
+          <GrottoArch
+            x={model.grottoArch.x}
+            width={model.grottoArch.width}
+            height={model.grottoArch.height}
+            treeY={tree.y}
+            trunkHeight={tree.trunkHeight}
+            pillarHang={model.grottoArch.pillarHang}
+            vineCount={model.grottoArch.vineCount}
+            altarX={model.grottoArch.altarX}
+            altarY={model.grottoArch.altarY}
+            vineSeeds={model.grottoArch.vineSeeds}
+          />
+        )}
+        {model.sacredGeometry && state.growthPhase === 3 && (
+          <SacredGeometry
+            cx={model.sacredGeometry.cx}
+            cy={model.sacredGeometry.cy}
+            rx={model.sacredGeometry.rx}
+            ry={model.sacredGeometry.ry}
+            rotation={model.sacredGeometry.rotation}
+            nodes={model.sacredGeometry.nodes}
+          />
+        )}
 
         {model.butterflies
           .filter((b) => isFinite(b.x) && isFinite(b.y))
@@ -303,6 +337,33 @@ export const GardenSvg = memo(function GardenSvg({
           />
         )}
 
+        {state.showEphemeralFlower && (
+          <rect
+            x="0"
+            y="0"
+            width="720"
+            height="460"
+            fill="#e8f4f0"
+            opacity={0.04 * state.wateringEffectStrength}
+            pointerEvents="none"
+          />
+        )}
+
+        {state.dewPoints
+          .filter((p) => isFinite(p.x) && isFinite(p.y))
+          .map((point, idx) => (
+            <motion.circle
+              key={`dew-${idx}`}
+              cx={point.x}
+              cy={point.y}
+              r={point.r}
+              fill="#ffffff"
+              opacity={point.opacity}
+              animate={{ opacity: [point.opacity * 0.4, point.opacity, point.opacity * 0.4] }}
+              transition={{ duration: 3 + idx * 0.3, repeat: Infinity, ease: "easeInOut" }}
+            />
+          ))}
+
         <LevelModule config={resolveLevel(state.level)} dna={dna} />
       </g>
 
@@ -353,13 +414,15 @@ function FloraCluster({
   rosePetalId,
   lilyPetalId,
 }: {
-  cluster: { x: number; y: number; type: string; scale: number; rotation: number; tone: number };
+  cluster: { x: number; y: number; type: string; scale: number; rotation: number; tone: number; dewPoints?: { dx: number; dy: number; r: number; opacity: number }[]; wateringEffectStrength?: number };
   rosePetalId: string;
   lilyPetalId: string;
 }) {
-  const { x, y, type, scale, rotation, tone } = cluster;
+  const { x, y, type, scale, rotation, tone, dewPoints, wateringEffectStrength = 1 } = cluster;
+  const hasDew = Array.isArray(dewPoints) && dewPoints.length > 0;
+  const vitalityBoost = Math.max(0, Math.min(1, wateringEffectStrength));
   return (
-    <g transform={`translate(${x} ${y}) rotate(${rotation}) scale(${scale})`}>
+    <g transform={`translate(${x} ${y}) rotate(${rotation}) scale(${scale})`} style={{ opacity: 0.85 + 0.15 * vitalityBoost }}>
       {type === "rose" && (
         <g>
           <ellipse cx="0" cy="4" rx="10" ry="4" fill={SHADOW_COLOR} />
@@ -370,6 +433,17 @@ function FloraCluster({
             <MiddleRosePetals colorId={rosePetalId} />
             <InnerRosePetals colorId={rosePetalId} />
             <RoseCenter />
+          </motion.g>
+        </g>
+      )}
+      {type === "rosal_de_gracia" && (
+        <g>
+          <ellipse cx="0" cy="6" rx="16" ry="6" fill={SHADOW_COLOR} />
+          <motion.g animate={{ rotate: [-0.3, 0.3, -0.3] }} transition={{ duration: 14 + tone, repeat: Infinity, ease: "easeInOut" }}>
+            <RosalDeGraciaBusy />
+            <RosalDeGraciaRose x="-6" y="-10" colorId={rosePetalId} />
+            <RosalDeGraciaRose x="5" y="-13" colorId={rosePetalId} />
+            <RosalDeGraciaRose x="0" y="-16" colorId={rosePetalId} />
           </motion.g>
         </g>
       )}
@@ -458,6 +532,51 @@ function FloraCluster({
           </motion.g>
         </g>
       )}
+
+      {hasDew && (
+        <g opacity="0.85">
+          {dewPoints.map((point, idx) => (
+            <motion.circle
+              key={`dew-${type}-${idx}`}
+              cx={point.dx}
+              cy={point.dy}
+              r={point.r}
+              fill="#ffffff"
+              opacity={point.opacity * vitalityBoost}
+              animate={{ opacity: [point.opacity * 0.35, point.opacity, point.opacity * 0.35] }}
+              transition={{ duration: 2.6 + idx * 0.4, repeat: Infinity, ease: "easeInOut" }}
+            />
+          ))}
+        </g>
+      )}
+    </g>
+  );
+}
+
+function RosalDeGraciaBusy() {
+  return (
+    <g>
+      <ellipse cx="0" cy="-8" rx="14" ry="7" fill="#3d6b35" opacity="0.85" />
+      <ellipse cx="-5" cy="-6" rx="9" ry="5" fill="#4a8040" opacity="0.8" />
+      <ellipse cx="6" cy="-10" rx="10" ry="5.5" fill="#4a8040" opacity="0.75" />
+      <ellipse cx="0" cy="-14" rx="8" ry="4.5" fill="#5a9a50" opacity="0.8" />
+    </g>
+  );
+}
+function RosalDeGraciaRose({ x, y, colorId }: { x: number; y: number; colorId: string }) {
+  return (
+    <g transform={`translate(${x} ${y})`}>
+      <motion.g animate={{ rotate: [-0.5, 0.5, -0.5] }} transition={{ duration: 11, repeat: Infinity, ease: "easeInOut" }}>
+        <path d="M0 0 Q0.3 -8 0 -16" fill="none" stroke="#2d6a30" strokeWidth="1.4" />
+        <path d="M0 -4 Q-4 -7 -5 -4 Q-3 -2 0 -4Z" fill="#3d8b40" opacity="0.85" />
+        <path d="M0 -10 Q5 -13 6 -10 Q3 -8 0 -10Z" fill="#4a9a4d" opacity="0.75" />
+        <g transform={`translate(0, -16)`}>
+          {Array.from({ length: 8 }, (_, i) => (
+            <path key={i} d="M0 -3 Q-2 -6 0 -8 Q2 -6 0 -3Z" fill={`url(#${colorId})`} opacity="0.9" transform={`rotate(${i * 45} 0 -3)`} />
+          ))}
+          <circle cx="0" cy="-3" r="1.6" fill="#c71585" />
+        </g>
+      </motion.g>
     </g>
   );
 }
@@ -618,14 +737,14 @@ function IsometricPond({ pond, waterLevel, rawId }: { pond: { d: string; deepD: 
           key={`ripple-${i}`}
           cx={ripple.x}
           cy={ripple.y}
-          rx={ripple.rx}
-          ry={ripple.ry}
+          rx={ripple.rx ?? 8}
+          ry={ripple.ry ?? 4}
           fill="none"
-          stroke="#ffffff"
-          strokeWidth="1"
+          stroke="#e8efeb"
+          strokeWidth="0.8"
           opacity="0.5"
-          animate={{ rx: [ripple.rx, ripple.rx * 1.55, ripple.rx], ry: [ripple.ry, ripple.ry * 1.55, ripple.ry], opacity: [0.5, 0.18, 0.5] }}
-          transition={{ duration: 7.5 + ripple.delay, repeat: Infinity, ease: "easeInOut" }}
+          animate={{ rx: [(ripple.rx ?? 8), (ripple.rx ?? 8) * 1.4, (ripple.rx ?? 8)], ry: [(ripple.ry ?? 4), (ripple.ry ?? 4) * 1.4, (ripple.ry ?? 4)], opacity: [0.5, 0.2, 0.5] }}
+          transition={{ duration: 6 + ripple.delay, repeat: Infinity, ease: "easeInOut" }}
         />
       ))}
     </motion.g>
@@ -739,6 +858,151 @@ function Robin({ x, y }: { x: number; y: number }) {
     </g>
   );
 }
+
+const Dove = memo(function Dove({ x, y, scale }: { x: number; y: number; scale: number }) {
+  return (
+    <motion.g
+      transform={`translate(${x} ${y}) scale(${scale})`}
+      animate={{ y: [0, -3, 0], rotate: [-2, 2, -2] }}
+      transition={{ duration: 7, repeat: Infinity, ease: "easeInOut" }}
+      style={{ transformOrigin: `${x}px ${y}px` }}
+    >
+      <path d="M0 0 Q-6 -4 -10 -2 Q-6 2 0 0 Q6 2 10 -2 Q6 -4 0 0Z" fill="#ffffff" opacity="0.92" />
+      <path d="M0 0 Q-2 -5 0 -7 Q2 -5 0 0Z" fill="#f8f8f8" opacity="0.9" />
+      <circle cx="-2" cy="-3" r="0.5" fill="#1a1a1a" />
+    </motion.g>
+  );
+});
+
+const Deer = memo(function Deer({ x, y, scale, angle }: { x: number; y: number; scale: number; angle: number }) {
+  return (
+    <g transform={`translate(${x} ${y}) rotate(${angle}) scale(${scale})`}>
+      <ellipse cx="0" cy="0" rx="8" ry="5" fill="#5a4a3a" opacity="0.85" />
+      <ellipse cx="-9" cy="-2" rx="3" ry="2.5" fill="#5a4a3a" opacity="0.85" />
+      <path d="M-10 -3 L-12 -8 L-11 -3Z" fill="#4a3a2a" opacity="0.8" />
+      <path d="M-10 -3 L-8 -8 L-9 -3Z" fill="#4a3a2a" opacity="0.8" />
+      <ellipse cx="7" cy="1" rx="3.5" ry="2" fill="#5a4a3a" opacity="0.7" />
+      <line x1="-2" y1="4" x2="-3" y2="8" stroke="#4a3a2a" strokeWidth="1" opacity="0.7" />
+      <line x1="2" y1="4" x2="1" y2="8" stroke="#4a3a2a" strokeWidth="1" opacity="0.7" />
+    </g>
+  );
+});
+
+const SacredNode = memo(function SacredNode({ x, y, type, scale }: { x: number; y: number; type: string; scale: number }) {
+  if (type === "cross") {
+    return (
+      <g transform={`translate(${x} ${y}) scale(${scale})`} opacity="0.92">
+        <line x1="0" y1="6" x2="0" y2="-6" stroke="#6b6b6b" strokeWidth="1.4" strokeLinecap="round" />
+        <line x1="-3.5" y1="-2" x2="3.5" y2="-2" stroke="#6b6b6b" strokeWidth="1.2" strokeLinecap="round" />
+        <ellipse cx="0" cy="6" rx="3.5" ry="1.8" fill="#5a5a5a" opacity="0.6" />
+      </g>
+    );
+  }
+  return (
+    <g transform={`translate(${x} ${y}) scale(${scale})`} opacity="0.88">
+      <rect x="-4" y="-2" width="8" height="4" fill="#7a7a72" rx="1" />
+      <rect x="-3.5" y="-3.5" width="7" height="1.5" fill="#8a8a82" rx="0.8" />
+      <ellipse cx="0" cy="2" rx="5" ry="2" fill="#6a6a62" opacity="0.55" />
+    </g>
+  );
+});
+
+const GrottoArch = memo(function GrottoArch({ x, width, height, treeY, trunkHeight, pillarHang, vineCount, altarX, altarY, vineSeeds }: { x: number; width: number; height: number; treeY: number; trunkHeight: number; pillarHang: number; vineCount: number; altarX: number; altarY: number; vineSeeds: number[] }) {
+  const baseY = treeY - trunkHeight * 0.35;
+  const leftX = x - width;
+  const rightX = x + width;
+  const archBaseY = baseY - height;
+  const vineRng = (seed: number) => {
+    let a = seed | 0;
+    return () => {
+      a |= 0;
+      a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  };
+
+  return (
+    <g transform={`translate(${x} ${baseY})`} opacity="0.92">
+      <path d={`M ${-width} 0 Q ${-width} ${-height} 0 ${-height} Q ${width} ${-height} ${width} 0`} fill="none" stroke="#6b7a5a" strokeWidth="2.6" strokeLinecap="round" opacity="0.75" />
+      <path d={`M ${-width + 3} 0 Q ${-width + 3} ${-height + 12} 0 ${-height + 12} Q ${width - 3} ${-height + 12} ${width - 3} 0`} fill="none" stroke="#4a5a3a" strokeWidth="1.4" strokeLinecap="round" opacity="0.55" />
+
+      <line x1={-width + 6} y1={-height + 8} x2={-width + 6} y2={0} stroke="#6b7a5a" strokeWidth="2" strokeLinecap="round" opacity="0.7" />
+      <line x1={width - 6} y1={-height + 8} x2={width - 6} y2={0} stroke="#6b7a5a" strokeWidth="2" strokeLinecap="round" opacity="0.7" />
+
+      <rect x={-width - 5} y={-2} width={10} height={4} fill="#6b7a5a" rx="1" opacity="0.6" />
+      <rect x={width - 5} y={-2} width={10} height={4} fill="#6b7a5a" rx="1" opacity="0.6" />
+
+      {vineSeeds.slice(0, vineCount).map((seed, i) => {
+        const vr = vineRng(seed);
+        const hangY = archBaseY + 6 + vr() * (height - 18);
+        const vineX = -width + 12 + vr() * (width * 2 - 24);
+        const vineLen = 6 + vr() * 12;
+        return (
+          <g key={`vine-${i}`} transform={`translate(${vineX} ${hangY})`}>
+            <path d={`M0 0 Q${(vr() - 0.5) * 6} ${vineLen * 0.5} 0 ${vineLen}`} fill="none" stroke="#3d6b35" strokeWidth="0.9" strokeLinecap="round" opacity="0.8" />
+            <ellipse cx="0" cy={vineLen} rx="1.1" ry="2.2" fill="#4a8040" opacity="0.85" />
+            <ellipse cx={(vr() - 0.5) * 3} cy={vineLen * 0.6} rx="0.9" ry="1.8" fill="#5a9a50" opacity="0.75" />
+          </g>
+        );
+      })}
+
+      <g transform={`translate(${altarX - x} ${altarY - baseY})`}>
+        <rect x="-5" y="-3" width="10" height="4" fill="#7a7a72" rx="1" opacity="0.95" />
+        <rect x="-4.5" y="-4.5" width="9" height="1.5" fill="#8a8a82" rx="0.8" opacity="0.95" />
+        <ellipse cx="0" cy="1" rx="6" ry="2.5" fill="#6a6a62" opacity="0.6" />
+      </g>
+
+      <motion.path
+        d={`M ${-width + 1} 0 Q ${-width + 1} ${-height + 6} 0 ${-height + 6} Q ${width - 1} ${-height + 6} ${width - 1} 0`}
+        fill="none"
+        stroke="#8a9a78"
+        strokeWidth="0.9"
+        opacity="0.5"
+        animate={{ opacity: [0.35, 0.7, 0.35] }}
+        transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
+      />
+    </g>
+  );
+});
+
+const SacredNodePos = { x: 0, y: 0 };
+
+const SacredGeometry = memo(function SacredGeometry({
+  cx,
+  cy,
+  rx,
+  ry,
+  rotation,
+  nodes,
+}: {
+  cx: number;
+  cy: number;
+  rx: number;
+  ry: number;
+  rotation: number;
+  nodes: Array<typeof SacredNodePos>;
+}) {
+  const pts: string[] = [];
+  const steps = 64;
+  for (let i = 0; i <= steps; i++) {
+    const angle = rotation + (i / steps) * Math.PI * 2;
+    const x = cx + Math.cos(angle) * rx;
+    const y = cy + Math.sin(angle) * ry;
+    pts.push(`${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`);
+  }
+  const path = pts.join(' ') + ' Z';
+
+  return (
+    <g opacity="0.28">
+      <path d={path} fill="none" stroke="#b8c4a8" strokeWidth="0.8" />
+      {nodes.map((node, i) => (
+        <circle key={i} cx={node.x} cy={node.y} r="1.6" fill="#c8d4b8" opacity="0.8" />
+      ))}
+    </g>
+  );
+});
 
 export function GardenSignatureGlyph({ signature }: { signature: GardenSignature }) {
   if (signature.kind === "star") {

@@ -150,6 +150,7 @@ function Shell() {
                 loadingDaily={daily.loading}
                 onGenerateDaily={daily.generateNow}
                 generatingDaily={daily.generating}
+                error={daily.error}
                 onOpenAdmin={() => setAdminOpen(true)}
               />
             )}
