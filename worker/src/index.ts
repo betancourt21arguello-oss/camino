@@ -416,6 +416,204 @@ Estructura JSON requerida:
   "imagePrompt": "Descripción artística en inglés para generar una imagen sacra de alta calidad"
 }`;
 
+  const liturgySchema = {
+    type: "OBJECT",
+    properties: {
+      date: { type: "STRING" },
+      weekday: { type: "STRING" },
+      season: { type: "STRING" },
+      liturgicalColor: { type: "STRING" },
+      liturgicalRank: { type: "STRING" },
+      isSolemnity: { type: "BOOLEAN" },
+      saint: {
+        type: "OBJECT",
+        properties: {
+          name: { type: "STRING" },
+          title: { type: "STRING" },
+          initial: { type: "STRING" },
+          story: { type: "STRING" },
+          highlights: { type: "ARRAY", items: { type: "STRING" } },
+          lessons: { type: "ARRAY", items: { type: "STRING" } },
+          exampleToday: { type: "STRING" },
+          gospelConnection: { type: "STRING" },
+          venezuelaRelevance: { type: "STRING" },
+          prayer: { type: "STRING" },
+        },
+        required: ["name", "title", "story", "gospelConnection", "prayer"],
+      },
+      quote: {
+        type: "OBJECT",
+        properties: {
+          text: { type: "STRING" },
+          ref: { type: "STRING" },
+        },
+        required: ["text", "ref"],
+      },
+      gospel: {
+        type: "OBJECT",
+        properties: {
+          ref: { type: "STRING" },
+          title: { type: "STRING" },
+          body: { type: "STRING" },
+          evangelist: { type: "STRING" },
+        },
+        required: ["ref", "title", "body", "evangelist"],
+      },
+      psalm: {
+        type: "OBJECT",
+        properties: {
+          ref: { type: "STRING" },
+          title: { type: "STRING" },
+          body: { type: "STRING" },
+          response: { type: "STRING" },
+        },
+        required: ["ref", "title", "body", "response"],
+      },
+      firstReading: {
+        type: "OBJECT",
+        properties: {
+          ref: { type: "STRING" },
+          title: { type: "STRING" },
+          body: { type: "STRING" },
+        },
+        required: ["ref", "title", "body"],
+      },
+      secondReading: {
+        type: "OBJECT",
+        properties: {
+          ref: { type: "STRING" },
+          title: { type: "STRING" },
+          body: { type: "STRING" },
+        },
+      },
+      marian: {
+        type: "OBJECT",
+        properties: {
+          source: { type: "STRING" },
+          text: { type: "STRING" },
+          relevant: { type: "BOOLEAN" },
+          reason: { type: "STRING" },
+        },
+        required: ["source", "text", "relevant", "reason"],
+      },
+      reflection: { type: "STRING" },
+      catechism: {
+        type: "OBJECT",
+        properties: {
+          number: { type: "STRING" },
+          title: { type: "STRING" },
+          text: { type: "STRING" },
+          applyToday: { type: "STRING" },
+        },
+        required: ["number", "title", "text", "applyToday"],
+      },
+      laudes: {
+        type: "OBJECT",
+        properties: {
+          title: { type: "STRING" },
+          hour: { type: "STRING" },
+          mood: { type: "STRING" },
+          body: { type: "STRING" },
+          parts: {
+            type: "ARRAY",
+            items: {
+              type: "OBJECT",
+              properties: {
+                kind: { type: "STRING" },
+                label: { type: "STRING" },
+                text: { type: "STRING" },
+                response: { type: "STRING" },
+                rubric: { type: "STRING" },
+              },
+              required: ["kind", "label", "text"],
+            },
+          },
+        },
+        required: ["title", "hour", "parts"],
+      },
+      vespers: {
+        type: "OBJECT",
+        properties: {
+          title: { type: "STRING" },
+          hour: { type: "STRING" },
+          mood: { type: "STRING" },
+          body: { type: "STRING" },
+          parts: {
+            type: "ARRAY",
+            items: {
+              type: "OBJECT",
+              properties: {
+                kind: { type: "STRING" },
+                label: { type: "STRING" },
+                text: { type: "STRING" },
+                response: { type: "STRING" },
+                rubric: { type: "STRING" },
+              },
+              required: ["kind", "label", "text"],
+            },
+          },
+        },
+        required: ["title", "hour", "parts"],
+      },
+      compline: {
+        type: "OBJECT",
+        properties: {
+          title: { type: "STRING" },
+          hour: { type: "STRING" },
+          mood: { type: "STRING" },
+          body: { type: "STRING" },
+          parts: {
+            type: "ARRAY",
+            items: {
+              type: "OBJECT",
+              properties: {
+                kind: { type: "STRING" },
+                label: { type: "STRING" },
+                text: { type: "STRING" },
+                response: { type: "STRING" },
+                rubric: { type: "STRING" },
+              },
+              required: ["kind", "label", "text"],
+            },
+          },
+        },
+        required: ["title", "hour", "parts"],
+      },
+      angelus: {
+        type: "OBJECT",
+        properties: {
+          title: { type: "STRING" },
+          body: { type: "STRING" },
+          verses: { type: "ARRAY", items: { type: "STRING" } },
+          closingPrayer: { type: "STRING" },
+        },
+        required: ["title", "body", "verses", "closingPrayer"],
+      },
+      imagePrompt: { type: "STRING" },
+    },
+    required: [
+      "date",
+      "weekday",
+      "season",
+      "liturgicalColor",
+      "liturgicalRank",
+      "isSolemnity",
+      "saint",
+      "quote",
+      "gospel",
+      "psalm",
+      "firstReading",
+      "marian",
+      "reflection",
+      "catechism",
+      "laudes",
+      "vespers",
+      "compline",
+      "angelus",
+      "imagePrompt",
+    ],
+  };
+
   const res = await generateWithProviderFallback((model, apiKey) =>
     fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
@@ -426,6 +624,7 @@ Estructura JSON requerida:
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
             responseMimeType: "application/json",
+            responseSchema: liturgySchema,
             temperature: 0.2,
             maxOutputTokens: 8192,
           },
