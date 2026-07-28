@@ -159,7 +159,7 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
     window.addEventListener("beforeunload", handleBeforeUnload);
     void reload();
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [reload, balance.agua]);
+  }, [reload]);
 
   /* ── Realtime ──────────────────────────────────────────────────────── */
   useEffect(() => {
