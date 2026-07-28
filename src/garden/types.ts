@@ -69,6 +69,7 @@ export type GardenEventType =
   | "COMMUNITY_PRAYER"
   | "STREAK_MAINTAINED"
   | "TASK_COMPLETED"
+  | "GOSPEL_READ"
   | "SEED_RECEIVED"
   | "WATER_RECEIVED"
   | "CANDLE_LIT"

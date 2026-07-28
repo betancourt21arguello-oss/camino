@@ -6,12 +6,14 @@ let vapidConfigured = false;
 const MODEL_FALLBACK_CHAIN = [
   "gemini-1.5-flash",
   "gemini-1.5-flash-8b",
+  "gemini-1.5-flash-latest",
   "gemini-1.5-pro",
+  "gemini-1.5-pro-latest",
   "gemini-1.0-pro",
-  "gemini-pro",
+  "gemini-1.0-pro-001",
 ];
 
-const MAX_RETRIES_PER_MODEL = 2;
+const MAX_RETRIES_PER_MODEL = 3;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -66,8 +68,8 @@ async function generateWithProviderFallback<T>(
   env: any
 ): Promise<T> {
   const providers = [
-    { name: "AI Studio", key: env.GEMINI_API_KEY },
-    { name: "Vertex AI", key: env.VERTEX_API_KEY },
+    { name: "AI Studio", key: env.GEMINI_API_KEY, retries: 5, backoff: [1000, 2000, 4000, 8000, 16000] },
+    { name: "Vertex AI", key: env.VERTEX_API_KEY, retries: 2, backoff: [1000, 2000] },
   ];
 
   let lastError: unknown = null;
@@ -78,23 +80,41 @@ async function generateWithProviderFallback<T>(
       continue;
     }
 
-    try {
-      console.log(`[AI Provider] Intentando con ${provider.name}...`);
-      const result = await generateWithFallback(async (model) => {
-        const res = await apiCallFn(model, provider.key);
-        if (!res.ok) {
-          const errorText = await res.text();
-          throw new Error(
-            `HTTP Error ${res.status} - ${res.statusText}: ${errorText}`
-          );
+    console.log(`[AI Provider] Probando ${provider.name} (intentos=${provider.retries})...`);
+
+    for (let providerAttempt = 1; providerAttempt <= provider.retries; providerAttempt++) {
+      try {
+        console.log(`[AI Provider] ${provider.name} intento ${providerAttempt}/${provider.retries}...`);
+        const result = await generateWithFallback(async (model) => {
+          const res = await apiCallFn(model, provider.key);
+          if (!res.ok) {
+            const errorText = await res.text();
+            console.error(`[AI Provider] ${provider.name} model=${model} error:`, errorText);
+            throw new Error(
+              `HTTP Error ${res.status} - ${res.statusText}: ${errorText}`
+            );
+          }
+          return res;
+        });
+        console.log(`[AI Provider] ${provider.name} respondió correctamente.`);
+        return result;
+      } catch (error: any) {
+        lastError = error;
+        const isLastProviderAttempt = providerAttempt >= provider.retries;
+        console.warn(
+          `[AI Provider] ${provider.name} intento ${providerAttempt}/${provider.retries} falló:`,
+          error?.message || error
+        );
+
+        if (!isLastProviderAttempt) {
+          const delay = provider.backoff[Math.min(providerAttempt - 1, provider.backoff.length - 1)];
+          console.log(`[AI Provider] Reintentando ${provider.name} en ${delay}ms...`);
+          await sleep(delay);
         }
-        return res;
-      });
-      return result;
-    } catch (error: any) {
-      lastError = error;
-      console.warn(`[AI Provider] ${provider.name} falló:`, error?.message || error);
+      }
     }
+
+    console.warn(`[AI Provider] ${provider.name} agotó sus reintentos. Pasando al siguiente proveedor...`);
   }
 
   throw new Error(
@@ -624,7 +644,7 @@ Estructura JSON requerida:
 
   const res = await generateWithProviderFallback((model, apiKey) =>
     fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -887,7 +907,7 @@ INSTRUCCIONES:
 
   const res = await generateWithProviderFallback((model, apiKey) =>
     fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },

@@ -1,3 +1,4 @@
+
 /* ============================================================================
  * src/garden/events.ts — Mapeo de eventos espirituales y agregación de estado
  * ==========================================================================*/
@@ -25,6 +26,24 @@ const EVENT_MAP: Record<string, GardenEventType> = {
   "reflection-complete": "REFLECTION_COMPLETED",
   "seed-received": "SEED_RECEIVED",
   "water-received": "WATER_RECEIVED",
+};
+
+/** Reverse map: GardenEventType → spiritual event type */
+export const GARDEN_TO_SPIRITUAL_MAP: Record<GardenEventType, string> = {
+  ROSARY_COMPLETED: "rosary-complete",
+  NOVENA_COMPLETED: "novena-complete",
+  CORONILLA_COMPLETED: "coronilla-complete",
+  TASK_COMPLETED: "task-complete",
+  GOSPEL_READ: "gospel-read",
+  STREAK_MAINTAINED: "daily-streak",
+  COMMUNITY_PRAYER: "community-join",
+  CANDLE_LIT: "candle-lit",
+  PRAY_FOR_OTHER: "pray-for-other",
+  WATER_GARDEN: "water-garden",
+  SILENCE_TIME: "read-intention",
+  REFLECTION_COMPLETED: "reflection-complete",
+  SEED_RECEIVED: "seed-received",
+  WATER_RECEIVED: "water-received",
 };
 
 export function gardenEventType(spiritualEventType: string): GardenEventType | null {

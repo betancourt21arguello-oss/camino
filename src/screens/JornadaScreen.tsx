@@ -2,12 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { buildJornadaSteps, type JornadaStep, type JornadaStepKind } from "../data/jornada";
 import type { DailyLiturgy } from "../liturgy/types";
-
-type Props = {
-  liturgy: DailyLiturgy | null;
-  onClose: () => void;
-  onComplete: () => void;
-};
+import { useSpiritual } from "../fruits/store";
 
 const ACCENT: Record<JornadaStepKind, string> = {
   offering: "#c98a3a",
@@ -31,6 +26,8 @@ export function JornadaScreen({ liturgy, onClose, onComplete }: Props) {
   const [index, setIndex] = useState(0);
   const [reflection, setReflection] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const completedStepsRef = useRef<Set<string>>(new Set());
+  const { emit } = useSpiritual();
 
   const step = steps[index];
   const total = steps.length;
@@ -43,6 +40,18 @@ export function JornadaScreen({ liturgy, onClose, onComplete }: Props) {
   }, [index]);
 
   const goNext = () => {
+    // Emitir eventos al salir de ciertos pasos
+    const currentStep = steps[index];
+    if (currentStep) {
+      if (currentStep.kind === "reflection" && !completedStepsRef.current.has("reflection")) {
+        completedStepsRef.current.add("reflection");
+        emit({ type: "reflection-complete" });
+      }
+      if (currentStep.kind === "silence" && !completedStepsRef.current.has("silence")) {
+        completedStepsRef.current.add("silence");
+        emit({ type: "read-intention" });
+      }
+    }
     if (isLast) {
       onComplete();
       return;

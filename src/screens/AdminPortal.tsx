@@ -2,6 +2,10 @@ import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 import { WORKER_API_BASE } from "../config";
 import { defaultTasks, type TaskCategory } from "../rule/tasks";
+import { computeDna, deriveDnaTraits, gardenDnaFor } from "../garden/dna";
+import { aggregateGardenState, emptyGardenState } from "../garden/events";
+import { derivePersonalTraits, defaultPersonalTraits, type PersonalTraits, type PersonalInput } from "../garden/personal";
+import type { DnaTraits, GardenState } from "../garden/types";
 
 export function AdminPortal({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState<"garden" | "gemini" | "upload" | "telegram" | "tasks" | "images">("gemini");
@@ -523,100 +527,902 @@ function TasksPanel() {
 
 // Garden editor
 function GardenEditor() {
-  const [userId, setUserId] = useState("");
-  const [eventType, setEventType] = useState("ROSARY_COMPLETED");
-  const [value, setValue] = useState("1");
-  const [intention, setIntention] = useState("");
+  // Helper function to clamp numbers
+  const clampNumber = (value: number, min: number, max: number): number => {
+    return Math.min(Math.max(value, min), max);
+  };
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<{ id: string; email: string; full_name: string | null; name: string | null }[]>([]);
+  const [selectedUser, setSelectedUser] = useState<{ id: string; email: string; full_name: string | null; name: string | null } | null>(null);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [loadingGarden, setLoadingGarden] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState("");
 
-  const eventTypes = [
-    "ROSARY_COMPLETED",
-    "NOVENA_COMPLETED",
-    "CORONILLA_COMPLETED",
-    "SILENCE_TIME",
-    "WATER_GARDEN",
-    "COMMUNITY_PRAYER",
-    "STREAK_MAINTAINED",
-    "TASK_COMPLETED",
-    "SEED_RECEIVED",
-    "WATER_RECEIVED",
-    "CANDLE_LIT",
-    "REFLECTION_COMPLETED",
-  ];
+  // Garden data state
+  const [dnaTraits, setDnaTraits] = useState<DnaTraits | null>(null);
+  const [gardenState, setGardenState] = useState<Partial<GardenState> | null>(null);
+  const [personalInput, setPersonalInput] = useState<PersonalInput | null>(null);
+  const [personalTraits, setPersonalTraits] = useState<PersonalTraits | null>(null);
 
-  const insertEvent = async () => {
-    if (!supabase || !userId.trim()) return;
-    setBusy(true);
-    setResult("");
+  // Fetch all users
+  const fetchUsers = async () => {
+    if (!supabase) return;
+    setLoadingUsers(true);
     try {
-      const { error } = await supabase.rpc("admin_insert_compensatory_event", {
-        p_target_user_id: userId.trim(),
-        p_event_type: eventType,
-        p_value: Number(value) || 0,
-        p_intention: intention || null,
-        p_created_at: new Date().toISOString(),
-      });
-      setResult(error ? `❌ Error: ${error.message}` : "✅ Evento compensatorio insertado");
-      if (!error) {
-        setValue("1");
-        setIntention("");
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, email, full_name, name")
+        .order("email")
+        .limit(100);
+      if (!error && data) {
+        setSearchResults(data);
       }
     } catch (e) {
-      setResult(`❌ ${e instanceof Error ? e.message : "Error"}`);
+      setResult(`❌ Error al cargar usuarios: ${e instanceof Error ? e.message : "Error"}`);
+    }
+    setLoadingUsers(false);
+  };
+
+  // Search users
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (searchQuery.trim().length > 0 && searchQuery.trim().length < 2) return;
+      if (!supabase) return;
+      
+      if (searchQuery.trim() === "") {
+        fetchUsers();
+        return;
+      }
+      
+      setLoadingUsers(true);
+      try {
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("id, email, full_name, name")
+          .or(`email.ilike.%${searchQuery}%,full_name.ilike.%${searchQuery}%,name.ilike.%${searchQuery}%`)
+          .order("email")
+          .limit(50);
+        if (!error && data) {
+          setSearchResults(data);
+        }
+      } catch (e) {
+        setResult(`❌ Error al buscar: ${e instanceof Error ? e.message : "Error"}`);
+      }
+      setLoadingUsers(false);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Load garden data for selected user
+  const loadGardenData = async () => {
+    if (!supabase || !selectedUser) return;
+    setLoadingGarden(true);
+    setResult("");
+    
+    try {
+      // Calculate DNA traits from user ID
+      const dna = computeDna(selectedUser.id);
+      const traits = deriveDnaTraits(dna);
+      setDnaTraits({ ...traits, dna });
+
+      // Get garden events
+      const { data: events, error: eventsError } = await supabase
+        .from("garden_events")
+        .select("*")
+        .eq("user_id", selectedUser.id)
+        .order("created_at", { ascending: true });
+
+      // Get active candles
+      const { data: candles, error: candlesError } = await supabase
+        .from("candles")
+        .select("*")
+        .eq("owner_id", selectedUser.id)
+        .gte("expires_at", new Date().toISOString());
+
+      const activeCandles = candles?.length || 0;
+
+      // Calculate garden state
+      const state = aggregateGardenState(
+        events?.map(e => ({ ...e, created_at: e.created_at })) || [],
+        activeCandles
+      );
+      setGardenState(state);
+
+      // Get profile data for personal input
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("name, registered_at, points, last_seen_at")
+        .eq("id", selectedUser.id)
+        .single();
+
+      // Get fruits data
+      const { data: fruits } = await supabase
+        .from("fruits")
+        .select("*")
+        .eq("profile_id", selectedUser.id)
+        .single();
+
+      if (profile) {
+        const fruitsData = fruits as { semilla?: number; vela?: number; agua?: number } | null;
+        const personalInputData: PersonalInput = {
+          name: profile.name || selectedUser.full_name || selectedUser.email || "",
+          registeredAt: new Date(profile.registered_at || selectedUser.id.slice(0, 10)),
+          points: fruitsData?.semilla || profile.points || 0,
+          lastSeenAt: profile.last_seen_at ? new Date(profile.last_seen_at) : new Date(),
+        };
+        setPersonalInput(personalInputData);
+        
+        const personalTraitsData = derivePersonalTraits(personalInputData);
+        setPersonalTraits(personalTraitsData);
+      }
+    } catch (e) {
+      setResult(`❌ Error al cargar datos del jardín: ${e instanceof Error ? e.message : "Error"}`);
+    }
+    setLoadingGarden(false);
+  };
+
+  // Load garden data when user is selected
+  useEffect(() => {
+    if (selectedUser) {
+      loadGardenData();
+    }
+  }, [selectedUser]);
+
+  // Store original state for comparison
+  const [originalGardenState, setOriginalGardenState] = useState<Partial<GardenState> | null>(null);
+  const [originalPersonalInput, setOriginalPersonalInput] = useState<PersonalInput | null>(null);
+
+  // Handle field changes
+  const handleDnaChange = (field: string, value: any) => {
+    setDnaTraits((prev: DnaTraits | null) => prev ? { ...prev, [field]: value } : null);
+  };
+
+  const handleStateChange = (field: string, value: any) => {
+    setGardenState((prev: Partial<GardenState> | null) => prev ? { ...prev, [field]: value } : null);
+  };
+
+  const handlePersonalInputChange = (field: string, value: any) => {
+    setPersonalInput((prev: PersonalInput | null) => prev ? { ...prev, [field]: value } : null);
+  };
+
+  // Save original state when data is loaded
+  useEffect(() => {
+    if (gardenState) {
+      setOriginalGardenState({ ...gardenState });
+    }
+  }, [gardenState]);
+
+  useEffect(() => {
+    if (personalInput) {
+      setOriginalPersonalInput({ ...personalInput });
+    }
+  }, [personalInput]);
+
+  // Save changes
+  const saveChanges = async () => {
+    if (!supabase || !selectedUser || !personalInput) return;
+    setBusy(true);
+    setResult("");
+
+    try {
+      const operations: Promise<any>[] = [];
+      const results: string[] = [];
+
+      // 1. Update profile data
+      if (personalInput && originalPersonalInput) {
+        const profileUpdates: any = {};
+        
+        if (personalInput.name !== originalPersonalInput.name) {
+          profileUpdates.name = personalInput.name;
+        }
+        
+        if (personalInput.points !== originalPersonalInput.points) {
+          profileUpdates.points = personalInput.points;
+        }
+        
+        if (personalInput.lastSeenAt && 
+            (!originalPersonalInput.lastSeenAt || 
+             personalInput.lastSeenAt.getTime() !== originalPersonalInput.lastSeenAt.getTime())) {
+          profileUpdates.last_seen_at = personalInput.lastSeenAt.toISOString();
+        }
+        
+        if (personalInput.registeredAt &&
+            personalInput.registeredAt.getTime() !== originalPersonalInput.registeredAt.getTime()) {
+          profileUpdates.registered_at = personalInput.registeredAt.toISOString();
+        }
+        
+        if (Object.keys(profileUpdates).length > 0) {
+          const { error: profileError } = await supabase
+            .from("profiles")
+            .update(profileUpdates)
+            .eq("id", selectedUser.id);
+          
+          if (profileError) {
+            results.push(`❌ Error al actualizar perfil: ${profileError.message}`);
+          } else {
+            results.push("✅ Perfil actualizado");
+          }
+        }
+      }
+
+      // 2. Update fruits (vela, semilla, agua) based on personalInput.points
+      // Fruits affect the garden state calculation
+      if (personalInput && personalInput.points !== originalPersonalInput?.points) {
+        // Calculate the difference in points
+        const pointsDiff = personalInput.points - (originalPersonalInput?.points || 0);
+        
+        // Update fruits - assuming points come from semilla (seeds)
+        const { error: fruitsError } = await supabase
+          .from("fruits")
+          .upsert({
+            profile_id: selectedUser.id,
+            semilla: personalInput.points,
+            vela: 0,
+            agua: 0,
+            updated_at: new Date().toISOString(),
+          })
+          .select();
+        
+        if (fruitsError) {
+          results.push(`❌ Error al actualizar frutas: ${fruitsError.message}`);
+        } else {
+          results.push("✅ Frutas actualizadas");
+        }
+      }
+
+      // 3. Insert compensatory events for garden state changes
+      if (gardenState && originalGardenState) {
+        // Insert events for changed values
+        const eventMap: Record<string, { type: string; valueField?: string }> = {
+          totalRosaries: { type: "ROSARY_COMPLETED", valueField: "value" },
+          totalNovenas: { type: "NOVENA_COMPLETED", valueField: "value" },
+          totalCoronillas: { type: "CORONILLA_COMPLETED", valueField: "value" },
+          totalWaterings: { type: "WATER_GARDEN", valueField: "value" },
+          totalCandles: { type: "CANDLE_LIT", valueField: "value" },
+          totalSilence: { type: "SILENCE_TIME", valueField: "value" },
+          streak: { type: "STREAK_MAINTAINED", valueField: "value" },
+        };
+
+        // Check each field that can be adjusted with events
+        for (const [field, config] of Object.entries(eventMap)) {
+          const currentValue = (gardenState as any)[field] || 0;
+          const originalValue = (originalGardenState as any)[field] || 0;
+          
+          if (currentValue > originalValue) {
+            const diff = currentValue - originalValue;
+            if (diff > 0) {
+              // Insert compensatory events
+              const { error: eventError } = await supabase.rpc("admin_insert_compensatory_event", {
+                p_target_user_id: selectedUser.id,
+                p_event_type: config.type,
+                p_value: diff,
+                p_intention: `Ajuste manual por admin - ${field}`,
+                p_created_at: new Date().toISOString(),
+              });
+              
+              if (eventError) {
+                results.push(`❌ Error al insertar evento ${config.type}: ${eventError.message}`);
+              } else {
+                results.push(`✅ ${diff} eventos ${config.type} insertados`);
+              }
+            }
+          }
+        }
+
+        // For waterLevel and lightLevel, we can insert WATER_GARDEN events
+        if ((gardenState.waterLevel || 0) > (originalGardenState.waterLevel || 0)) {
+          const waterDiff = Math.ceil(((gardenState.waterLevel || 0) - (originalGardenState.waterLevel || 0)) / 22);
+          if (waterDiff > 0) {
+            const { error: waterError } = await supabase.rpc("admin_insert_compensatory_event", {
+              p_target_user_id: selectedUser.id,
+              p_event_type: "WATER_GARDEN",
+              p_value: waterDiff,
+              p_intention: "Ajuste manual de nivel de agua por admin",
+              p_created_at: new Date().toISOString(),
+            });
+            
+            if (waterError) {
+              results.push(`❌ Error al ajustar agua: ${waterError.message}`);
+            } else {
+              results.push(`✅ ${waterDiff} riegos compensatorios insertados`);
+            }
+          }
+        }
+      }
+
+       const errorResults = results.filter(r => r.startsWith("❌"));
+       const successResults = results.filter(r => r.startsWith("✅"));
+       setResult(errorResults.length > 0 
+         ? errorResults.join(" \n ") 
+         : (successResults.length > 0 ? successResults.join(" \n ") : "✅ Cambios guardados correctamente"));
+      
+      // Reload garden data to reflect changes
+      await loadGardenData();
+    } catch (e) {
+      setResult(`❌ Error al guardar: ${e instanceof Error ? e.message : "Error"}`);
     }
     setBusy(false);
+  };
+
+  // Type options for dropdowns
+  const terrainOptions = ["meadow", "forest", "hill", "desert", "coast", "highland"];
+  const pathShapeOptions = ["serpentine", "straight", "spiral", "forked", "circular"];
+  const treeSpeciesOptions = ["cedar", "oak", "olive", "palm", "pine", "jacaranda"];
+  const rockPatternOptions = ["scattered", "clustered", "cairn", "ring", "sparse"];
+  const paletteVariantOptions = ["dawn", "verdant", "amber", "azure", "rose", "dusk"];
+  const flowerSpeciesBiasOptions = ["rose", "lily", "lavender", "daisy", "marigold", "iris"];
+  const maturityTierOptions = ["seed", "sprout", "tree", "forest"];
+  const growthPhaseOptions = [1, 2, 3, 4];
+  const gardenSeasonOptions = ["advent", "christmas", "lent", "easter", "pentecost", "ordinary"];
+  const timeOfDayOptions = ["madrugada", "manana", "mediodia", "noche"];
+
+  // Label mappings
+  const TERRAIN_LABEL: Record<string, string> = {
+    meadow: "Pradera", forest: "Bosque", hill: "Colina",
+    desert: "Desierto", coast: "Costa", highland: "Altiplano",
+  };
+  const TREE_LABEL: Record<string, string> = {
+    cedar: "Cedro", oak: "Roble", olive: "Olivo",
+    palm: "Palma", pine: "Pino", jacaranda: "Jacaranda",
+  };
+  const MATURITY_LABEL: Record<string, string> = {
+    seed: "Semilla", sprout: "Brote", tree: "Árbol", forest: "Bosque",
+  };
+  const SEASON_LABEL: Record<string, string> = {
+    advent: "Adviento", christmas: "Navidad", lent: "Cuaresma",
+    easter: "Pascua", pentecost: "Pentecostés", ordinary: "Tiempo Ordinario",
   };
 
   return (
     <div className="space-y-4">
       <h2 className="text-lg font-semibold">Editor de Jardín</h2>
-      <p className="text-sm text-white/60">Inserta eventos compensatorios para corregir el historial de un usuario.</p>
+      <p className="text-sm text-white/60">Selecciona un usuario para editar los datos de su jardín.</p>
 
+      {/* User search and selection */}
       <div className="space-y-2">
-        <input
-          value={userId}
-          onChange={(e) => setUserId(e.target.value)}
-          placeholder="UUID del usuario"
-          className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white"
-        />
+        <label className="text-xs font-medium uppercase tracking-wider text-white/50">Buscar usuario</label>
+        <div className="relative">
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Buscar por email o nombre..."
+            className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/30 pr-10"
+          />
+          <button
+            onClick={() => fetchUsers()}
+            disabled={loadingUsers}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-white/50 hover:text-white"
+          >
+            {loadingUsers ? "Buscando..." : "🔍"}
+          </button>
+        </div>
 
-        <select
-          value={eventType}
-          onChange={(e) => setEventType(e.target.value)}
-          className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white"
-        >
-          {eventTypes.map((t) => (
-            <option key={t} value={t}>{t}</option>
-          ))}
-        </select>
+        {searchResults.length > 0 && (
+          <div className="max-h-48 space-y-1 overflow-y-auto rounded-xl border border-white/10 bg-white/[0.04]">
+            {searchResults.map((u) => (
+              <button
+                key={u.id}
+                onClick={() => {
+                  setSelectedUser(u);
+                  setSearchQuery("");
+                  setSearchResults([]);
+                }}
+                className={`flex w-full flex-col gap-0.5 rounded-lg px-3 py-2 text-left transition ${
+                  selectedUser?.id === u.id ? "bg-[var(--gold)]/20" : "hover:bg-white/10"
+                }`}
+              >
+                <span className="text-sm font-medium text-white">{u.full_name || u.name || u.email}</span>
+                <span className="text-[10px] text-white/50">{u.email}</span>
+                <span className="text-[10px] text-white/30 font-mono">{u.id.slice(0, 24)}...</span>
+              </button>
+            ))}
+          </div>
+        )}
 
-        <input
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder="Valor"
-          type="number"
-          className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white"
-        />
-
-        <input
-          value={intention}
-          onChange={(e) => setIntention(e.target.value)}
-          placeholder="Intención (opcional)"
-          className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white"
-        />
-
-        <button onClick={insertEvent} disabled={busy || !userId.trim()} className="h-12 w-full rounded-2xl bg-[var(--gold)] font-medium text-black disabled:opacity-50">
-          {busy ? "Insertando…" : "Insertar evento compensatorio"}
-        </button>
+        {selectedUser && (
+          <div className="flex items-center gap-2 rounded-xl border border-[var(--gold)]/40 bg-[var(--gold)]/10 px-3 py-2">
+            <span className="text-xs text-[var(--gold)]">Seleccionado:</span>
+            <span className="flex-1 truncate text-sm text-white">{selectedUser.full_name || selectedUser.name || selectedUser.email}</span>
+            <span className="max-w-[120px] truncate text-[10px] text-white/40 font-mono">{selectedUser.id.slice(0, 8)}...</span>
+            <button onClick={() => setSelectedUser(null)} className="text-xs text-white/60 hover:text-white">Cambiar</button>
+          </div>
+        )}
       </div>
 
+      {/* Garden data display and editing */}
+      {selectedUser && (
+        <div className="space-y-4">
+          {loadingGarden ? (
+            <p className="text-sm text-white/60">Cargando datos del jardín...</p>
+          ) : (
+            <>
+              {dnaTraits && (
+                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 space-y-4">
+                  <h3 className="text-sm font-semibold text-white">DNA del Jardín (Inmutable)</h3>
+                  <p className="text-xs text-white/40">Estos valores se derivan del ID del usuario y no deberían modificarse.</p>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Terreno</label>
+                      <select
+                        value={dnaTraits.terrain}
+                        onChange={(e) => handleDnaChange("terrain", e.target.value)}
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                        disabled
+                      >
+                        {terrainOptions.map((t) => (
+                          <option key={t} value={t}>{TERRAIN_LABEL[t] || t}</option>
+                        ))}
+                      </select>
+                      <span className="text-[10px] text-white/30">{dnaTraits.terrain}</span>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Forma del Camino</label>
+                      <select
+                        value={dnaTraits.pathShape}
+                        onChange={(e) => handleDnaChange("pathShape", e.target.value)}
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                        disabled
+                      >
+                        {pathShapeOptions.map((t) => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
+                      <span className="text-[10px] text-white/30">{dnaTraits.pathShape}</span>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Especie del Árbol</label>
+                      <select
+                        value={dnaTraits.treeSpecies}
+                        onChange={(e) => handleDnaChange("treeSpecies", e.target.value)}
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                        disabled
+                      >
+                        {treeSpeciesOptions.map((t) => (
+                          <option key={t} value={t}>{TREE_LABEL[t] || t}</option>
+                        ))}
+                      </select>
+                      <span className="text-[10px] text-white/30">{dnaTraits.treeSpecies}</span>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Patrón de Rocas</label>
+                      <select
+                        value={dnaTraits.rockPattern}
+                        onChange={(e) => handleDnaChange("rockPattern", e.target.value)}
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                        disabled
+                      >
+                        {rockPatternOptions.map((t) => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
+                      <span className="text-[10px] text-white/30">{dnaTraits.rockPattern}</span>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Ángulo del Río</label>
+                      <input
+                        type="number"
+                        value={dnaTraits.riverAngle}
+                        onChange={(e) => handleDnaChange("riverAngle", Number(e.target.value))}
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                        disabled
+                      />
+                      <span className="text-[10px] text-white/30">-40 a 40 grados</span>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Paleta de Colores</label>
+                      <select
+                        value={dnaTraits.paletteVariant}
+                        onChange={(e) => handleDnaChange("paletteVariant", e.target.value)}
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                        disabled
+                      >
+                        {paletteVariantOptions.map((t) => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
+                      <span className="text-[10px] text-white/30">{dnaTraits.paletteVariant}</span>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Flor Dominante</label>
+                      <select
+                        value={dnaTraits.flowerSpeciesBias}
+                        onChange={(e) => handleDnaChange("flowerSpeciesBias", e.target.value)}
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                        disabled
+                      >
+                        {flowerSpeciesBiasOptions.map((t) => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
+                      <span className="text-[10px] text-white/30">{dnaTraits.flowerSpeciesBias}</span>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Matiz Base</label>
+                      <input
+                        type="number"
+                        value={dnaTraits.baseHue}
+                        onChange={(e) => handleDnaChange("baseHue", Number(e.target.value))}
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                        disabled
+                      />
+                      <span className="text-[10px] text-white/30">0-360 grados</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {gardenState && (
+                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 space-y-4">
+                  <h3 className="text-sm font-semibold text-white">Estado del Jardín (Editable)</h3>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Nivel de Agua</label>
+                      <input
+                        type="number"
+                        value={gardenState.waterLevel ?? 0}
+                        onChange={(e) => handleStateChange("waterLevel", clampNumber(Number(e.target.value), 0, 100))}
+                        min="0"
+                        max="100"
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                      />
+                      <span className="text-[10px] text-white/30">0-100</span>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Nivel de Luz</label>
+                      <input
+                        type="number"
+                        value={gardenState.lightLevel ?? 0}
+                        onChange={(e) => handleStateChange("lightLevel", clampNumber(Number(e.target.value), 0, 100))}
+                        min="0"
+                        max="100"
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                      />
+                      <span className="text-[10px] text-white/30">0-100</span>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Salud</label>
+                      <input
+                        type="number"
+                        value={gardenState.health ?? 0}
+                        onChange={(e) => handleStateChange("health", clampNumber(Number(e.target.value), 0, 100))}
+                        min="0"
+                        max="100"
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                      />
+                      <span className="text-[10px] text-white/30">0-100</span>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Puntos</label>
+                      <input
+                        type="number"
+                        value={gardenState.pointsScore ?? 0}
+                        onChange={(e) => handleStateChange("pointsScore", Math.max(0, Number(e.target.value)))}
+                        min="0"
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Nivel</label>
+                      <input
+                        type="number"
+                        value={gardenState.level ?? 0}
+                        onChange={(e) => handleStateChange("level", clampNumber(Number(e.target.value), 1, 10))}
+                        min="1"
+                        max="10"
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                      />
+                      <span className="text-[10px] text-white/30">1-10</span>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Madurez</label>
+                      <select
+                        value={gardenState.maturityTier ?? ""}
+                        onChange={(e) => handleStateChange("maturityTier", e.target.value as any)}
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                      >
+                        {maturityTierOptions.map((t) => (
+                          <option key={t} value={t}>{MATURITY_LABEL[t] || t}</option>
+                        ))}
+                      </select>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Fase de Crecimiento</label>
+                      <select
+                        value={gardenState.growthPhase ?? 1}
+                        onChange={(e) => handleStateChange("growthPhase", Number(e.target.value) as 1 | 2 | 3 | 4)}
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                      >
+                        {growthPhaseOptions.map((t) => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Temporada</label>
+                      <select
+                        value={gardenState.season ?? ""}
+                        onChange={(e) => handleStateChange("season", e.target.value as any)}
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                      >
+                        {gardenSeasonOptions.map((t) => (
+                          <option key={t} value={t}>{SEASON_LABEL[t] || t}</option>
+                        ))}
+                      </select>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Hora del Día</label>
+                      <select
+                        value={gardenState.timeOfDay ?? ""}
+                        onChange={(e) => handleStateChange("timeOfDay", e.target.value as any)}
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                      >
+                        {timeOfDayOptions.map((t) => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 pt-2">
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Rosarios Totales</label>
+                      <input
+                        type="number"
+                        value={gardenState.totalRosaries ?? 0}
+                        onChange={(e) => handleStateChange("totalRosaries", Math.max(0, Number(e.target.value)))}
+                        min="0"
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Novenas Totales</label>
+                      <input
+                        type="number"
+                        value={gardenState.totalNovenas ?? 0}
+                        onChange={(e) => handleStateChange("totalNovenas", Math.max(0, Number(e.target.value)))}
+                        min="0"
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Coronillas Totales</label>
+                      <input
+                        type="number"
+                        value={gardenState.totalCoronillas ?? 0}
+                        onChange={(e) => handleStateChange("totalCoronillas", Math.max(0, Number(e.target.value)))}
+                        min="0"
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Riegos Totales</label>
+                      <input
+                        type="number"
+                        value={gardenState.totalWaterings ?? 0}
+                        onChange={(e) => handleStateChange("totalWaterings", Math.max(0, Number(e.target.value)))}
+                        min="0"
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Velas Totales</label>
+                      <input
+                        type="number"
+                        value={gardenState.totalCandles ?? 0}
+                        onChange={(e) => handleStateChange("totalCandles", Math.max(0, Number(e.target.value)))}
+                        min="0"
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Racha</label>
+                      <input
+                        type="number"
+                        value={gardenState.streak ?? 0}
+                        onChange={(e) => handleStateChange("streak", Math.max(0, Number(e.target.value)))}
+                        min="0"
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Puntos de Rocío</label>
+                      <input
+                        type="number"
+                        value={gardenState.dewPoints ?? 0}
+                        onChange={(e) => handleStateChange("dewPoints", clampNumber(Number(e.target.value), 0, 7))}
+                        min="0"
+                        max="7"
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Mariposas</label>
+                      <input
+                        type="number"
+                        value={gardenState.butterflyCount ?? 0}
+                        onChange={(e) => handleStateChange("butterflyCount", clampNumber(Number(e.target.value), 0, 3))}
+                        min="0"
+                        max="3"
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Pájaros</label>
+                      <input
+                        type="number"
+                        value={gardenState.birdCount ?? 0}
+                        onChange={(e) => handleStateChange("birdCount", clampNumber(Number(e.target.value), 0, 2))}
+                        min="0"
+                        max="2"
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Velas Activas</label>
+                      <input
+                        type="number"
+                        value={gardenState.activeCandles ?? 0}
+                        onChange={(e) => handleStateChange("activeCandles", clampNumber(Number(e.target.value), 0, 5))}
+                        min="0"
+                        max="5"
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {personalInput && (
+                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 space-y-4">
+                  <h3 className="text-sm font-semibold text-white">Datos Personales (Editable)</h3>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Nombre</label>
+                      <input
+                        type="text"
+                        value={personalInput.name}
+                        onChange={(e) => handlePersonalInputChange("name", e.target.value)}
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Puntos</label>
+                      <input
+                        type="number"
+                        value={personalInput.points}
+                        onChange={(e) => handlePersonalInputChange("points", Math.max(0, Number(e.target.value)))}
+                        min="0"
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Fecha de Registro</label>
+                      <input
+                        type="date"
+                        value={personalInput.registeredAt ? formatDateForInput(personalInput.registeredAt) : ""}
+                        onChange={(e) => handlePersonalInputChange("registeredAt", new Date(e.target.value))}
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Última Conexión</label>
+                      <input
+                        type="datetime-local"
+                        value={personalInput.lastSeenAt ? formatDateTimeForInput(personalInput.lastSeenAt) : ""}
+                        onChange={(e) => handlePersonalInputChange("lastSeenAt", new Date(e.target.value))}
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                      />
+                    </div>
+                  </div>
+
+                  {personalTraits && (
+                    <div className="grid grid-cols-2 gap-4 pt-2 border-t border-white/10">
+                      <h4 className="col-span-2 text-xs font-medium uppercase tracking-wider text-white/50">Rasgos Calculados</h4>
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium uppercase tracking-wider text-white/50">Nº Pétalos</label>
+                        <input
+                          type="number"
+                          value={personalTraits.petalCount}
+                          readOnly
+                          className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white/60"
+                        />
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium uppercase tracking-wider text-white/50">Matiz Dominante</label>
+                        <input
+                          type="number"
+                          value={personalTraits.dominantHue}
+                          readOnly
+                          className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white/60"
+                        />
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium uppercase tracking-wider text-white/50">Curvatura del Tronco</label>
+                        <input
+                          type="number"
+                          value={personalTraits.trunkCurve}
+                          readOnly
+                          className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white/60"
+                        />
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium uppercase tracking-wider text-white/50">Especie Floral</label>
+                        <input
+                          type="text"
+                          value={personalTraits.flowerSpecies}
+                          readOnly
+                          className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white/60"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <button
+                onClick={saveChanges}
+                disabled={busy || !selectedUser}
+                className="h-12 w-full rounded-2xl bg-[var(--gold)] font-medium text-black disabled:opacity-50"
+              >
+                {busy ? "Guardando…" : "Guardar todos los cambios"}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
       <p className="text-xs text-white/40">
-        Esta operación requiere rol admin en Supabase. Para correcciones históricas con fecha pasada, usa el endpoint service_role directamente.
+        Los campos de DNA son inmutables y se calculan a partir del ID del usuario.
+        Los campos de Estado y Datos Personales pueden editarse directamente.
       </p>
       {result && <p className="text-sm">{result}</p>}
     </div>
   );
+
+  // Helper functions
+  function formatDateForInput(date: Date): string {
+    return date.toISOString().slice(0, 10);
+  }
+
+  function formatDateTimeForInput(date: Date): string {
+    const pad = (n: number) => n.toString().padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
 }
 
 // Telegram integration panel

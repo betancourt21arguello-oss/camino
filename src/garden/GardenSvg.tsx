@@ -6,7 +6,7 @@
  * · Brisa (rotate escalonado), latido de luz (opacity), vuelo (<animateMotion>)
  * ==========================================================================*/
 import { memo, useMemo } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { generateGardenModel, VIEW_W, VIEW_H, GROUND_CY } from "./model";
 import type {
   GardenModel, PondModel, RiverModel, PlacedFlower,
@@ -781,12 +781,18 @@ export function GardenSvg({ dna, state, justWatered = false, personal }: Props) 
         dewActive={tp.dewActive || state.freshWater} wind={wind} />
 
       {/* Lluvia del riego */}
-      {rainDrops.map((d, i) => (
-        <motion.line key={`rn-${i}`} x1={d.x} y1={-20} x2={d.x - 6} y2={-20 + d.len}
-          stroke="rgb(150 200 240 / 0.7)" strokeWidth={1.2}
-          animate={{ y: [0, VIEW_H + 30] }}
-          transition={{ duration: 0.7, repeat: Infinity, delay: d.delay, ease: "linear" }} />
-      ))}
+      <AnimatePresence>
+        {rainDrops.map((d, i) => (
+          justWatered && (
+            <motion.line key={`rn-${i}`} x1={d.x} y1={-20} x2={d.x - 6} y2={-20 + d.len}
+              stroke="rgb(150 200 240 / 0.7)" strokeWidth={1.2}
+              initial={{ y: 0 }}
+              animate={{ y: [0, VIEW_H + 30] }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.7, repeat: Infinity, delay: d.delay, ease: "linear" }} />
+          )
+        ))}
+      </AnimatePresence>
       {justWatered && [0, 0.5].map((delay, i) => (
         <motion.ellipse key={i} cx={360} cy={GROUND_CY} rx={24} ry={8}
           fill="none" stroke="rgb(130 205 255 / 0.55)" strokeWidth={1.8}

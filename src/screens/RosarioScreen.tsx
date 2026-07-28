@@ -43,12 +43,21 @@ export function RosarioScreen({ onOpenGallery, onActiveChange, onOpenHour }: Pro
   useEffect(() => {
     const s = rosario.state.status;
     if (s === "completed" && prevStatus.current !== "completed") {
-      emit({ type: "rosary-complete" });
+      // Determinar el tipo de evento según la devoción
+      const isRosario = selectedDevotionId.startsWith("rosario-");
+      const isCoronilla = selectedDevotionId === "divina-misericordia";
+      if (isRosario) {
+        emit({ type: "rosary-complete" });
+      } else if (isCoronilla) {
+        emit({ type: "coronilla-complete" });
+      } else {
+        emit({ type: "novena-complete" });
+      }
       emit({ type: "daily-streak" });
     }
     if (s === "idle") joinedRef.current = false;
     prevStatus.current = s;
-  }, [rosario.state.status, emit]);
+  }, [rosario.state.status, emit, selectedDevotionId]);
 
   useEffect(() => {
     if (rosario.state.status === "running" && rosario.state.mode === "community" && !joinedRef.current) {
@@ -121,7 +130,7 @@ export function RosarioScreen({ onOpenGallery, onActiveChange, onOpenHour }: Pro
     );
   }
 
-  const communityIntentions = candles.filter((c) => c.expiresAt > Date.now()).map((c) => c.intention);
+  const communityIntentions = candles.filter((c) => new Date(c.expires_at).getTime() > Date.now()).map((c) => c.intention);
 
   return (
     <LiveSession

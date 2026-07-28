@@ -7,6 +7,7 @@ import { rewardFor, applyReward } from "./rewards";
 import type { FruitBalance, SpiritualEvent, Candle, FruitMeta } from "./types";
 import { aggregateGardenState, gardenEventType } from "@/garden/events";
 import type { GardenEvent, GardenState } from "@/garden/types";
+import type { RewardEntry } from "./rewards";
 
 interface SpiritualCtx {
   balance: FruitBalance;
@@ -34,6 +35,15 @@ const ZERO: FruitBalance = { vela: 0, semilla: 0, agua: 0 };
 
 export function SpiritualProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
+  const loadBalanceFromLocalStorage = useCallback(() => {
+    try {
+      const saved = localStorage.getItem("camino_balance_agua");
+      return saved ? Number(saved) : 0;
+    } catch {
+      return 0;
+    }
+  }, []);
+
   const [balance, setBalance] = useState<FruitBalance>(ZERO);
   const [candles, setCandles] = useState<Candle[]>([]);
   const [history, setHistory] = useState<FruitMeta[]>([]);
@@ -43,29 +53,26 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
   const [syncError, setSyncError] = useState<string | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const waterTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [dailyVelaEvents, setDailyVelaEvents] = useState<Set<string>>(new Set());
-  const dailyVelaRef = useRef<Set<string>>(new Set());
-
+  // Cargar balance.agua desde localStorage
   useEffect(() => {
     try {
-      const saved = localStorage.getItem("camino_daily_vela_events");
-      if (saved) {
-        const parsed = new Set(JSON.parse(saved));
-        dailyVelaRef.current = parsed;
-        setDailyVelaEvents(parsed);
+      const savedAgua = loadBalanceFromLocalStorage();
+      if (savedAgua) {
+        setBalance((p) => ({ ...p, agua: savedAgua }));
       }
     } catch {
       // ignore
     }
-  }, []);
+  }, [loadBalanceFromLocalStorage]);
 
+  // Persistir balance.agua en localStorage
   useEffect(() => {
     try {
-      localStorage.setItem("camino_daily_vela_events", JSON.stringify([...dailyVelaRef.current]));
+      localStorage.setItem("camino_balance_agua", String(balance.agua));
     } catch {
       // ignore
     }
-  }, [dailyVelaEvents]);
+  }, [balance.agua]);
 
   const todayKey = () => new Date().toISOString().slice(0, 10);
 
@@ -101,13 +108,36 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
       if (candlesRes.data) setCandles(candlesRes.data as Candle[]);
       if (gardenRes.data) {
         setGardenEvents(
-          (gardenRes.data as Array<Record<string, unknown>>).map((r) => ({
-            id: String(r.id),
-            type: r.type as GardenEvent["type"],
-            value: (r.value as number) ?? 1,
-            intention: r.intention as string | undefined,
-            created_at: String(r.created_at),
-          })),
+          (gardenRes.data as Array<Record<string, unknown>>).map((r) => {
+            const rawType = (r.event_type ?? r.type) as string;
+            // Normalize: DB stores both spiritual event types (e.g. "rosary-complete")
+            // and garden event types (e.g. "ROSARY_COMPLETED"). Map to garden type.
+            const EVENT_TYPE_MAP: Record<string, GardenEvent["type"]> = {
+              "rosary-complete": "ROSARY_COMPLETED",
+              "novena-complete": "NOVENA_COMPLETED",
+              "coronilla-complete": "CORONILLA_COMPLETED",
+              "task-complete": "TASK_COMPLETED",
+              "gospel-read": "GOSPEL_READ",
+              "daily-streak": "STREAK_MAINTAINED",
+              "community-join": "COMMUNITY_PRAYER",
+              "candle-lit": "CANDLE_LIT",
+              "pray-for-other": "PRAY_FOR_OTHER",
+              "water-garden": "WATER_GARDEN",
+              "read-intention": "SILENCE_TIME",
+              "reflection-finish": "SILENCE_TIME",
+              "reflection-complete": "REFLECTION_COMPLETED",
+              "seed-received": "SEED_RECEIVED",
+              "water-received": "WATER_RECEIVED",
+            };
+            const gardenType = EVENT_TYPE_MAP[rawType] ?? (rawType as GardenEvent["type"]);
+            return {
+              id: String(r.id),
+              type: gardenType,
+              value: (r.value as number) ?? 1,
+              intention: r.intention as string | undefined,
+              created_at: String(r.created_at),
+            };
+          }),
         );
       }
       if (histRes.data) setHistory(histRes.data as FruitMeta[]);
@@ -120,7 +150,18 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user]);
 
-  useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      try {
+        localStorage.setItem("camino_balance_agua", String(balance.agua));
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    void reload();
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [reload, balance.agua]);
 
   /* ── Realtime ──────────────────────────────────────────────────────── */
   useEffect(() => {
@@ -145,6 +186,13 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
     waterTimer.current = setTimeout(() => setJustWatered(false), 6000);
   }, []);
 
+  // Limpiar timer al desmontar
+  useEffect(() => {
+    return () => {
+      if (waterTimer.current) clearTimeout(waterTimer.current);
+    };
+  }, []);
+
   const pushLocalEvent = useCallback((type: GardenEvent["type"], value: number, intention?: string) => {
     setGardenEvents((prev) => [
       ...prev,
@@ -152,19 +200,37 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
     ]);
   }, []);
 
-  /* ── emit ──────────────────────────────────────────────────────────── */
-  const emit = useCallback((e: SpiritualEvent) => {
-    let reward = rewardFor(e.type);
-
-    if ((e.type === "gospel-read" || e.type === "rosary-complete") && reward.vela > 0) {
-      const key = `${todayKey()}:${e.type}`;
-      if (dailyVelaRef.current.has(key)) {
-        reward = { ...reward, vela: 0 };
-      } else {
-        dailyVelaRef.current.add(key);
-        setDailyVelaEvents(new Set(dailyVelaRef.current));
-      }
+  /** Retorna la recompensa con vela=0 si ya se reclamó hoy. */
+  const claimDailyReward = useCallback(async (
+    eventType: string,
+    reward: RewardEntry,
+  ): Promise<RewardEntry> => {
+    // Solo deduplicamos eventos que dan recompensa
+    if (reward.vela === 0 && reward.semilla === 0 && reward.agua === 0) {
+      return reward;
     }
+    if (!user) return reward;
+    try {
+      const { data: isFirst, error } = await supabase
+        .rpc("claim_daily_completion", { p_event_type: eventType });
+      if (error) {
+        console.warn("[camino] claim_daily_completion:", error.message);
+        return reward; // dar recompensa igual si falla la RPC
+      }
+      if (isFirst === false) {
+        // Ya se completó hoy → no dar recompensa
+        return { vela: 0, semilla: 0, agua: 0, note: reward.note };
+      }
+    } catch (err) {
+      console.warn("[camino] claim_daily_completion error:", err);
+    }
+    return reward;
+  }, [user]);
+
+  /* ── emit ──────────────────────────────────────────────────────────── */
+  const emit = useCallback(async (e: SpiritualEvent) => {
+    const baseReward = rewardFor(e.type);
+    const reward = await claimDailyReward(e.type, baseReward);
 
     setBalance((prev) => applyReward(prev, reward));
 
@@ -184,7 +250,7 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
         if (error) console.warn("[camino] emit_spiritual_event:", error.message);
       });
     }
-  }, [user, pushLocalEvent]);
+  }, [user, pushLocalEvent, claimDailyReward]);
 
   /* ── Velas ─────────────────────────────────────────────────────────── */
   const lightCandle = useCallback(async (intention: string) => {
@@ -225,7 +291,10 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
     flagWatered();
     if (user) {
       const { error } = await supabase.rpc("water_garden", { p_intention: intention });
-      if (error) console.warn("[camino] water_garden:", error.message);
+      if (error) {
+        console.warn("[camino] water_garden:", error.message);
+        setBalance((p) => ({ ...p, agua: p.agua + 1 })); // Revertir descuento
+      }
     }
   }, [balance.agua, user, pushLocalEvent, flagWatered]);
 
@@ -239,7 +308,10 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
       const { error } = await supabase.rpc("bulk_water_garden", {
         p_user_id: user.id, p_intention: intention,
       });
-      if (error) console.warn("[camino] bulk_water_garden:", error.message);
+      if (error) {
+        console.warn("[camino] bulk_water_garden:", error.message);
+        setBalance((p) => ({ ...p, agua: amount })); // Revertir descuento
+      }
     }
   }, [balance.agua, user, pushLocalEvent, flagWatered]);
 

@@ -31,22 +31,35 @@ export function useRosaryLobbyData() {
     let active = true;
 
     const load = async () => {
-      const { data: metrics } = await client.rpc("rosary_lobby_metrics");
-      if (!active) return;
-      if (!metrics) {
-        setData(empty);
-        setLoading(false);
-        return;
+      try {
+        const { data: metrics, error } = await client.rpc("rosary_lobby_metrics");
+      console.log("Fetching rosary lobby metrics", metrics);
+      if (error) {
+        console.error("Error fetching rosary lobby metrics:", error);
       }
-      const row = Array.isArray(metrics) ? metrics[0] : metrics;
-      setData({
-        roomActive: Boolean(row.room_active),
-        peopleNow: Number(row.people_now ?? 0),
-        rosariesToday: Number(row.rosaries_today ?? 0),
-        usersToday: Number(row.users_today ?? 0),
-        aveMariasToday: Number(row.ave_marias_today ?? 0),
-      });
-      setLoading(false);
+        if (!active) return;
+        if (error || !metrics) {
+          console.error("Error fetching rosary lobby metrics:", error);
+          setData(empty);
+          setLoading(false);
+          return;
+        }
+        const row = Array.isArray(metrics) ? metrics[0] : metrics;
+        setData({
+          roomActive: Boolean(row.room_active),
+          peopleNow: Number(row.people_now ?? 0),
+          rosariesToday: Number(row.rosaries_today ?? 0),
+          usersToday: Number(row.users_today ?? 0),
+          aveMariasToday: Number(row.ave_marias_today ?? 0),
+        });
+        setLoading(false);
+      } catch (err) {
+        console.error("Unexpected error in rosary lobby metrics:", err);
+        if (active) {
+          setData(empty);
+          setLoading(false);
+        }
+      }
     };
 
     void load();
