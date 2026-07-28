@@ -15,23 +15,6 @@ export interface Member {
   doneForStep: boolean;
 }
 
-const NAMES = [
-  "María",
-  "Juan",
-  "Carlos",
-  "Pedro",
-  "Ana",
-  "Lucía",
-  "José",
-  "Rosa",
-  "Marta",
-  "Miguel",
-  "Elena",
-  "Diego",
-  "Sofía",
-  "Pablo",
-];
-
 export const ME_ID = 1;
 const LEADER_DROP_MS = 10000;
 const INACTIVE_MS = 10000;
@@ -53,7 +36,7 @@ export class CommunityEngine {
     const m: Member = {
       id,
       hue: (id * 47) % 360,
-      name: isMe ? "Tú" : NAMES[(id + seed) % NAMES.length],
+      name: isMe ? "Tú" : `Participante ${id}`,
       isMe,
       lastSeen: Date.now(),
       lastInteractionAt: Date.now(),

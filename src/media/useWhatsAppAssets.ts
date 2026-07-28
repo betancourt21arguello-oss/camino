@@ -47,21 +47,19 @@ export function useWhatsAppAssets() {
     if (!client) return;
     let active = true;
 
-    const loadAssets = async () => {
-      const { data, error } = await client
-        .from("assets")
-        .select("id,tag,title,author,duration_seconds,created_at,public_url,status")
-        .eq("status", "published")
-        .order("created_at", { ascending: false });
-
-      if (!active || error || !data) return;
-      const mapped = (data as AssetRow[])
-        .map(fromRow)
-        .filter((asset): asset is WhatsAppAsset => asset !== null);
-      setAssets(mapped);
-    };
-
-    loadAssets();
+    client
+      .from("assets")
+      .select("id,tag,title,author,duration_seconds,created_at,public_url,status")
+      .eq("status", "published")
+      .order("created_at", { ascending: false })
+      .then(({ data, error }) => {
+        if (!active || error) return;
+        if (!data) return;
+        const mapped = (data as AssetRow[])
+          .map(fromRow)
+          .filter((asset): asset is WhatsAppAsset => asset !== null);
+        setAssets(mapped);
+      });
 
     const channel = client
       .channel("dashboard-assets")
@@ -76,16 +74,31 @@ export function useWhatsAppAssets() {
       )
       .subscribe();
 
-    const handleRefresh = () => {
-      loadAssets();
-    };
-
-    window.addEventListener("assets-refresh", handleRefresh);
+    let broadcastChannel: BroadcastChannel | null = null;
+    try {
+      broadcastChannel = new BroadcastChannel("camino-assets");
+      broadcastChannel.onmessage = () => {
+        client
+          .from("assets")
+          .select("id,tag,title,author,duration_seconds,created_at,public_url,status")
+          .eq("status", "published")
+          .order("created_at", { ascending: false })
+          .then(({ data, error }) => {
+            if (!active || error || !data) return;
+            const mapped = (data as AssetRow[])
+              .map(fromRow)
+              .filter((asset): asset is WhatsAppAsset => asset !== null);
+            setAssets(mapped);
+          });
+      };
+    } catch {
+      // BroadcastChannel not supported; rely on realtime only
+    }
 
     return () => {
       active = false;
       void client.removeChannel(channel);
-      window.removeEventListener("assets-refresh", handleRefresh);
+      broadcastChannel?.close();
     };
   }, []);
 

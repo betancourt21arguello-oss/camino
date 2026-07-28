@@ -9,11 +9,13 @@ import {
 } from "react";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 import { FRONTEND_URL } from "../config";
+import { getSessionFromBridge, clearSessionBridge } from "./sessionBridge";
 
 export interface AuthIdentity {
   id: string;
   email: string;
   name: string;
+  created_at?: string;
 }
 
 interface AuthState {
@@ -37,7 +39,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    supabase.auth.getSession().then(({ data }) => {
+    const sb = supabase; // non-null desde aquí
+
+    const initSession = async () => {
+      // 🍎 iPhone / iOS fix: cuando el magic link se abre en Safari, guardamos
+      // la sesión en localStorage (sessionBridge). Al abrir la PWA, la
+      // restauramos aquí.
+      const isStandalone =
+        typeof window !== "undefined" &&
+        (window.matchMedia("(display-mode: standalone)").matches ||
+          (window.navigator as any).standalone === true);
+
+      if (isStandalone) {
+        const bridge = getSessionFromBridge();
+        if (bridge) {
+          try {
+            await sb.auth.setSession({
+              access_token: bridge.access_token,
+              refresh_token: bridge.refresh_token,
+            });
+          } catch {
+            // Si falla, no importa; seguimos con getSession normal
+          }
+          clearSessionBridge();
+        }
+      }
+
+      const { data } = await sb.auth.getSession();
       const authUser = data.session?.user;
       setUser(
         authUser
@@ -47,7 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               name:
                 authUser.user_metadata?.full_name ??
                 authUser.email?.split("@")[0] ??
-                "Peregrino",
+                "Usuario",
             }
           : null,
       );
@@ -62,11 +90,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         window.history.replaceState({}, document.title, target);
       }
       setLoading(false);
-    });
+    };
+
+    initSession();
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = sb.auth.onAuthStateChange((_event, session) => {
       const authUser = session?.user;
       setUser(
         authUser
@@ -76,7 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               name:
                 authUser.user_metadata?.full_name ??
                 authUser.email?.split("@")[0] ??
-                "Peregrino",
+                "Usuario",
             }
           : null,
       );
@@ -118,6 +148,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     if (supabase) await supabase.auth.signOut();
+    clearSessionBridge();
     setUser(null);
   }, []);
 

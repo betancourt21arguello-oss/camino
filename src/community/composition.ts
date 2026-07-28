@@ -27,6 +27,15 @@ const SEASON_COMPOSITION: Record<GardenSeason, CompositionKind[]> = {
 
 const SHAPES: SignatureShape[] = ["leaf", "flower", "branch", "star", "arc", "petal"];
 
+const PALETTE_INDEX: Record<string, number> = {
+  dawn: 0,
+  verdant: 1,
+  amber: 2,
+  azure: 3,
+  rose: 4,
+  dusk: 5,
+};
+
 export function signaturePayloadFromDna(
   traits: DnaTraits,
   sessionId: string,
@@ -39,7 +48,7 @@ export function signaturePayloadFromDna(
     memberId,
     signatureSeed: traits.signatureSeed.slice(0, 16),
     primaryShape: SHAPES[Math.floor(rng() * SHAPES.length)],
-    palette: traits.paletteVariant,
+    palette: PALETTE_INDEX[traits.paletteVariant] ?? 0,
     countryColor: Math.floor((traits.riverAngle / 360) * 12),
     growthFactor: Math.max(0.4, Math.min(1.6, growthFactor)),
   };

@@ -7,7 +7,8 @@ export type BibleStepInputType = 'none' | 'text' | 'chips' | 'highlight' | 'time
 export type BiblePlanLevel = 'principiante' | 'intermedio' | 'avanzado';
 export type BibleGoalTag =
   | 'conocer_a_jesus' | 'orar_mejor' | 'entender_la_biblia'
-  | 'seguir_la_misa' | 'perdon' | 'ansiedad' | 'duelo' | 'familia' | 'vocacion' | 'esperanza';
+  | 'seguir_la_misa' | 'perdon' | 'ansiedad' | 'duelo' | 'familia' | 'vocacion' | 'esperanza'
+  | 'un_tema_concreto';
 export type BibleUserLevel = 'nunca_lei' | 'algo_suelto' | 'leo_a_veces' | 'constante';
 export type BibleEnrollmentStatus = 'active' | 'paused' | 'completed';
 

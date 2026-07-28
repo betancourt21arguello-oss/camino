@@ -146,7 +146,7 @@ export { SPECIES_LABEL };
 /** Traits neutros cuando aún no hay datos del usuario. */
 export function defaultPersonalTraits(): PersonalTraits {
   return derivePersonalTraits({
-    name: "Peregrino",
+    name: "Usuario",
     registeredAt: new Date(),
     points: 0,
   });

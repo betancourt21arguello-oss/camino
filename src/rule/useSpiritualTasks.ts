@@ -75,7 +75,11 @@ export function useSpiritualTasks(liturgy: DailyLiturgy | null) {
         p_is_fasting_day: isFastingDay,
         p_day_of_month: new Date(`${today}T00:00:00`).getDate(),
       });
-      await client.rpc("ensure_recurring_custom_tasks", { p_date: today });
+      try {
+        await client.rpc("ensure_recurring_custom_tasks", { p_date: today }).catch(error => console.warn("[camino] ensure_recurring_custom_tasks:", error instanceof Error ? error.message : String(error)));
+      } catch (error) {
+        console.warn("[camino] ensure_recurring_custom_tasks:", error instanceof Error ? error.message : String(error));
+      }
       const { data } = await client
         .from("spiritual_tasks")
         .select("id,title,category,cadence,time,required,done,task_date,days")
@@ -197,8 +201,10 @@ function generateRecurringInstances(
     }
   }
   for (const instance of instances) {
-    void supabase.rpc("insert_spiritual_task", instance).catch((err) => {
-      console.warn("[camino] Failed to insert recurring instance:", err);
-    });
+    Promise.resolve(supabase.rpc("insert_spiritual_task", instance))
+      .then(() => {})
+      .catch((err: unknown) => {
+        console.warn("[camino] Failed to insert recurring instance:", err instanceof Error ? err.message : String(err));
+      });
   }
 }

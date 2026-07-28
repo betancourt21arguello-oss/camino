@@ -229,5 +229,4 @@ export default function App() {
 }
 
 if (typeof window !== "undefined") {
-  console.log("[camino] bundle loaded", { ts: Date.now(), deploy: "2026-07-26T07:20:00-06:00" });
 }

@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../auth/AuthProvider";
+import { getSessionFromBridge, clearSessionBridge } from "../auth/sessionBridge";
 
 export function AuthPortal({ onClose }: { onClose: () => void }) {
   const { signInWithEmail, signInWithProvider, configured } = useAuth();
@@ -7,6 +8,11 @@ export function AuthPortal({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [hasBridge, setHasBridge] = useState(false);
+
+  useEffect(() => {
+    setHasBridge(getSessionFromBridge() !== null);
+  }, []);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -55,7 +61,16 @@ export function AuthPortal({ onClose }: { onClose: () => void }) {
           y tus intenciones sin crear contraseña.
         </p>
 
-        <form onSubmit={submit} className="mt-8">
+        {hasBridge && (
+          <button
+            onClick={() => { clearSessionBridge(); window.location.reload(); }}
+            className="mt-6 h-14 w-full rounded-2xl bg-[#7a8a5c] font-medium text-white shadow-sm"
+          >
+            🍎 Continuar sesión desde Safari
+          </button>
+        )}
+
+        <form onSubmit={submit} className={hasBridge ? "mt-4" : "mt-8"}>
           <label className="text-xs font-medium text-[#77736b]" htmlFor="auth-email">
             Tu correo electrónico
           </label>

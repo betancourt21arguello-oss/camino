@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useBibliaRouter } from '@/hooks/useBibliaRouter';
 import { useAuth } from '@/auth/AuthProvider';
 import { getMethods, getPlans, getUserEnrollment, getUserProfile } from '@/lib/bible/client';
-import type { BibleEnrollmentStatus, BibleMethod, BiblePlan, UserBibleEnrollment, UserBibleProfile } from '@/types/bible';
-import { useBibliaDaily } from './useBibliaDaily';
+import type { BibleMethod, BiblePlan, UserBibleEnrollment, UserBibleProfile } from '@/types/bible';
+import { useBibliaDaily, type BibleDailyContent } from './useBibliaDaily';
 
 type UseBibliaHomeResult = {
   loading: boolean;

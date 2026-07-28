@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { WORKER_API_BASE } from '@/config';
-import { useAuth } from '@/auth/AuthProvider';
 
 export type BibleDailyContent = {
   id?: number;

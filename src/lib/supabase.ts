@@ -17,5 +17,5 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
   : null;
 
 if (typeof window !== "undefined") {
-  (window as Record<string, unknown>).supabase = supabase;
+  (window as unknown as Record<string, unknown>).supabase = supabase;
 }

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { BibleGoalTag, BibleUserLevel } from '@/types/bible';
 
 export type BibliaView =
   | { route: 'home' }

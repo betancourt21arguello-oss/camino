@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useBibliaRouter } from '@/hooks/useBibliaRouter';
 import { useOnboarding } from './useOnboarding';
 
@@ -10,7 +9,6 @@ export function BibliaOnboardingScreen() {
     update,
     next,
     back,
-    computeRecommendation,
     saveAndStart,
     recommendation,
     saving,

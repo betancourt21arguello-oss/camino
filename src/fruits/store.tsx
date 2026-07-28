@@ -51,7 +51,7 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
   const [justWatered, setJustWatered] = useState(false);
   const [loading, setLoading] = useState(true);
   const [syncError, setSyncError] = useState<string | null>(null);
-  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const channelRef = useRef<any>(null);
   const waterTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Cargar balance.agua desde localStorage
   useEffect(() => {
@@ -74,8 +74,6 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
     }
   }, [balance.agua]);
 
-  const todayKey = () => new Date().toISOString().slice(0, 10);
-
   const activeIntentions = useMemo(
     () => candles.filter((c) => new Date(c.expires_at).getTime() > Date.now()),
     [candles],
@@ -89,7 +87,7 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
 
   /* ── Carga inicial ─────────────────────────────────────────────────── */
   const reload = useCallback(async () => {
-    if (!user) { setLoading(false); return; }
+    if (!user || !supabase) { setLoading(false); return; }
     try {
       const [fruitsRes, candlesRes, gardenRes, histRes] = await Promise.all([
         supabase.from("fruits").select("vela, semilla, agua").eq("profile_id", user.id).maybeSingle(),
@@ -165,7 +163,7 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
 
   /* ── Realtime ──────────────────────────────────────────────────────── */
   useEffect(() => {
-    if (!user) return;
+    if (!user || !supabase) return;
     if (channelRef.current) supabase.removeChannel(channelRef.current);
 
     const ch = supabase
@@ -176,7 +174,7 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
       .subscribe();
 
     channelRef.current = ch;
-    return () => { supabase.removeChannel(ch); };
+    return () => { if (supabase) supabase.removeChannel(ch); };
   }, [user, reload]);
 
   /* Marca el efecto de riego por ~6 s */
@@ -209,7 +207,7 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
     if (reward.vela === 0 && reward.semilla === 0 && reward.agua === 0) {
       return reward;
     }
-    if (!user) return reward;
+    if (!user || !supabase) return reward;
     try {
       const { data: isFirst, error } = await supabase
         .rpc("claim_daily_completion", { p_event_type: eventType });
@@ -237,18 +235,23 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
     const gType = gardenEventType(e.type);
     if (gType) pushLocalEvent(gType, e.value ?? 1, e.intention);
 
-    if (user && gType) {
-      void supabase.rpc("emit_spiritual_event", {
-        p_event_type: gType,
-        p_value: e.value ?? 1,
-        p_intention: e.intention ?? null,
-        p_vela: reward.vela,
-        p_semilla: reward.semilla,
-        p_agua: reward.agua,
-        p_note: e.note ?? reward.note,
-      }).then(({ error }) => {
-        if (error) console.warn("[camino] emit_spiritual_event:", error.message);
-      });
+    if (user && gType && supabase) {
+      void (async () => {
+        try {
+          const { error } = await supabase.rpc("emit_spiritual_event", {
+            p_event_type: e.type,
+            p_value: e.value ?? 1,
+            p_intention: e.intention ?? null,
+            p_vela: reward.vela,
+            p_semilla: reward.semilla,
+            p_agua: reward.agua,
+            p_note: e.note ?? reward.note,
+          });
+          if (error) console.warn("[camino] emit_spiritual_event:", error.message);
+        } catch (error) {
+          console.warn("[camino] emit_spiritual_event:", error instanceof Error ? error.message : String(error));
+        }
+      })();
     }
   }, [user, pushLocalEvent, claimDailyReward]);
 
@@ -266,10 +269,22 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
     }, ...prev]);
     pushLocalEvent("CANDLE_LIT", 1, intention);
 
-    if (user) {
-      const { data, error } = await supabase.rpc("commit_candle", { p_intention: intention });
-      if (error) console.warn("[camino] commit_candle:", error.message);
-      else if (data) setCandles((prev) => prev.map((c) => (c.id === localId ? { ...c, id: String(data) } : c)));
+    if (user && supabase) {
+      Promise.resolve(supabase.rpc("commit_candle", { p_intention: intention }))
+        .then(({ data, error }) => {
+          if (error) {
+            console.warn("[camino] commit_candle:", error.message);
+            setBalance((p) => ({ ...p, vela: p.vela + 1 }));
+            setCandles((prev) => prev.filter((c) => c.id !== localId));
+          } else if (data) {
+            setCandles((prev) => prev.map((c) => (c.id === localId ? { ...c, id: String(data) } : c)));
+          }
+        })
+        .catch((error: unknown) => {
+          console.warn("[camino] commit_candle error:", error instanceof Error ? error.message : String(error));
+          setBalance((p) => ({ ...p, vela: p.vela + 1 }));
+          setCandles((prev) => prev.filter((c) => c.id !== localId));
+        });
     }
   }, [balance.vela, user, pushLocalEvent]);
 
@@ -277,9 +292,12 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
     if (balance.vela < 1) return;
     setBalance((p) => ({ ...p, vela: p.vela - 1, semilla: p.semilla + 2 }));
     pushLocalEvent("PRAY_FOR_OTHER", 1);
-    if (user) {
+    if (user && supabase) {
       const { error } = await supabase.rpc("commit_gift_candle", { p_candle_id: id, p_amount: 1 });
-      if (error) console.warn("[camino] commit_gift_candle:", error.message);
+      if (error) {
+        console.warn("[camino] commit_gift_candle:", error.message);
+        setBalance((p) => ({ ...p, vela: p.vela + 1, semilla: p.semilla - 2 }));
+      }
     }
   }, [balance.vela, user, pushLocalEvent]);
 
@@ -289,14 +307,15 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
     setBalance((p) => ({ ...p, agua: p.agua - 1 }));
     pushLocalEvent("WATER_GARDEN", 1, intention);
     flagWatered();
-    if (user) {
+    if (user && supabase) {
       const { error } = await supabase.rpc("water_garden", { p_intention: intention });
       if (error) {
         console.warn("[camino] water_garden:", error.message);
-        setBalance((p) => ({ ...p, agua: p.agua + 1 })); // Revertir descuento
+        setBalance((p) => ({ ...p, agua: p.agua + 1 }));
+        void reload();
       }
     }
-  }, [balance.agua, user, pushLocalEvent, flagWatered]);
+  }, [balance.agua, user, pushLocalEvent, flagWatered, reload]);
 
   const bulkWaterGarden = useCallback(async (intention: string) => {
     const amount = balance.agua;
@@ -304,16 +323,17 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
     setBalance((p) => ({ ...p, agua: 0 }));
     pushLocalEvent("WATER_GARDEN", amount, intention);
     flagWatered();
-    if (user) {
+    if (user && supabase) {
       const { error } = await supabase.rpc("bulk_water_garden", {
         p_user_id: user.id, p_intention: intention,
       });
       if (error) {
         console.warn("[camino] bulk_water_garden:", error.message);
-        setBalance((p) => ({ ...p, agua: amount })); // Revertir descuento
+        setBalance((p) => ({ ...p, agua: amount }));
+        void reload();
       }
     }
-  }, [balance.agua, user, pushLocalEvent, flagWatered]);
+  }, [balance.agua, user, pushLocalEvent, flagWatered, reload]);
 
   const value: SpiritualCtx = {
     balance, candles, history, gardenEvents, activeIntentions,

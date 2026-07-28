@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useBibliaRouter } from '@/hooks/useBibliaRouter';
 import { useAuth } from '@/auth/AuthProvider';
 import { useBibliaDaily } from './useBibliaDaily';
 import { supabase } from '@/lib/supabase';
-import type { BibleDailyContent } from './useBibliaDaily';
 
 function Section({ eyebrow, title, children }: { eyebrow?: string; title?: string; children: React.ReactNode }) {
   return (

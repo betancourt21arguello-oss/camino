@@ -2,9 +2,9 @@ import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 import { WORKER_API_BASE } from "../config";
 import { defaultTasks, type TaskCategory } from "../rule/tasks";
-import { computeDna, deriveDnaTraits, gardenDnaFor } from "../garden/dna";
-import { aggregateGardenState, emptyGardenState } from "../garden/events";
-import { derivePersonalTraits, defaultPersonalTraits, type PersonalTraits, type PersonalInput } from "../garden/personal";
+import { computeDna, deriveDnaTraits } from "../garden/dna";
+import { aggregateGardenState } from "../garden/events";
+import { derivePersonalTraits, type PersonalTraits, type PersonalInput } from "../garden/personal";
 import type { DnaTraits, GardenState } from "../garden/types";
 
 export function AdminPortal({ onClose }: { onClose: () => void }) {
@@ -191,7 +191,13 @@ function UploadPanel() {
       if (res.ok) {
         setTitle("");
         setFile(null);
-        window.dispatchEvent(new Event("assets-refresh"));
+        try {
+          const bc = new BroadcastChannel("camino-assets");
+          bc.postMessage({ type: "refresh-assets" });
+          bc.close();
+        } catch {
+          // BroadcastChannel not supported
+        }
       }
     } catch (e) {
       setResult(`❌ ${e instanceof Error ? e.message : "Error"}`);
@@ -585,7 +591,7 @@ function GardenEditor() {
         const { data, error } = await supabase
           .from("profiles")
           .select("id, email, full_name, name")
-          .or(`email.ilike.%${searchQuery}%,full_name.ilike.%${searchQuery}%,name.ilike.%${searchQuery}%`)
+          .or(`(email.ilike.%${searchQuery}%),(full_name.ilike.%${searchQuery}%),(name.ilike.%${searchQuery}%)`)
           .order("email")
           .limit(50);
         if (!error && data) {
@@ -612,14 +618,14 @@ function GardenEditor() {
       setDnaTraits({ ...traits, dna });
 
       // Get garden events
-      const { data: events, error: eventsError } = await supabase
+      const { data: events } = await supabase
         .from("garden_events")
         .select("*")
         .eq("user_id", selectedUser.id)
         .order("created_at", { ascending: true });
 
       // Get active candles
-      const { data: candles, error: candlesError } = await supabase
+      const { data: candles } = await supabase
         .from("candles")
         .select("*")
         .eq("owner_id", selectedUser.id)
@@ -635,7 +641,7 @@ function GardenEditor() {
       setGardenState(state);
 
       // Get profile data for personal input
-      const { data: profile, error: profileError } = await supabase
+      const { data: profile } = await supabase
         .from("profiles")
         .select("name, registered_at, points, last_seen_at")
         .eq("id", selectedUser.id)
@@ -711,7 +717,6 @@ function GardenEditor() {
     setResult("");
 
     try {
-      const operations: Promise<any>[] = [];
       const results: string[] = [];
 
       // 1. Update profile data
@@ -754,9 +759,6 @@ function GardenEditor() {
       // 2. Update fruits (vela, semilla, agua) based on personalInput.points
       // Fruits affect the garden state calculation
       if (personalInput && personalInput.points !== originalPersonalInput?.points) {
-        // Calculate the difference in points
-        const pointsDiff = personalInput.points - (originalPersonalInput?.points || 0);
-        
         // Update fruits - assuming points come from semilla (seeds)
         const { error: fruitsError } = await supabase
           .from("fruits")

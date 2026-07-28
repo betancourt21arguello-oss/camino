@@ -3,7 +3,7 @@ import { useBibliaHome } from './useBibliaHome';
 
 export function BibliaHomeScreen() {
   const { navigate } = useBibliaRouter();
-  const { loading, hasActivePlan, enrollment, profile, plans, dailyContent } = useBibliaHome();
+  const { loading, hasActivePlan, enrollment, plans, dailyContent } = useBibliaHome();
 
   if (loading) {
     return (
@@ -80,8 +80,8 @@ export function BibliaHomeScreen() {
      );
    }
 
-  const plan = plans.find((p) => p.id === enrollment.plan_id);
-  const progress = enrollment.current_day / (plan?.days_count ?? 30);
+   const plan = plans.find((p) => p.id === enrollment?.plan_id);
+   const progress = (enrollment?.current_day ?? 0) / (plan?.days_count ?? 30);
 
   return (
     <div className="flex h-full flex-col bg-[#f7f6f3]">
@@ -93,7 +93,7 @@ export function BibliaHomeScreen() {
             <div>
               <p className="text-xs uppercase tracking-wider text-[#a68b4e]">Hoy</p>
               <p className="mt-1 text-sm text-[#6b6b70]">
-                Día {enrollment.current_day} de {plan?.days_count ?? '?'}
+                 Día {enrollment?.current_day ?? 0} de {plan?.days_count ?? '?'}
               </p>
             </div>
             <span className="text-xs text-[#9a9a9f]">{plan?.minutes_per_day ?? 10} min</span>

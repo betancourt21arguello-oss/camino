@@ -48,7 +48,7 @@ export function useOnboarding() {
     goal: 'conocer_a_jesus',
   });
   const [recommendation, setRecommendation] = useState<RecommendResult | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [saving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const update = (patch: Partial<OnboardingData>) => setData((d) => ({ ...d, ...patch }));

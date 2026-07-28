@@ -1,6 +1,5 @@
 import type { CommunityWorkSeed } from "./types";
 import { supabase } from "../lib/supabase";
-import { useAuth } from "../auth/AuthProvider";
 
 const KEY = "camino-prayer-gallery";
 

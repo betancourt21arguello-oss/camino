@@ -3,11 +3,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/auth/AuthProvider";
 import { useSpiritual } from "@/fruits/store";
 import { useGardenDna } from "@/garden/dna";
-import { aggregateGardenState } from "@/garden/events";
 import { GardenSvg } from "@/garden/GardenSvg";
 import { GardenFullscreen } from "@/garden/GardenFullscreen";
 import { TERRAIN_LABEL, TREE_LABEL, MATURITY_LABEL, SEASON_LABEL, SHRINE_LABEL } from "@/garden/types";
-import type { GardenEvent, GardenState } from "@/garden/types";
+import type { GardenState } from "@/garden/types";
 import { TIME_LABEL, TIME_ICON } from "@/garden/time";
 import { derivePersonalTraits, SPECIES_LABEL, type PersonalInput } from "@/garden/personal";
 import { levelTitle } from "@/garden/levels";
@@ -154,39 +153,17 @@ function MilestoneAccordion({ milestones }: { milestones: GardenState["milestone
   );
 }
 
-function demoEvents(): GardenEvent[] {
-  const now = Date.now();
-  const mk = (type: GardenEvent["type"], i: number, h = 0): GardenEvent => ({
-    id: `demo-${type}-${i}`, type, value: 1,
-    created_at: new Date(now - i * 86_400_000 - h * 3_600_000).toISOString(),
-  });
-  return [
-    ...Array.from({ length: 13 }, (_, i) => mk("ROSARY_COMPLETED", i)),
-    ...Array.from({ length: 12 }, (_, i) => mk("CORONILLA_COMPLETED", i, 2)),
-    ...Array.from({ length: 11 }, (_, i) => mk("NOVENA_COMPLETED", i * 2, 4)),
-    ...Array.from({ length: 6 },  (_, i) => mk("CANDLE_LIT", i, 6)),
-    ...Array.from({ length: 8 },  (_, i) => mk("WATER_GARDEN", i, 8)),
-    ...Array.from({ length: 7 },  (_, i) => mk("COMMUNITY_PRAYER", i, 10)),
-    ...Array.from({ length: 9 },  (_, i) => mk("SILENCE_TIME", i, 12)),
-  ];
-}
-
 function JardinTab({ onOpenAuth, displayName }: { onOpenAuth: () => void; displayName: string }) {
   const { user } = useAuth();
   const {
-    balance, gardenEvents, activeIntentions, gardenState: liveState,
+    balance, gardenState: liveState,
     justWatered, waterGarden, bulkWaterGarden,
   } = useSpiritual();
 
   const identity = user?.id ?? getAnonIdentity();
   const traits = useGardenDna(identity);
 
-  const isDemo = gardenEvents.length === 0;
-  const demoState = useMemo(
-    () => aggregateGardenState(demoEvents(), activeIntentions.length),
-    [activeIntentions.length],
-  );
-  const state = isDemo ? demoState : liveState;
+  const state = liveState;
 
   const [waterModal, setWaterModal] = useState<"single" | "bulk" | null>(null);
   const [fullscreenOpen, setFullscreenOpen] = useState(false);
@@ -195,7 +172,7 @@ function JardinTab({ onOpenAuth, displayName }: { onOpenAuth: () => void; displa
 
   const personalInput: PersonalInput = useMemo(() => ({
     name: displayName,
-    registeredAt: user?.created_at ? new Date(user.created_at) : new Date(2026, 0, 15),
+    registeredAt: user?.created_at ? new Date(user.created_at) : new Date(),
     lastSeenAt: new Date(),
     points: state.pointsScore,
   }), [displayName, user?.created_at, state.pointsScore]);
@@ -367,11 +344,11 @@ function JardinTab({ onOpenAuth, displayName }: { onOpenAuth: () => void; displa
 
       {state.milestones.length > 0 && <MilestoneAccordion milestones={state.milestones} />}
 
-      {(isDemo || !user) && (
+      {!user && (
         <motion.button onClick={onOpenAuth} whileTap={{ scale: 0.98 }}
           className="w-full rounded-2xl border border-[#e6e3db] bg-white p-4 text-center">
           <p className="text-sm font-medium text-[#1c1c1e]">
-            {isDemo ? "Este es un jardín de muestra" : "Sincroniza tu jardín"}
+            Sincroniza tu jardín
           </p>
           <p className="mt-0.5 text-xs text-[#9a9a9f]">
             Inicia sesión para que tus oraciones lo hagan crecer de verdad
@@ -480,7 +457,7 @@ export function PerfilScreen({ onOpenAuth }: Props) {
   const [tab, setTab] = useState<PerfilTab>("jardin");
 
   const displayName =
-    (user?.user_metadata?.full_name as string) ?? user?.email?.split("@")[0] ?? "Peregrino";
+    (user?.name as string) ?? user?.email?.split("@")[0] ?? "Usuario";
 
   const TABS: { id: PerfilTab; label: string; icon: string }[] = [
     { id: "jardin", label: "Mi Jardín", icon: "🌿" },

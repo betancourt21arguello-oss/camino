@@ -23,8 +23,6 @@ const HOUR_META: Record<HourKind, { label: string; mood: "dawn" | "noon" | "dusk
 
 const R2_ANGELUS_AUDIO_URL = "https://pub-8fb2af7acc7246b4b90aa917bb377f90.r2.dev/Angelus-Papa-Francisco.MP3";
 
-const RUBRIC_LABEL: Record<string, string> = { video: "Video" };
-
 function getYouTubeEmbedUrl(url: string): string | null {
   const trimmed = url.trim();
   let m = trimmed.match(/[?&]v=([^&]+)/);
@@ -170,11 +168,11 @@ export function DailyPrayerPortal({ kind, liturgy, assets, onClose, onComplete }
     accent: "#d4943a",
     accentLight: "#f5d78a",
     accentGlow: "rgba(212,148,58,0.15)",
-    text: "#000000",
-    textMuted: "#555555",
-    cardBg: "#ffffff",
-    cardBorder: "rgba(0,0,0,0.08)",
-    cardShadow: "rgba(0,0,0,0.06)",
+    text: "#2a1f0e",
+    textMuted: "#8a7a5a",
+    cardBg: "rgba(255,255,255,0.6)",
+    cardBorder: "rgba(212,148,58,0.2)",
+    cardShadow: "rgba(212,148,58,0.08)",
   };
 
   const noonColors = {
@@ -182,11 +180,11 @@ export function DailyPrayerPortal({ kind, liturgy, assets, onClose, onComplete }
     accent: "#4a7a8a",
     accentLight: "#8ab0c0",
     accentGlow: "rgba(74,122,138,0.15)",
-    text: "#000000",
-    textMuted: "#555555",
-    cardBg: "#ffffff",
-    cardBorder: "rgba(0,0,0,0.08)",
-    cardShadow: "rgba(0,0,0,0.06)",
+    text: "#1c1c1e",
+    textMuted: "#6b6b70",
+    cardBg: "rgba(255,255,255,0.6)",
+    cardBorder: "rgba(74,122,138,0.2)",
+    cardShadow: "rgba(74,122,138,0.08)",
   };
 
   const duskColors = {
@@ -194,11 +192,11 @@ export function DailyPrayerPortal({ kind, liturgy, assets, onClose, onComplete }
     accent: "#c49a6a",
     accentLight: "#e0b88a",
     accentGlow: "rgba(196,154,106,0.2)",
-    text: "#000000",
-    textMuted: "#555555",
-    cardBg: "#ffffff",
-    cardBorder: "rgba(0,0,0,0.08)",
-    cardShadow: "rgba(0,0,0,0.06)",
+    text: "#f0e8d8",
+    textMuted: "#a09080",
+    cardBg: "rgba(255,255,255,0.08)",
+    cardBorder: "rgba(196,154,106,0.25)",
+    cardShadow: "rgba(0,0,0,0.2)",
   };
 
   const nightColors = {
@@ -206,17 +204,17 @@ export function DailyPrayerPortal({ kind, liturgy, assets, onClose, onComplete }
     accent: "#8ab4d0",
     accentLight: "#b0d0e0",
     accentGlow: "rgba(138,180,208,0.15)",
-    text: "#000000",
-    textMuted: "#555555",
-    cardBg: "#ffffff",
-    cardBorder: "rgba(0,0,0,0.08)",
-    cardShadow: "rgba(0,0,0,0.06)",
+    text: "#e8e0d0",
+    textMuted: "#8a8070",
+    cardBg: "rgba(255,255,255,0.05)",
+    cardBorder: "rgba(138,180,208,0.2)",
+    cardShadow: "rgba(0,0,0,0.3)",
   };
 
   const palette = { dawn: dawnColors, noon: noonColors, dusk: duskColors, night: nightColors }[mood] ?? dawnColors;
 
   return (
-    <div className="absolute inset-0 z-40 flex flex-col overflow-hidden bg-gradient-to-b from-[#fef3e2] via-[#fde4c8] to-[#f5d5a0] text-black">
+    <div className="absolute inset-0 z-40 flex flex-col overflow-hidden bg-gradient-to-b from-[#fef3e2] via-[#fde4c8] to-[#f5d5a0] text-[#2a1f0e]">
       <header className="relative z-10 flex shrink-0 items-center justify-between px-5 pb-2 pt-12">
         <button onClick={onClose} className="flex h-11 w-11 items-center justify-center rounded-full transition hover:bg-black/5" aria-label="Cerrar">
           <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -266,8 +264,6 @@ export function DailyPrayerPortal({ kind, liturgy, assets, onClose, onComplete }
       <div className="relative z-10 flex-1 overflow-y-auto px-5 py-6">
         {isAngelus ? (
           <AngelusView
-            angelus={angelus}
-            verseIndex={verseIndex}
             setVerseIndex={setVerseIndex}
             audioUrl={angelusAudio}
             audioLabel={angelus?.audioLabel}
@@ -275,7 +271,6 @@ export function DailyPrayerPortal({ kind, liturgy, assets, onClose, onComplete }
             onSeek={seekTo}
             isPlaying={isPlaying}
             currentTime={currentTime}
-            audioRef={audioRef}
             palette={palette}
           />
         ) : (
@@ -515,8 +510,6 @@ const angelusLyrics = [
 ];
 
 function AngelusView({
-  angelus,
-  verseIndex,
   setVerseIndex,
   audioUrl,
   audioLabel,
@@ -524,11 +517,8 @@ function AngelusView({
   onSeek,
   isPlaying,
   currentTime,
-  audioRef,
   palette,
 }: {
-  angelus?: AngelusLiturgy;
-  verseIndex: number;
   setVerseIndex: (n: number) => void;
   audioUrl?: string;
   audioLabel?: string;
@@ -536,7 +526,6 @@ function AngelusView({
   onSeek: (time: number) => void;
   isPlaying: boolean;
   currentTime: number;
-  audioRef: React.RefObject<HTMLAudioElement>;
   palette: Record<string, string>;
 }) {
   const lineRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -595,7 +584,7 @@ function AngelusView({
           return (
             <div
               key={idx}
-              ref={(el) => (lineRefs.current[idx] = el)}
+              ref={(el) => { lineRefs.current[idx] = el; }}
               onClick={() => onSeek(line.start)}
               className={`cursor-pointer transition-all duration-500 ${
                 isActive

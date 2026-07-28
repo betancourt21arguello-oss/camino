@@ -126,8 +126,8 @@ const FractalTreeLayer = memo(function FractalTreeLayer({
       {/* Rosas del árbol (una cada 8 Rosarios) */}
       {tree.fruits.map((f, i) => (
         <g key={`fr-${i}`}>
-          <circle cx={f.x} cy={f.y} r={f.r} fill={hsl(f.hue, 66, 58)} />
-          <circle cx={f.x} cy={f.y} r={f.r * 0.5} fill={hsl(f.hue + 8, 74, 74)}>
+          <circle cx={f.x} cy={f.y} r={Math.max(0.01, f.r)} fill={hsl(f.hue, 66, 58)} />
+          <circle cx={f.x} cy={f.y} r={Math.max(0.01, f.r * 0.5)} fill={hsl(f.hue + 8, 74, 74)}>
             <animate attributeName="opacity" values="0.7;1;0.7"
               dur="3.4s" begin={`${f.delay}s`} repeatCount="indefinite" />
           </circle>
@@ -178,7 +178,7 @@ const FlowerShape = memo(function FlowerShape({
           <g transform={`translate(${headX} ${headY})`}>
             {/* Halo de latido para las consolidadas */}
             {mature && (
-              <circle r={f.radius * 1.5} fill="url(#g-sacred)" opacity={0.3}>
+              <circle r={Math.max(0.01, f.radius * 1.5)} fill="url(#g-sacred)" opacity={0.3}>
                 <animate attributeName="opacity" values="0.16;0.46;0.16"
                   dur={`${f.pulseDur}s`} begin={`${f.pulseDelay}s`} repeatCount="indefinite" />
               </circle>
@@ -201,14 +201,14 @@ const FlowerShape = memo(function FlowerShape({
             ))}
 
             {/* Corazón */}
-            <circle r={f.radius * 0.24} fill={f.coreOuter} />
+            <circle r={Math.max(0.01, f.radius * 0.24)} fill={f.coreOuter} />
             {/* Semillas en espiral de Fibonacci (137.507°) */}
             {f.seeds.map((sd, i) => (
-              <circle key={i} cx={sd.x} cy={sd.y} r={sd.r}
+              <circle key={i} cx={sd.x} cy={sd.y} r={Math.max(0.01, sd.r)}
                 fill={hsl(f.coreHue - sd.t * 26, 62 - sd.t * 16, 26 + sd.t * 30)}
                 opacity={0.9} />
             ))}
-            {f.seeds.length === 0 && <circle r={f.radius * 0.13} fill={f.coreInner} />}
+            {f.seeds.length === 0 && <circle r={Math.max(0.01, f.radius * 0.13)} fill={f.coreInner} />}
           </g>
         </g>
       </g>
@@ -258,7 +258,7 @@ const ShrubLayer = memo(function ShrubLayer({ shrubs, wind }: { shrubs: ShrubMod
             </path>
           ))}
           {sh.berries.map((be, i) => (
-            <circle key={i} cx={be.x} cy={be.y} r={be.r} fill={hsl(be.hue, 70, 54)}>
+            <circle key={i} cx={be.x} cy={be.y} r={Math.max(0.01, be.r)} fill={hsl(be.hue, 70, 54)}>
               <animate attributeName="opacity" values="0.8;1;0.8"
                 dur="4s" begin={`${i * 0.4}s`} repeatCount="indefinite" />
             </circle>
@@ -330,8 +330,8 @@ const MarianArchShape = memo(function MarianArchShape({ a }: { a: MarianArch }) 
           <motion.g key={i} initial={{ scale: 0 }} animate={{ scale: 1 }}
             transition={{ duration: 0.45, delay: 0.8 + i * 0.07, ease: "backOut" }}
             style={{ transformOrigin: `${rx}px ${ry}px` }}>
-            <circle cx={rx} cy={ry} r={3.4 * s} fill={hsl(a.hue, 62, 58)} />
-            <circle cx={rx} cy={ry} r={1.9 * s} fill={hsl(a.hue + 8, 72, 76)} />
+            <circle cx={rx} cy={ry} r={Math.max(0.01, 3.4 * s)} fill={hsl(a.hue, 62, 58)} />
+            <circle cx={rx} cy={ry} r={Math.max(0.01, 1.9 * s)} fill={hsl(a.hue + 8, 72, 76)} />
           </motion.g>
         );
       })}
@@ -383,7 +383,7 @@ const ShrineShape = memo(function ShrineShape({ sh }: { sh: StoneShrine }) {
           <path d="M -1.4 -24 L -1.4 -6 M -6 -18 L 3.4 -18" stroke={dark} strokeWidth={1.4} strokeLinecap="round" />
         </g>
       )}
-      <circle cx={sh.x} cy={sh.y - 18 * s} r={26 * s} fill="url(#g-sacred)">
+      <circle cx={sh.x} cy={sh.y - 18 * s} r={Math.max(0.01, 26 * s)} fill="url(#g-sacred)">
         <animate attributeName="opacity" values="0.16;0.38;0.16" dur="6s" repeatCount="indefinite" />
       </circle>
     </motion.g>
@@ -534,7 +534,7 @@ const Fauna = memo(function Fauna({ m }: { m: GardenModel }) {
 
       {/* Polen */}
       {m.particles.map((p, i) => (
-        <motion.circle key={`pt-${i}`} cx={p.x} cy={p.y} r={p.r} fill="rgb(255 244 200 / 0.75)"
+        <motion.circle key={`pt-${i}`} cx={p.x} cy={p.y} r={Math.max(0.01, p.r)} fill="rgb(255 244 200 / 0.75)"
           animate={{ y: [0, -22, 0], x: [0, 12, 0], opacity: [0, 0.65, 0] }}
           transition={{ duration: p.dur, repeat: Infinity, delay: p.delay, ease: "easeInOut" }} />
       ))}
@@ -581,7 +581,7 @@ const EphemeralLayer = memo(function EphemeralLayer({
       )}
 
       {dewActive && m.dewPoints.map((d, i) => (
-        <circle key={`dw-${i}`} cx={d.x} cy={d.y} r={d.r} fill="rgb(196 230 255 / 0.9)">
+        <circle key={`dw-${i}`} cx={d.x} cy={d.y} r={Math.max(0.01, d.r)} fill="rgb(196 230 255 / 0.9)">
           <animate attributeName="opacity" values="0;0.9;0" dur="2.8s"
             begin={`${d.delay}s`} repeatCount="indefinite" />
         </circle>
@@ -766,7 +766,7 @@ export function GardenSvg({ dna, state, justWatered = false, personal }: Props) 
 
         {/* Luces con latido */}
         {model.lights.map((l, i) => (
-          <circle key={`lt-${i}`} cx={l.x} cy={l.y} r={l.r} fill={hsl(l.hue, 92, 76)}>
+          <circle key={`lt-${i}`} cx={l.x} cy={l.y} r={Math.max(0.01, l.r)} fill={hsl(l.hue, 92, 76)}>
             <animate attributeName="opacity" values="0.15;0.85;0.15"
               dur={`${l.dur}s`} begin={`${l.delay}s`} repeatCount="indefinite" />
             <animate attributeName="cy" values={`${l.y};${l.y - 7};${l.y}`}

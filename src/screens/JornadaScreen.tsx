@@ -4,6 +4,12 @@ import { buildJornadaSteps, type JornadaStep, type JornadaStepKind } from "../da
 import type { DailyLiturgy } from "../liturgy/types";
 import { useSpiritual } from "../fruits/store";
 
+type Props = {
+  liturgy: DailyLiturgy | null;
+  onClose: () => void;
+  onComplete: () => void;
+};
+
 const ACCENT: Record<JornadaStepKind, string> = {
   offering: "#c98a3a",
   greeting: "#c4a35a",

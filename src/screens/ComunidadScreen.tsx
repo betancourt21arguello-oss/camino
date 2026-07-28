@@ -1,10 +1,25 @@
 import { useState } from "react";
 import { useSpiritual } from "../fruits/store";
+import { useAuth } from "../auth/AuthProvider";
 import type { Candle } from "../fruits/types";
+import type { GardenEvent } from "../garden/types";
 
 function hoursLeft(c: Candle) {
-  const ms = c.expiresAt - Date.now();
+  const ms = new Date(c.expires_at).getTime() - Date.now();
   return Math.max(0, Math.round(ms / 3600_000));
+}
+
+function ownerHue(ownerId: string) {
+  let hash = 0;
+  for (let i = 0; i < ownerId.length; i++) {
+    hash = ((hash << 5) - hash) + ownerId.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash) % 360;
+}
+
+function ownerLabel(ownerId: string) {
+  return `Participante ${ownerId.slice(-4)}`;
 }
 
 function CandleGlyph({
@@ -46,16 +61,70 @@ function CandleGlyph({
   );
 }
 
+function ReflectionCard({ event }: { event: GardenEvent }) {
+  const date = new Date(event.created_at);
+  const label = event.type === "REFLECTION_COMPLETED" ? "Reflexión completada" : "Silencio";
+  return (
+    <div className="flex items-start gap-3 rounded-2xl border border-[#e8e4db] bg-white p-4">
+      <span className="text-xl">🕯️</span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm text-[#1c1c1e]">{label}</p>
+        {event.intention && (
+          <p className="mt-1 text-xs text-[#9a9a9f]">“{event.intention}”</p>
+        )}
+        <p className="mt-1 text-[11px] text-[#9a9a9f]">
+          {date.toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ReflexionesTab() {
+  const { gardenEvents } = useSpiritual();
+  const reflections = gardenEvents
+    .filter((e) => e.type === "REFLECTION_COMPLETED" || e.type === "SILENCE_TIME")
+    .slice(-20)
+    .reverse();
+
+  if (reflections.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <div className="mb-4 text-5xl">🕯️</div>
+        <p className="text-sm font-medium text-[#1c1c1e]">Tus reflexiones aparecerán aquí</p>
+        <p className="mt-1 text-xs text-[#9a9a9f]">Completa momentos de silencio en el Rosario</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3 px-6">
+      <p className="text-xs font-semibold uppercase tracking-widest text-[#9a9a9f]">Reflexiones recientes</p>
+      {reflections.map((event) => (
+        <ReflectionCard key={event.id} event={event} />
+      ))}
+    </div>
+  );
+}
+
 export function ComunidadScreen() {
-  const { candles, lightCandle, prayForCandle, candleFeedback, balance, syncError } = useSpiritual();
+  const { user } = useAuth();
+  const { candles, lightCandle, prayForCandle, balance, syncError } = useSpiritual();
   const [tab, setTab] = useState<"intenciones" | "reflexiones">("intenciones");
   const [selected, setSelected] = useState<Candle | null>(null);
   const [composing, setComposing] = useState(false);
   const [draft, setDraft] = useState("");
 
-  const active = candles.filter((c) => c.expiresAt > Date.now());
+  const active = candles.filter((c) => new Date(c.expires_at).getTime() > Date.now());
   const shown = active.slice(0, 40);
   const extra = Math.max(0, active.length - shown.length);
+
+  const enriched = shown.map((c) => ({
+    ...c,
+    ownerHue: ownerHue(c.owner_id),
+    ownerName: ownerLabel(c.owner_id),
+    mine: c.owner_id === user?.id,
+  }));
 
   return (
     <div className="min-h-full bg-[#f7f6f3] pb-28 text-[#1c1c1e]">
@@ -63,7 +132,7 @@ export function ComunidadScreen() {
 
       {syncError && (
         <div className="mx-auto mt-4 max-w-sm rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-center text-sm text-red-800">
-          {syncError.message}
+          {syncError}
         </div>
       )}
 
@@ -95,26 +164,12 @@ export function ComunidadScreen() {
             🕯️ Encender una vela por alguien
           </button>
 
-          {candleFeedback && (
-            <div
-              className={`mx-auto mt-4 max-w-sm rounded-2xl px-4 py-3 text-center text-sm ${
-                candleFeedback.type === "error"
-                  ? "border border-[#d7d3c8] bg-white text-[#8a5a5a]"
-                  : "bg-[#eef2e6] text-[#5c6b3f]"
-              }`}
-            >
-              {candleFeedback.message}
-            </div>
-          )}
-
-          {!candleFeedback && (
-            <p className="mt-4 text-center text-xs text-[#a8a8ad]">
-              Las velas encendidas no se apagan. Puedes rezar por cualquiera.
-            </p>
-          )}
+          <p className="mt-4 text-center text-xs text-[#a8a8ad]">
+            Las velas encendidas no se apagan. Puedes rezar por cualquiera.
+          </p>
 
           <div className="mx-auto mt-6 grid max-w-sm grid-cols-4 gap-x-3 gap-y-6">
-            {shown.map((c) => (
+            {enriched.map((c) => (
               <button
                 key={c.id}
                 onClick={() => setSelected(c)}
@@ -122,11 +177,11 @@ export function ComunidadScreen() {
               >
                 <CandleGlyph
                   tint={c.ownerHue}
-                  praying={c.mine || c.prayedBy.includes("me")}
+                  praying={c.mine || (c.prayedBy ?? []).includes("me")}
                 />
-                {c.prayedBy.length > 0 && (
+                {(c.prayedBy?.length ?? 0) > 0 && (
                   <span className="mt-1 text-[9px] text-[#9a9a9f]">
-                    🙏 {c.prayedBy.length}
+                    🙏 {c.prayedBy?.length ?? 0}
                   </span>
                 )}
               </button>
@@ -139,36 +194,36 @@ export function ComunidadScreen() {
             </p>
           )}
         </div>
+      ) : tab === "reflexiones" ? (
+        <ReflexionesTab />
       ) : (
         <div className="px-6 pt-8 text-center text-sm text-[#9a9a9f]">
-          Las reflexiones publicadas en Supabase aparecerán aquí.
+          Las reflexiones publicadas aparecerán aquí.
         </div>
       )}
-
-      {/* Candle detail: what intention, pray for it */}
       {selected && (
         <div className="absolute inset-0 z-50 flex items-end justify-center bg-black/40 p-4 backdrop-blur-sm">
           <div className="fade-up w-full max-w-md rounded-3xl bg-white p-6">
             <div className="flex justify-center">
               <CandleGlyph
-                tint={selected.ownerHue}
+                tint={ownerHue(selected.owner_id)}
                 big
-                praying={selected.mine || selected.prayedBy.includes("me")}
+                praying={selected.owner_id === user?.id || (selected.prayedBy ?? []).includes("me")}
               />
             </div>
             <div className="mt-4 text-center text-[10px] tracking-[0.2em] text-[#9a9a9f]">
-              INTENCIÓN DE {selected.ownerName.toUpperCase()}
+              INTENCIÓN DE {ownerLabel(selected.owner_id).toUpperCase()}
             </div>
             <p className="mt-1 text-center font-serif-holy text-xl">
-              “{selected.intention}”
+              "{selected.intention}"
             </p>
             <p className="mt-2 text-center text-xs text-[#a8a8ad]">
-              Encendida · quedan {hoursLeft(selected)} h · 🙏 {selected.prayedBy.length} rezando
+              Encendida · quedan {hoursLeft(selected)} h · 🙏 {selected.prayedBy?.length ?? 0} rezando
             </p>
 
-            {selected.prayedBy.includes("me") || selected.mine ? (
+            {selected.owner_id === user?.id || (selected.prayedBy ?? []).includes("me") ? (
               <div className="mt-5 rounded-full bg-[#eef2e6] py-3 text-center text-sm font-medium text-[#5c6b3f]">
-                {selected.mine
+                {selected.owner_id === user?.id
                   ? "Es tu intención · presente todo el día"
                   : "Ya estás rezando por esta intención (24 h)"}
               </div>
@@ -178,7 +233,7 @@ export function ComunidadScreen() {
                   prayForCandle(selected.id);
                   setSelected({
                     ...selected,
-                    prayedBy: [...selected.prayedBy, "me"],
+                    prayedBy: [...(selected.prayedBy ?? []), "me"],
                   });
                 }}
                 disabled={balance.vela <= 0}

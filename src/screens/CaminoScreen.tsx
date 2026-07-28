@@ -10,7 +10,6 @@ import { resolveCatholicImage, resolveDailyImage, resolveSaintImage } from "../m
 import { useInstallPrompt } from "../pwa/useInstallPrompt";
 import { InstallBanner } from "../pwa/InstallBanner";
 import { BibliaShell } from "./biblia/BibliaShell";
-import { WORKER_API_BASE } from "../config";
 
 export type ReaderTarget =
   | "gospel"
@@ -38,6 +37,7 @@ type Props = {
   generatingDaily?: boolean;
   onGenerateDaily: () => void;
   error?: string | null;
+  onOpenAdmin: () => void;
 };
 
 export const CaminoScreen: React.FC<Props> = ({
@@ -659,24 +659,6 @@ function RelevantMessagesCarousel({
             </p>
           </div>
         ))}
-      </div>
-    </div>
-  );
-}
-
-function DailyMessage({
-  label,
-  message,
-}: {
-  label: string;
-  message?: { relevant: boolean; text: string };
-}) {
-  if (!message?.relevant || !message.text) return null;
-  return (
-    <div className="mt-4 px-6">
-      <div className="rounded-2xl border border-[#e4dcef] bg-[#f5f1fb] p-4">
-        <div className="text-[10px] tracking-[0.18em] text-[#8a7ab0]">{label}</div>
-        <p className="mt-1 font-serif-holy text-[15px] leading-relaxed text-[#4a4360]">“{message.text}”</p>
       </div>
     </div>
   );

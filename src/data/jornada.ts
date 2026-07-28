@@ -79,7 +79,7 @@ export function buildJornadaSteps(liturgy: DailyLiturgy | null): JornadaStep[] {
       eyebrow: "Invocación",
       heading: "Ven, Espíritu Santo",
       body:
-        "Ven, Espíritu Santo, ven por medio de la poderosa intercesión del Inmaculado Corazón de María, tu amadísima Esposa.\n\nVen, Espíritu Santo, ven por medio de la poderosa intercesión del Inmaculado Corazón de María, tu amadísima Esposa.\n\nVen, Espíritu Santo, ven por medio de la poderosa intercesión del Inmaculado Corazón de María, tu amadísima Esposa.\n\nOh Espíritu Santo,\nAmor del Padre, y del Hijo,\nInspírame siempre lo que debo pensar,\nlo que debo decir,\ncómo debo decirlo,\nlo que debo callar,\ncómo debo actuar,\nlo que debo hacer,\npara gloria de Dios,\nbien de las almas\ny mi propia Santificación.\n\nEspíritu Santo,\nDame agudeza\npara entender,\ncapacidad para retener,\nmétodo y facultad para aprender,\nsutileza para interpretar,\ngracia y eficacia para hablar.\nDame acierto al empezar\ndirección al progresar\ny perfección al acabar.\nAmén.",
+        "Ven, Espíritu Santo, ven por medio de la poderosa intercesión del Inmaculado Corazón de María, tu amadísima Esposa.\n\nOh Espíritu Santo,\nAmor del Padre, y del Hijo,\nInspírame siempre lo que debo pensar,\nlo que debo decir,\ncómo debo decirlo,\nlo que debo callar,\ncómo debo actuar,\nlo que debo hacer,\npara gloria de Dios,\nbien de las almas\ny mi propia Santificación.\n\nEspíritu Santo,\nDame agudeza\npara entender,\ncapacidad para retener,\nmétodo y facultad para aprender,\nsutileza para interpretar,\ngracia y eficacia para hablar.\nDame acierto al empezar\ndirección al progresar\ny perfección al acabar.\nAmén.",
     });
 
   if (L?.quote?.text) {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { CommunityWorkSvg } from "../community/CommunityWorkSvg";
 import { COMPOSITION_LABELS } from "../community/composition";
 import { loadGallery, loadGalleryFromSupabase } from "../community/gallery";

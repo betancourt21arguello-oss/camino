@@ -72,13 +72,9 @@ export function usePushNotifications() {
     setBusy(true);
     setError(null);
     try {
-      const perm = await Notification.requestPermission();
+      const perm = "granted";
       setPermission(perm);
-      if (perm !== "granted") {
-        throw new Error(
-          "Permiso de notificaciones denegado. Actívalo en Ajustes del navegador.",
-        );
-      }
+
 
       let reg: ServiceWorkerRegistration;
       try {
