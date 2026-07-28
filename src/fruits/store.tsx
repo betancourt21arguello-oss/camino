@@ -237,9 +237,9 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
     const gType = gardenEventType(e.type);
     if (gType) pushLocalEvent(gType, e.value ?? 1, e.intention);
 
-    if (user) {
+    if (user && gType) {
       void supabase.rpc("emit_spiritual_event", {
-        p_event_type: e.type,
+        p_event_type: gType,
         p_value: e.value ?? 1,
         p_intention: e.intention ?? null,
         p_vela: reward.vela,

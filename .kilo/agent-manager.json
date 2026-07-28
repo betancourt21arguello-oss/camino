@@ -1,15 +1,15 @@
 {
   "worktrees": {},
   "sessions": {
-    "ses_057a5babeffelvdCkay419AW7q": {
+    "ses_0576903a2ffeYFgSxTP83zF2s7": {
       "worktreeId": null,
-      "createdAt": "2026-07-28T10:51:56.341Z"
+      "createdAt": "2026-07-28T11:58:15.285Z"
     }
   },
   "tabOrder": {
     "local": [
       "pending:bdfe997d-05e5-4e5f-827f-f4d2d31a0a9c",
-      "ses_057a5babeffelvdCkay419AW7q"
+      "ses_0576903a2ffeYFgSxTP83zF2s7"
     ]
   },
   "sessionsCollapsed": true

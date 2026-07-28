@@ -284,7 +284,8 @@ function ThreeCrossesView({ step, accent }: { step: JornadaStep; accent: string 
 }
 
 function GospelView({ step, accent }: { step: JornadaStep; accent: string }) {
-  const ev = step.evangelist ?? "el Evangelio";
+  const rawEv = step.evangelist ?? "el Evangelio";
+  const ev = rawEv.startsWith("San ") || rawEv.startsWith("san ") ? rawEv : `San ${rawEv}`;
   return (
     <div className="mx-auto max-w-2xl">
       <Eyebrow accent={accent}>Evangelio</Eyebrow>

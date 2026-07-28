@@ -188,7 +188,11 @@ function UploadPanel() {
         body: formData,
       });
       setResult(res.ok ? "✅ Audio publicado" : `❌ Error ${res.status}`);
-      if (res.ok) { setTitle(""); setFile(null); }
+      if (res.ok) {
+        setTitle("");
+        setFile(null);
+        window.dispatchEvent(new Event("assets-refresh"));
+      }
     } catch (e) {
       setResult(`❌ ${e instanceof Error ? e.message : "Error"}`);
     }

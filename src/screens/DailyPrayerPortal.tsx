@@ -23,6 +23,19 @@ const HOUR_META: Record<HourKind, { label: string; mood: "dawn" | "noon" | "dusk
 
 const R2_ANGELUS_AUDIO_URL = "https://pub-8fb2af7acc7246b4b90aa917bb377f90.r2.dev/Angelus-Papa-Francisco.MP3";
 
+const RUBRIC_LABEL: Record<string, string> = { video: "Video" };
+
+function getYouTubeEmbedUrl(url: string): string | null {
+  const trimmed = url.trim();
+  let m = trimmed.match(/[?&]v=([^&]+)/);
+  if (m) return `https://www.youtube-nocookie.com/embed/${m[1]}?rel=0&modestbranding=1`;
+  m = trimmed.match(/youtu\.be\/([^?&#]+)/);
+  if (m) return `https://www.youtube-nocookie.com/embed/${m[1]}?rel=0&modestbranding=1`;
+  m = trimmed.match(/youtube\.com\/embed\/([^?&#]+)/);
+  if (m) return `https://www.youtube-nocookie.com/embed/${m[1]}?rel=0&modestbranding=1`;
+  return null;
+}
+
 export function DailyPrayerPortal({ kind, liturgy, assets, onClose, onComplete }: Props) {
   const meta = HOUR_META[kind];
   const hour: HourLiturgy | undefined =
@@ -157,11 +170,11 @@ export function DailyPrayerPortal({ kind, liturgy, assets, onClose, onComplete }
     accent: "#d4943a",
     accentLight: "#f5d78a",
     accentGlow: "rgba(212,148,58,0.15)",
-    text: "#2a1f0e",
-    textMuted: "#8a7a5a",
-    cardBg: "rgba(255,255,255,0.6)",
-    cardBorder: "rgba(212,148,58,0.2)",
-    cardShadow: "rgba(212,148,58,0.08)",
+    text: "#000000",
+    textMuted: "#555555",
+    cardBg: "#ffffff",
+    cardBorder: "rgba(0,0,0,0.08)",
+    cardShadow: "rgba(0,0,0,0.06)",
   };
 
   const noonColors = {
@@ -169,11 +182,11 @@ export function DailyPrayerPortal({ kind, liturgy, assets, onClose, onComplete }
     accent: "#4a7a8a",
     accentLight: "#8ab0c0",
     accentGlow: "rgba(74,122,138,0.15)",
-    text: "#1c1c1e",
-    textMuted: "#6b6b70",
-    cardBg: "rgba(255,255,255,0.6)",
-    cardBorder: "rgba(74,122,138,0.2)",
-    cardShadow: "rgba(74,122,138,0.08)",
+    text: "#000000",
+    textMuted: "#555555",
+    cardBg: "#ffffff",
+    cardBorder: "rgba(0,0,0,0.08)",
+    cardShadow: "rgba(0,0,0,0.06)",
   };
 
   const duskColors = {
@@ -181,11 +194,11 @@ export function DailyPrayerPortal({ kind, liturgy, assets, onClose, onComplete }
     accent: "#c49a6a",
     accentLight: "#e0b88a",
     accentGlow: "rgba(196,154,106,0.2)",
-    text: "#f0e8d8",
-    textMuted: "#a09080",
-    cardBg: "rgba(255,255,255,0.08)",
-    cardBorder: "rgba(196,154,106,0.25)",
-    cardShadow: "rgba(0,0,0,0.2)",
+    text: "#000000",
+    textMuted: "#555555",
+    cardBg: "#ffffff",
+    cardBorder: "rgba(0,0,0,0.08)",
+    cardShadow: "rgba(0,0,0,0.06)",
   };
 
   const nightColors = {
@@ -193,17 +206,17 @@ export function DailyPrayerPortal({ kind, liturgy, assets, onClose, onComplete }
     accent: "#8ab4d0",
     accentLight: "#b0d0e0",
     accentGlow: "rgba(138,180,208,0.15)",
-    text: "#e8e0d0",
-    textMuted: "#8a8070",
-    cardBg: "rgba(255,255,255,0.05)",
-    cardBorder: "rgba(138,180,208,0.2)",
-    cardShadow: "rgba(0,0,0,0.3)",
+    text: "#000000",
+    textMuted: "#555555",
+    cardBg: "#ffffff",
+    cardBorder: "rgba(0,0,0,0.08)",
+    cardShadow: "rgba(0,0,0,0.06)",
   };
 
   const palette = { dawn: dawnColors, noon: noonColors, dusk: duskColors, night: nightColors }[mood] ?? dawnColors;
 
   return (
-    <div className="absolute inset-0 z-40 flex flex-col overflow-hidden bg-gradient-to-b from-[#fef3e2] via-[#fde4c8] to-[#f5d5a0] text-[#2a1f0e]">
+    <div className="absolute inset-0 z-40 flex flex-col overflow-hidden bg-gradient-to-b from-[#fef3e2] via-[#fde4c8] to-[#f5d5a0] text-black">
       <header className="relative z-10 flex shrink-0 items-center justify-between px-5 pb-2 pt-12">
         <button onClick={onClose} className="flex h-11 w-11 items-center justify-center rounded-full transition hover:bg-black/5" aria-label="Cerrar">
           <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -332,6 +345,9 @@ function LaudesView({
 }) {
   const part = hour?.parts?.[partIndex];
   const hasParts = Array.isArray(hour?.parts) && hour.parts.length > 0;
+  const isVideo = (part as any)?.type === "video" || (part as any)?.kind === "video";
+  const videoContent = (part as any)?.content;
+  const partKind = (part as any)?.kind || (part as any)?.type || "reading";
 
   if (!hour) {
     return (
@@ -410,7 +426,7 @@ function LaudesView({
       >
         <div className="flex flex-col gap-1 mb-5">
           <p className="text-[11px] font-semibold uppercase tracking-[0.25em]" style={{ color: palette.accent }}>
-            {part.label || RUBRIC[part.kind]}
+            {part.label || RUBRIC[partKind as keyof typeof RUBRIC] || "Contenido"}
           </p>
           {part.rubric && (
             <p className="font-serif-holy text-[14px] italic leading-relaxed" style={{ color: palette.textMuted }}>
@@ -418,10 +434,47 @@ function LaudesView({
             </p>
           )}
         </div>
-        <p className="whitespace-pre-line font-serif-holy text-[26px] leading-[1.7] tracking-wide" style={{ color: palette.text }}>
-          {part.text}
-        </p>
-        {part.response && (
+
+        {isVideo && (
+          <div className="mt-2">
+            {videoContent ? (() => {
+              const ytEmbed = getYouTubeEmbedUrl(videoContent);
+              if (ytEmbed) {
+                return (
+                  <iframe
+                    src={ytEmbed}
+                    title="Video"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                    className="w-full rounded-xl aspect-video"
+                    style={{ background: "#000", border: "none" }}
+                  />
+                );
+              }
+              return (
+                <video controls src={videoContent} className="w-full rounded-xl" style={{ background: "#000" }} />
+              );
+            })() : (
+              <p className="font-serif-holy text-[20px] leading-relaxed" style={{ color: palette.text }}>
+                El video de esta sección estará disponible pronto.
+              </p>
+            )}
+          </div>
+        )}
+
+        {!isVideo && part.text && (
+          <p className="whitespace-pre-line font-serif-holy text-[26px] leading-[1.7] tracking-wide" style={{ color: palette.text }}>
+            {part.text}
+          </p>
+        )}
+
+        {!isVideo && !part.text && (
+          <p className="whitespace-pre-line font-serif-holy text-[20px] leading-relaxed" style={{ color: palette.textMuted }}>
+            {videoContent || "Contenido no disponible."}
+          </p>
+        )}
+
+        {part.response && !isVideo && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -579,4 +632,5 @@ const RUBRIC: Record<HourPart["kind"], string> = {
   examination: "Examen de conciencia",
   commendation: "Encomienda",
   response: "Respuesta",
+  video: "Video",
 };

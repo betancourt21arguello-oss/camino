@@ -41,10 +41,12 @@ const OFFERING =
   "Señor mío Jesucristo, al comenzar este día te ofrezco todo lo que soy, lo que tengo, lo que pienso y lo que haré. Te ofrezco las alegrías y las cruces de esta jornada, unidas a tu Sacrificio en la Misa, por las intenciones de tu Corazón y por Venezuela, nuestra tierra, sus familias, sus enfermos y sus jóvenes. Haz que cada acto mío de hoy sea una semilla de tu Reino. Amén.";
 
 function evangelistFrom(ref: string | undefined, explicit: string | undefined): string {
-  if (explicit) return explicit;
+  if (explicit) {
+    return explicit.startsWith("San ") || explicit.startsWith("san ") ? explicit : `San ${explicit}`;
+  }
   if (!ref) return "el Evangelio";
   const m = ref.match(/(Mateo|Marcos|Lucas|Juan)/i);
-  return m ? `san ${m[1]}` : "el Evangelio";
+  return m ? `San ${m[1]}` : "el Evangelio";
 }
 
 export function buildJornadaSteps(liturgy: DailyLiturgy | null): JornadaStep[] {
@@ -71,14 +73,14 @@ export function buildJornadaSteps(liturgy: DailyLiturgy | null): JornadaStep[] {
     hint: "Quieta el cuerpo. Deja que el Espíritu Santo tome el timón.",
   });
 
-  steps.push({
-    id: "invocation",
-    kind: "invocation",
-    eyebrow: "Invocación",
-    heading: "Ven, Espíritu Santo",
-    body:
-      "Ven, Espíritu Santo, ven por medio de la poderosa intercesión del Inmaculado Corazón de María, tu amadísima Esposa.\n\nOh Espíritu Santo, Amor del Padre y del Hijo, inspírame lo que debo pensar, lo que debo decir y lo que debo callar; cómo actuar y cómo sufrir, para gloria de Dios, bien de las almas y mi propia santificación. Amén.",
-  });
+    steps.push({
+      id: "invocation",
+      kind: "invocation",
+      eyebrow: "Invocación",
+      heading: "Ven, Espíritu Santo",
+      body:
+        "Ven, Espíritu Santo, ven por medio de la poderosa intercesión del Inmaculado Corazón de María, tu amadísima Esposa.\n\nVen, Espíritu Santo, ven por medio de la poderosa intercesión del Inmaculado Corazón de María, tu amadísima Esposa.\n\nVen, Espíritu Santo, ven por medio de la poderosa intercesión del Inmaculado Corazón de María, tu amadísima Esposa.\n\nOh Espíritu Santo,\nAmor del Padre, y del Hijo,\nInspírame siempre lo que debo pensar,\nlo que debo decir,\ncómo debo decirlo,\nlo que debo callar,\ncómo debo actuar,\nlo que debo hacer,\npara gloria de Dios,\nbien de las almas\ny mi propia Santificación.\n\nEspíritu Santo,\nDame agudeza\npara entender,\ncapacidad para retener,\nmétodo y facultad para aprender,\nsutileza para interpretar,\ngracia y eficacia para hablar.\nDame acierto al empezar\ndirección al progresar\ny perfección al acabar.\nAmén.",
+    });
 
   if (L?.quote?.text) {
     steps.push({
@@ -94,7 +96,7 @@ export function buildJornadaSteps(liturgy: DailyLiturgy | null): JornadaStep[] {
     steps.push({
       id: "first-reading",
       kind: "reading",
-      eyebrow: "Primera lectura",
+      eyebrow: `Lectura del libro de ${L.firstReading.ref}`,
       heading: L.firstReading.title || "Palabra de Dios",
       citation: L.firstReading.ref,
       body: L.firstReading.body,
@@ -118,7 +120,7 @@ export function buildJornadaSteps(liturgy: DailyLiturgy | null): JornadaStep[] {
     steps.push({
       id: "second-reading",
       kind: "reading",
-      eyebrow: "Segunda lectura",
+      eyebrow: `Lectura del libro de ${L.secondReading.ref}`,
       heading: L.secondReading.title || "Palabra de Dios",
       citation: L.secondReading.ref,
       body: L.secondReading.body,
@@ -132,10 +134,10 @@ export function buildJornadaSteps(liturgy: DailyLiturgy | null): JornadaStep[] {
     steps.push({
       id: "threecrosses",
       kind: "threecrosses",
-      eyebrow: "Antes del Evangelio",
-      heading: "Tres pequeñas cruces",
+      eyebrow: `Lectura del santo Evangelio según ${ev}`,
+      heading: `${L.gospel.title}\n${L.gospel.ref}`,
       hint:
-        "Traza con el pulgar una cruz en la frente, otra en los labios y otra en el pecho, mientras dices en silencio: que el Evangelio esté en mi mente, en mi palabra y en mi corazón.",
+        "Traza con el pulgar una cruz en la frente, otra en los labios y otra en el pecho, mientras dices en silencio: Gloria a Ti, Señor",
     });
     steps.push({
       id: "gospel",

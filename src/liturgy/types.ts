@@ -35,27 +35,13 @@ export interface RelevantMessage {
 
 /** Una parte de una Hora de la Liturgia de las Horas. */
 export interface HourPart {
-  /** clave que define el render y la rúbrica */
-  kind:
-    | "invitatory"
-    | "hymn"
-    | "psalmody"
-    | "reading"
-    | "gospelCanticle"
-    | "intercessions"
-    | "ourFather"
-    | "concludingPrayer"
-    | "marianAntiphon"
-    | "examination"
-    | "commendation"
-    | "response";
+  kind: "invitatory" | "hymn" | "psalmody" | "reading" | "gospelCanticle" | "intercessions" | "ourFather" | "concludingPrayer" | "marianAntiphon" | "examination" | "commendation" | "response" | "video";
   label: string;
-  /** Texto principal (oración, himno, salmo…). */
   text: string;
-  /** Rúbrica o nota litúrgica pequeña. */
   rubric?: string;
-  /** Respuesta del pueblo, si aplica. */
   response?: string;
+  content?: string;
+  type?: string;
 }
 
 export interface HourLiturgy {

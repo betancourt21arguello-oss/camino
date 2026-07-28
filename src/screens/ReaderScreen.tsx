@@ -43,11 +43,17 @@ export function ReaderScreen({
       <div className="no-scrollbar flex-1 overflow-y-auto px-7 pt-2">
         {isGospel && gospel?.threeCrosses !== false && <ThreeCrossesRite />}
 
-        {isGospel && gospel?.evangelist && (
-          <p className="font-serif-holy text-[19px] italic leading-snug text-[#5a4a2a]">
-            Lectura del santo Evangelio según {gospel.evangelist}
-          </p>
-        )}
+{isGospel && gospel?.evangelist && (
+  () => {
+    const ev = gospel.evangelist!;
+    const name = ev.startsWith("San ") || ev.startsWith("san ") ? ev : `San ${ev}`;
+    return (
+      <p className="font-serif-holy text-[19px] italic leading-snug text-[#5a4a2a]">
+        Lectura del santo Evangelio según {name}
+      </p>
+    );
+  }
+)()}
 
         <h1 className="mt-3 font-serif-holy text-3xl font-bold leading-tight">{title}</h1>
         {reference && <p className="mt-2 text-sm font-medium tracking-wide text-[#a07a3c]">{reference}</p>}

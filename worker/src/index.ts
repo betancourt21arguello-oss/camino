@@ -6,18 +6,157 @@ let vapidConfigured = false;
 const MODEL_FALLBACK_CHAIN = [
   "gemini-1.5-flash",
   "gemini-1.5-flash-8b",
-  "gemini-1.5-flash-latest",
   "gemini-1.5-pro",
-  "gemini-1.5-pro-latest",
-  "gemini-1.0-pro",
-  "gemini-1.0-pro-001",
 ];
 
-const MAX_RETRIES_PER_MODEL = 3;
+const MAX_RETRIES_PER_MODEL = 2;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+// ===== Vertex AI support =====
+const VERTEX_MODEL_MAP: Record<string, string> = {
+  "gemini-1.5-flash": "gemini-1.5-flash-002",
+  "gemini-1.5-flash-8b": "gemini-1.5-flash-8b-001",
+  "gemini-1.5-pro": "gemini-1.5-pro-002",
+};
+
+function mapModelToVertex(model: string): string {
+  return VERTEX_MODEL_MAP[model] || model;
+}
+
+let vertexTokenCache: { token: string; expiresAt: number } | null = null;
+
+function base64UrlEncode(str: string): string {
+  const bytes = new TextEncoder().encode(str);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+async function signJwtAssertion(data: string, privateKeyPem: string): Promise<string> {
+  const pemContents = privateKeyPem
+    .replace(/-----BEGIN PRIVATE KEY-----/g, "")
+    .replace(/-----END PRIVATE KEY-----/g, "")
+    .replace(/\s+/g, "");
+  const binaryDer = Uint8Array.from(atob(pemContents), (c) => c.charCodeAt(0));
+
+  const key = await crypto.subtle.importKey(
+    "pkcs8",
+    binaryDer.buffer,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+
+  const signature = await crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5",
+    key,
+    new TextEncoder().encode(data)
+  );
+
+  const sigBytes = new Uint8Array(signature);
+  let sigBinary = "";
+  for (let i = 0; i < sigBytes.length; i++) {
+    sigBinary += String.fromCharCode(sigBytes[i]);
+  }
+  return base64UrlEncode(sigBinary);
+}
+
+async function getVertexAccessToken(env: any): Promise<string> {
+  const now = Date.now();
+  if (vertexTokenCache && vertexTokenCache.expiresAt > now + 60000) {
+    return vertexTokenCache.token;
+  }
+
+  const sa = JSON.parse(env.VERTEX_SERVICE_ACCOUNT_JSON);
+  const tokenUri = sa.token_uri || "https://oauth2.googleapis.com/token";
+  const clientEmail = sa.client_email;
+  const privateKey = sa.private_key;
+
+  const header = { alg: "RS256", typ: "JWT" };
+  const iat = Math.floor(now / 1000);
+  const payload = {
+    iss: clientEmail,
+    scope: "https://www.googleapis.com/auth/cloud-platform",
+    aud: tokenUri,
+    exp: iat + 3600,
+    iat: iat,
+  };
+
+  const encodedHeader = base64UrlEncode(JSON.stringify(header));
+  const encodedPayload = base64UrlEncode(JSON.stringify(payload));
+  const assertion = `${encodedHeader}.${encodedPayload}`;
+
+  const signature = await signJwtAssertion(assertion, privateKey);
+  const jwt = `${assertion}.${signature}`;
+
+  const res = await fetch(tokenUri, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion: jwt,
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Vertex token exchange failed: ${res.status} ${text}`);
+  }
+
+  const tokenData = await res.json() as any;
+  vertexTokenCache = {
+    token: tokenData.access_token,
+    expiresAt: now + (tokenData.expires_in || 3600) * 1000,
+  };
+
+  return tokenData.access_token;
+}
+
+async function vertexAiGenerateContent(model: string, env: any, body: any): Promise<Response> {
+  const accessToken = await getVertexAccessToken(env);
+  const vertexModel = mapModelToVertex(model);
+  const projectId = env.VERTEX_PROJECT_ID;
+  const region = env.VERTEX_REGION || "us-central1";
+
+  const url = `https://${region}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${region}/publishers/google/models/${vertexModel}:generateContent`;
+
+  return fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+async function vertexAiPredict(model: string, env: any, body: any): Promise<Response> {
+  const accessToken = await getVertexAccessToken(env);
+  const vertexModel = mapModelToVertex(model);
+  const projectId = env.VERTEX_PROJECT_ID;
+  const region = env.VERTEX_REGION || "us-central1";
+
+  const url = `https://${region}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${region}/publishers/google/models/${vertexModel}:predict`;
+
+  return fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+// ===== End Vertex AI support =====
 
 async function generateWithFallback<T>(
   apiCallFn: (model: string) => Promise<T>,
@@ -63,55 +202,72 @@ async function generateWithFallback<T>(
   );
 }
 
-async function generateWithProviderFallback<T>(
-  apiCallFn: (model: string, apiKey: string) => Promise<T>,
+/**
+ * Provider-aware fallback: Gemini (AI Studio) uses API key + generativelanguage.googleapis.com.
+ * Vertex AI uses OAuth2 service account + aiplatform.googleapis.com.
+ */
+async function generateWithProviderFallback(
+  geminiCallFn: (model: string, apiKey: string) => Promise<Response>,
+  vertexCallFn: (model: string, env: any) => Promise<Response>,
   env: any
-): Promise<T> {
-  const providers = [
-    { name: "AI Studio", key: env.GEMINI_API_KEY, retries: 5, backoff: [1000, 2000, 4000, 8000, 16000] },
-    { name: "Vertex AI", key: env.VERTEX_API_KEY, retries: 2, backoff: [1000, 2000] },
-  ];
+): Promise<Response> {
+  const providers: {
+    name: string;
+    enabled: boolean;
+    call: (model: string) => Promise<Response>;
+  }[] = [];
+
+  // Gemini (AI Studio) — primary
+  if (env.GEMINI_API_KEY) {
+    providers.push({
+      name: "AI Studio (Gemini)",
+      enabled: true,
+      call: (model: string) => geminiCallFn(model, env.GEMINI_API_KEY),
+    });
+  } else {
+    console.warn("[AI Provider] AI Studio (Gemini) no configurado, continuando...");
+  }
+
+  // Vertex AI — fallback
+  if (env.VERTEX_SERVICE_ACCOUNT_JSON && env.VERTEX_PROJECT_ID) {
+    providers.push({
+      name: "Vertex AI",
+      enabled: true,
+      call: (model: string) => vertexCallFn(model, env),
+    });
+  } else {
+    console.warn("[AI Provider] Vertex AI no configurado (falta VERTEX_SERVICE_ACCOUNT_JSON o VERTEX_PROJECT_ID), continuando...");
+  }
+
+  if (providers.length === 0) {
+    throw new Error("No AI providers configured. Set GEMINI_API_KEY or VERTEX_SERVICE_ACCOUNT_JSON + VERTEX_PROJECT_ID.");
+  }
 
   let lastError: unknown = null;
 
   for (const provider of providers) {
-    if (!provider.key) {
-      console.warn(`[AI Provider] ${provider.name} no configurado, continuando...`);
-      continue;
-    }
+    console.log(`[AI Provider] Probando ${provider.name}...`);
 
-    console.log(`[AI Provider] Probando ${provider.name} (intentos=${provider.retries})...`);
-
-    for (let providerAttempt = 1; providerAttempt <= provider.retries; providerAttempt++) {
-      try {
-        console.log(`[AI Provider] ${provider.name} intento ${providerAttempt}/${provider.retries}...`);
-        const result = await generateWithFallback(async (model) => {
-          const res = await apiCallFn(model, provider.key);
-          if (!res.ok) {
-            const errorText = await res.text();
-            console.error(`[AI Provider] ${provider.name} model=${model} error:`, errorText);
-            throw new Error(
-              `HTTP Error ${res.status} - ${res.statusText}: ${errorText}`
-            );
-          }
-          return res;
-        });
-        console.log(`[AI Provider] ${provider.name} respondió correctamente.`);
-        return result;
-      } catch (error: any) {
-        lastError = error;
-        const isLastProviderAttempt = providerAttempt >= provider.retries;
-        console.warn(
-          `[AI Provider] ${provider.name} intento ${providerAttempt}/${provider.retries} falló:`,
-          error?.message || error
-        );
-
-        if (!isLastProviderAttempt) {
-          const delay = provider.backoff[Math.min(providerAttempt - 1, provider.backoff.length - 1)];
-          console.log(`[AI Provider] Reintentando ${provider.name} en ${delay}ms...`);
-          await sleep(delay);
+    try {
+      const result = await generateWithFallback(async (model) => {
+        const res = await provider.call(model);
+        if (!res.ok) {
+          const errorText = await res.text();
+          console.error(`[AI Provider] ${provider.name} model=${model} error:`, errorText);
+          throw new Error(
+            `HTTP Error ${res.status} - ${res.statusText}: ${errorText}`
+          );
         }
-      }
+        return res;
+      });
+      console.log(`[AI Provider] ${provider.name} respondió correctamente.`);
+      return result;
+    } catch (error: any) {
+      lastError = error;
+      console.warn(
+        `[AI Provider] ${provider.name} falló:`,
+        error?.message || error
+      );
     }
 
     console.warn(`[AI Provider] ${provider.name} agotó sus reintentos. Pasando al siguiente proveedor...`);
@@ -552,6 +708,8 @@ Estructura JSON requerida:
                 text: { type: "STRING" },
                 response: { type: "STRING" },
                 rubric: { type: "STRING" },
+                type: { type: "STRING" },
+                content: { type: "STRING" },
               },
               required: ["kind", "label", "text"],
             },
@@ -576,6 +734,8 @@ Estructura JSON requerida:
                 text: { type: "STRING" },
                 response: { type: "STRING" },
                 rubric: { type: "STRING" },
+                type: { type: "STRING" },
+                content: { type: "STRING" },
               },
               required: ["kind", "label", "text"],
             },
@@ -600,6 +760,8 @@ Estructura JSON requerida:
                 text: { type: "STRING" },
                 response: { type: "STRING" },
                 rubric: { type: "STRING" },
+                type: { type: "STRING" },
+                content: { type: "STRING" },
               },
               required: ["kind", "label", "text"],
             },
@@ -642,23 +804,36 @@ Estructura JSON requerida:
     ],
   };
 
-  const res = await generateWithProviderFallback((model, apiKey) =>
-    fetch(
-      `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            responseMimeType: "application/json",
-            responseSchema: liturgySchema,
-            temperature: 0.2,
-            maxOutputTokens: 8192,
-          },
-        }),
-      }
-    ),
+  const res = await generateWithProviderFallback(
+    // Gemini call
+    (model, apiKey) =>
+      fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              responseMimeType: "application/json",
+              responseSchema: liturgySchema,
+              temperature: 0.2,
+              maxOutputTokens: 8192,
+            },
+          }),
+        }
+      ),
+    // Vertex AI call
+    (model, env) =>
+      vertexAiGenerateContent(model, env, {
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: "application/json",
+          responseSchema: liturgySchema,
+          temperature: 0.2,
+          maxOutputTokens: 8192,
+        },
+      }),
     env
   );
 
@@ -905,18 +1080,26 @@ INSTRUCCIONES:
   "mood": "esperanza|paz|fortaleza|gratitud"
 }`;
 
-  const res = await generateWithProviderFallback((model, apiKey) =>
-    fetch(
-      `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { responseMimeType: "application/json", temperature: 0.3 },
-        }),
-      }
-    ),
+  const res = await generateWithProviderFallback(
+    // Gemini call
+    (model, apiKey) =>
+      fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { responseMimeType: "application/json", temperature: 0.3 },
+          }),
+        }
+      ),
+    // Vertex AI call
+    (model, env) =>
+      vertexAiGenerateContent(model, env, {
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: "application/json", temperature: 0.3 },
+      }),
     env
   );
 
@@ -1297,26 +1480,38 @@ async function processReminders(env: any): Promise<void> {
 }
 
 async function generateImage(env: any, prompt: string): Promise<string> {
-  if (!env.GEMINI_API_KEY && !env.VERTEX_API_KEY) {
-    throw new Error("GEMINI_API_KEY or VERTEX_API_KEY not configured");
+  if (!env.GEMINI_API_KEY && !env.VERTEX_SERVICE_ACCOUNT_JSON) {
+    throw new Error("GEMINI_API_KEY or VERTEX_SERVICE_ACCOUNT_JSON not configured");
   }
 
-  const res = await generateWithProviderFallback((model, apiKey) =>
-    fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:predict?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          instances: [{ prompt }],
-          parameters: {
-            sampleCount: 1,
-            aspectRatio: "1:1",
-            personGeneration: "allow_all",
-          },
-        }),
-      }
-    ),
+  const res = await generateWithProviderFallback(
+    // Gemini call (Imagen uses predict endpoint)
+    (model, apiKey) =>
+      fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:predict?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            instances: [{ prompt }],
+            parameters: {
+              sampleCount: 1,
+              aspectRatio: "1:1",
+              personGeneration: "allow_all",
+            },
+          }),
+        }
+      ),
+    // Vertex AI call (Imagen uses predict endpoint)
+    (model, env) =>
+      vertexAiPredict(model, env, {
+        instances: [{ prompt }],
+        parameters: {
+          sampleCount: 1,
+          aspectRatio: "1:1",
+          personGeneration: "allow_all",
+        },
+      }),
     env
   );
 

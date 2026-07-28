@@ -242,6 +242,16 @@ export const CaminoScreen: React.FC<Props> = ({
 
       </div>
 
+      {/* CTA */}
+      <div className="mt-5 px-6">
+        <button
+          onClick={onStartJornada}
+          className="h-14 w-full rounded-2xl bg-[#1c1c1e] font-medium text-white transition active:scale-[0.99]"
+        >
+          Comenzar mi jornada
+        </button>
+      </div>
+
       {/* Marian message (if relevant) */}
       {L?.suggestedNovenas && L.suggestedNovenas.length > 0 && (
         <div className="mt-4 px-6">
@@ -376,17 +386,7 @@ export const CaminoScreen: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* CTA */}
-      <div className="mt-5 px-6">
-        <button
-          onClick={onStartJornada}
-          className="h-14 w-full rounded-2xl bg-[#1c1c1e] font-medium text-white transition active:scale-[0.99]"
-        >
-          Comenzar mi jornada
-        </button>
-      </div>
-
-      {/* Quick actions: read Gospel/Psalm, pray Laudes/Ángelus */}
+       {/* Quick actions: read Gospel/Psalm, pray Laudes/Ángelus */}
       <div className="mt-8 px-6">
         <div className="text-[11px] font-semibold tracking-[0.18em] text-[#9a9a9f]">
           LITURGIA DE HOY

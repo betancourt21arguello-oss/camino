@@ -851,7 +851,7 @@ Modal bottom sheet con:
 ### 6.22 `src/screens/ReaderScreen.tsx` (123 líneas) —COMPLETO—
 **Características**:
 - Three Crosses Rite animado (Frente, Labios, Pecho) si `gospel.threeCrosses !== false`
-- Lectura del santo Evangelio según {evangelist}
+- Lectura del santo Evangelio según San {evangelist}
 - Response block con `R. {response}`
 - Botón inferior "Marcar como rezado" (o label custom)
 
