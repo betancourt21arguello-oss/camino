@@ -76,7 +76,7 @@ export function useSpiritualTasks(liturgy: DailyLiturgy | null) {
         p_day_of_month: new Date(`${today}T00:00:00`).getDate(),
       });
       try {
-        await client.rpc("ensure_recurring_custom_tasks", { p_date: today }).catch(error => console.warn("[camino] ensure_recurring_custom_tasks:", error instanceof Error ? error.message : String(error)));
+        await client.rpc("ensure_recurring_custom_tasks", { p_date: today });
       } catch (error) {
         console.warn("[camino] ensure_recurring_custom_tasks:", error instanceof Error ? error.message : String(error));
       }
