@@ -363,8 +363,8 @@ D:\documentos\camino/
 - **Fuente**: Gemini API con fallback multi-modelo y multi-proveedor
 - **Cache**: Cloudflare KV `DAILY_CACHE` con TTL 48h
 - **Tabla Supabase**: `daily_liturgy`
-- **Campos obligatorios**: `saint` (no puede ser null), `gospel.body` completo, `psalm.body` completo, `quote`, `marian`, `reflection`, `catechism`, `laudes`, `vespers`, `compline`, `angelus`
-- **Fuentes marianas permitidas**: Virgen de Betania, Medjugorje, Fátima, Lourdes, Coromoto, San José Gregorio Hernández, Santa Madre Carmen Rendiles, Beata María de San José, Magisterio
+- **Campos obligatorios**: `saint` (no puede ser null), `gospel.body` completo, `psalm.body` completo, `quote`, `marian`, `reflection`, `catechism`, `angelus`
+- **Laudes, Vísperas, Completas**: Se cargan automáticamente desde el feed RSS de YouTube (`UCSgJ9Ppudkzs9cD259tjMQw`) mediante Cloudflare Worker. Se guardan en tabla `oraciones_diarias` y se inyectan como partes `video` en la respuesta de `/daily`.
 - **Generación automática**: Cada día a las 00:00 por `scheduled` handler del Worker
 - **Imágenes**: Resueltas por `resolveCatholicImage`, `resolveDailyImage`, `resolveSaintImage`
 
@@ -673,7 +673,7 @@ if (typeof window !== "undefined") {
 **OratorioTab** (líneas 463-484): Botón de grabación placeholder ("Tus notas de voz aparecerán aquí")
 
 ### 6.4 `src/screens/AdminPortal.tsx` (762 líneas) —ESTRUCTURA COMPLETA—
-**Tabs**: `gemini` | `upload` | `tasks` | `garden` | `telegram` | `images`  
+**Tabs**: `gemini` | `upload` | `tasks` | `garden` | `telegram` | `images` | `oraciones`  
 **GeminiPanel** (líneas 44-158):
 - Input date + botones Generar / Cargar
 - Textarea editable para JSON de liturgia
@@ -694,6 +694,10 @@ if (typeof window !== "undefined") {
 **ImagePanel** (líneas 648-762):
 - Fecha + URLs de santo y evangelio
 - Endpoints: `GET /admin/daily-images?date=`, `POST /admin/daily-images`
+**OracionesPanel** (líneas 762+):
+- Fecha + botón Cargar del RSS (`GET /youtube/prayer-videos`)
+- Inputs para URLs manuales de Laudes, Vísperas, Completas
+- Endpoint: `POST /youtube/prayer-videos` para guardar fallback manual
 
 ### 6.5 `src/screens/DailyPrayerPortal.tsx` (582 líneas) —ESTRUCTURA COMPLETA—
 **HourKind**: `laudes` | `angelus` | `vespers` | `compline`  
@@ -1138,7 +1142,7 @@ export default {
 |--------|------|-------------|
 | GET | `/whatsapp` | Verify webhook |
 | POST | `/whatsapp` | Webhook WhatsApp (audio admin → R2 + Supabase assets) |
-| GET | `/daily` | Obtener liturgia del día (cache o generar) |
+| GET | `/daily` | Obtener liturgia del día (cache o generar) + videos de oración inyectados |
 | POST | `/daily` | Guardar liturgia custom |
 | POST | `/daily/generate` | Forzar generación con Gemini |
 | POST | `/generate-image` | Generar imagen con Gemini |
@@ -1153,6 +1157,8 @@ export default {
 | POST | `/admin/upload-image` | Subir imagen a R2 |
 | GET | `/bible/daily` | Obtener contenido bíblico diario |
 | POST | `/bible/daily` | Generar/obtener contenido bíblico diario |
+| GET | `/youtube/prayer-videos` | Obtener/actualizar URLs de videos de oración desde RSS |
+| POST | `/youtube/prayer-videos` | Guardar URLs manuales de videos de oración |
 
 ### 7.3 Lógica de generación de liturgia (`generateLiturgy`)
 1. Prompt a Gemini con contexto de fuentes marianas y reglas estrictas
@@ -1181,6 +1187,7 @@ export default {
 ### 8.1 Tablas conocidas (por lectura de migrations)
 - `profiles` (con `role`, `email`, `full_name`)
 - `daily_liturgy` (con `is_solemnity`, `image_url`, `saint` JSONB)
+- `oraciones_diarias` (`fecha`, `laudes`, `visperas`, `completas`)
 - `fruits` (`profile_id`, `vela`, `semilla`, `agua`, `updated_at`)
 - `fruit_history` (`profile_id`, `note`, `vela`, `semilla`, `agua`, `created_at`)
 - `candles` (`id`, `owner_id`, `intention`, `lit_at`, `expires_at`)

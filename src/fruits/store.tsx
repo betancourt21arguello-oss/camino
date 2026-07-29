@@ -89,6 +89,13 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
   const reload = useCallback(async () => {
     if (!user || !supabase) { setLoading(false); return; }
     try {
+      // Ensure fruits row exists for the user
+      try {
+        await supabase.rpc("ensure_fruits");
+      } catch (e) {
+        console.warn("[camino] ensure_fruits:", e instanceof Error ? e.message : String(e));
+      }
+
       const [fruitsRes, candlesRes, gardenRes, histRes] = await Promise.all([
         supabase.from("fruits").select("vela, semilla, agua").eq("profile_id", user.id).maybeSingle(),
         supabase.from("candles").select("*").eq("owner_id", user.id).order("lit_at", { ascending: false }).limit(40),

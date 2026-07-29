@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSpiritual } from "../fruits/store";
 import { useAuth } from "../auth/AuthProvider";
+import { WORKER_API_BASE } from "../config";
 import type { Candle } from "../fruits/types";
 import type { GardenEvent } from "../garden/types";
 
@@ -269,6 +270,8 @@ export function ComunidadScreen() {
               Ofrece una intención. Permanecerá 24 horas.
             </p>
             <textarea
+              id="candle-intention"
+              name="candle-intention"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               placeholder="¿Por quién o por qué deseas orar?"

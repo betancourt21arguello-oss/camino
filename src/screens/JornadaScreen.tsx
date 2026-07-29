@@ -416,6 +416,8 @@ function PersonalView({ step, value, onChange }: { step: JornadaStep; value: str
       <h2 className="font-serif-holy text-[26px] leading-tight">{step.heading}</h2>
       {step.hint && <p className="mt-3 text-[15px] leading-relaxed text-[#77736b]">{step.hint}</p>}
       <textarea
+        id="jornada-reflection"
+        name="jornada-reflection"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="Escribe aquí tu intención concreta…"

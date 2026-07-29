@@ -25,12 +25,15 @@ const R2_ANGELUS_AUDIO_URL = "https://pub-8fb2af7acc7246b4b90aa917bb377f90.r2.de
 
 function getYouTubeEmbedUrl(url: string): string | null {
   const trimmed = url.trim();
+  if (!/^https?:\/\//i.test(trimmed)) return null;
   let m = trimmed.match(/[?&]v=([^&]+)/);
   if (m) return `https://www.youtube-nocookie.com/embed/${m[1]}?rel=0&modestbranding=1`;
   m = trimmed.match(/youtu\.be\/([^?&#]+)/);
   if (m) return `https://www.youtube-nocookie.com/embed/${m[1]}?rel=0&modestbranding=1`;
   m = trimmed.match(/youtube\.com\/embed\/([^?&#]+)/);
   if (m) return `https://www.youtube-nocookie.com/embed/${m[1]}?rel=0&modestbranding=1`;
+  m = trimmed.match(/youtube\.com\/embed\?listType=search&list=([^&]+)/);
+  if (m) return `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(m[1])}`;
   return null;
 }
 
@@ -446,8 +449,15 @@ function LaudesView({
                   />
                 );
               }
+              if (/^https?:\/\//i.test(videoContent.trim())) {
+                return (
+                  <video controls src={videoContent} className="w-full rounded-xl" style={{ background: "#000" }} />
+                );
+              }
               return (
-                <video controls src={videoContent} className="w-full rounded-xl" style={{ background: "#000" }} />
+                <p className="font-serif-holy text-[20px] leading-relaxed" style={{ color: palette.text }}>
+                  El video de esta sección estará disponible pronto.
+                </p>
               );
             })() : (
               <p className="font-serif-holy text-[20px] leading-relaxed" style={{ color: palette.text }}>

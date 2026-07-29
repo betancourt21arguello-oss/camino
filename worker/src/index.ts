@@ -4,12 +4,12 @@ import webpush from "web-push";
 let vapidConfigured = false;
 
 const MODEL_FALLBACK_CHAIN = [
+  "gemini-2.0-flash",
   "gemini-1.5-flash",
-  "gemini-1.5-flash-8b",
-  "gemini-1.5-pro",
+  "gemini-2.0-flash-lite",
 ];
 
-const MAX_RETRIES_PER_MODEL = 2;
+const MAX_RETRIES_PER_MODEL = 3;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -18,8 +18,6 @@ function sleep(ms: number): Promise<void> {
 // ===== Vertex AI support =====
 const VERTEX_MODEL_MAP: Record<string, string> = {
   "gemini-1.5-flash": "gemini-1.5-flash-002",
-  "gemini-1.5-flash-8b": "gemini-1.5-flash-8b-001",
-  "gemini-1.5-pro": "gemini-1.5-pro-002",
 };
 
 function mapModelToVertex(model: string): string {
@@ -491,9 +489,9 @@ async function supabaseUpsertDaily(env: any, date: string, liturgy: any): Promis
     psalm: liturgy.psalm,
     first_reading: liturgy.firstReading ?? liturgy.first_reading ?? null,
     second_reading: liturgy.secondReading ?? liturgy.second_reading ?? null,
-    laudes: liturgy.laudes ?? null,
-    vespers: liturgy.vespers ?? null,
-    compline: liturgy.compline ?? null,
+    laudes: liturgy.laudes ?? { title: "Laudes", hour: "07:00", mood: "dawn", parts: [] },
+    vespers: liturgy.vespers ?? { title: "Vísperas", hour: "18:00", mood: "dusk", parts: [] },
+    compline: liturgy.compline ?? { title: "Completas", hour: "21:00", mood: "night", parts: [] },
     angelus: liturgy.angelus ?? null,
     catechism: liturgy.catechism ?? null,
     reflection: liturgy.reflection,
@@ -514,6 +512,143 @@ async function supabaseUpsertDaily(env: any, date: string, liturgy: any): Promis
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Supabase upsert failed: ${res.status} ${text}`);
+  }
+}
+
+const YOUTUBE_RSS_URL = "https://www.youtube.com/feeds/videos.xml?channel_id=UCSgJ9Ppudkzs9cD259tjMQw";
+
+function isValidYouTubeUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return (
+      (u.hostname === "www.youtube.com" ||
+        u.hostname === "youtube.com" ||
+        u.hostname === "youtu.be") &&
+      (u.protocol === "https:" || u.protocol === "http:")
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function fetchYouTubePrayerVideos(): Promise<{ laudes?: string; visperas?: string; completas?: string }> {
+  const response = await fetch(YOUTUBE_RSS_URL, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      Accept: "application/rss+xml, application/xml, text/xml, */*",
+    },
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`YouTube RSS fetch failed: ${response.status} ${text.slice(0, 200)}`);
+  }
+  const xml = await response.text();
+  const entradas = xml.split("<entry>").slice(1);
+
+  const oraciones: { laudes?: string; visperas?: string; completas?: string } = {};
+
+  for (const entry of entradas) {
+    const tituloMatch = entry.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    const linkMatch = entry.match(/<link[^>]+href="([^"]+)"/i);
+
+    if (tituloMatch && linkMatch) {
+      const titulo = tituloMatch[1].replace(/<[^>]+>/g, "").toLowerCase();
+      let url = linkMatch[1];
+
+      if (!isValidYouTubeUrl(url)) continue;
+
+      if (titulo.includes("laudes") && !oraciones.laudes) oraciones.laudes = url;
+      if ((titulo.includes("vísperas") || titulo.includes("visperas")) && !oraciones.visperas) oraciones.visperas = url;
+      if (titulo.includes("completas") && !oraciones.completas) oraciones.completas = url;
+    }
+
+    if (oraciones.laudes && oraciones.visperas && oraciones.completas) break;
+  }
+
+  return oraciones;
+}
+
+async function supabaseFetchOraciones(env: any, date: string): Promise<{ laudes?: string; visperas?: string; completas?: string } | null> {
+  const url = `${env.SUPABASE_URL}/rest/v1/oraciones_diarias?fecha=eq.${encodeURIComponent(date)}`;
+  const res = await fetch(url, {
+    headers: {
+      Accept: "application/json",
+      apikey: env.SUPABASE_SERVICE_ROLE,
+      Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE}`,
+    },
+  });
+  if (!res.ok) {
+    if (res.status === 404) {
+      // Table may not exist yet
+      return null;
+    }
+    const text = await res.text();
+    throw new Error(`Supabase oraciones_diarias fetch failed: ${res.status} ${text}`);
+  }
+  const data = await res.json();
+  return data?.[0] || null;
+}
+
+async function supabaseUpsertOraciones(env: any, date: string, oraciones: { laudes?: string; visperas?: string; completas?: string }): Promise<void> {
+  const url = `${env.SUPABASE_URL}/rest/v1/oraciones_diarias`;
+  const body: Record<string, any> = {
+    fecha: date,
+    laudes: oraciones.laudes ?? null,
+    visperas: oraciones.visperas ?? null,
+    completas: oraciones.completas ?? null,
+    updated_at: new Date().toISOString(),
+  };
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: env.SUPABASE_SERVICE_ROLE,
+      Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE}`,
+      Prefer: "resolution=merge-duplicates,return=representation",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Supabase oraciones_diarias upsert failed: ${res.status} ${text}`);
+  }
+}
+
+async function injectPrayerVideos(liturgy: any, oraciones: { laudes?: string; visperas?: string; completas?: string }): any {
+  const videoPart = (url: string) => ({
+    kind: "video",
+    label: "Video",
+    text: "",
+    content: url,
+    type: "video",
+  });
+
+  if (!liturgy.laudes) liturgy.laudes = { title: "Laudes", hour: "07:00", mood: "dawn", parts: [] };
+  if (oraciones.laudes && !liturgy.laudes.parts?.some((p: any) => p.kind === "video")) {
+    liturgy.laudes.parts = [videoPart(oraciones.laudes), ...(liturgy.laudes.parts || [])];
+  }
+
+  if (!liturgy.vespers) liturgy.vespers = { title: "Vísperas", hour: "18:00", mood: "dusk", parts: [] };
+  if (oraciones.visperas && !liturgy.vespers.parts?.some((p: any) => p.kind === "video")) {
+    liturgy.vespers.parts = [videoPart(oraciones.visperas), ...(liturgy.vespers.parts || [])];
+  }
+
+  if (!liturgy.compline) liturgy.compline = { title: "Completas", hour: "21:00", mood: "night", parts: [] };
+  if (oraciones.completas && !liturgy.compline.parts?.some((p: any) => p.kind === "video")) {
+    liturgy.compline.parts = [videoPart(oraciones.completas), ...(liturgy.compline.parts || [])];
+  }
+
+  return liturgy;
+}
+
+async function updatePrayerVideos(env: any): Promise<void> {
+  try {
+    const oraciones = await fetchYouTubePrayerVideos();
+    const today = getTodayKey();
+    await supabaseUpsertOraciones(env, today, oraciones);
+    console.log("[PrayerVideos] Updated for", today, oraciones);
+  } catch (e: any) {
+    console.error("[PrayerVideos] Failed:", e.message);
   }
 }
 
@@ -554,51 +689,52 @@ Fuentes permitidas para el mensaje diario:
 
 REGLA DE FUENTE ANTERIOR: La fuente utilizada ayer fue "${previousSource || 'Ninguna'}". NO repitas esta misma fuente hoy a menos que sea estrictamente necesario por solemnidad.
 
-PROCESO DE GENERACIÓN E INTEGRACIÓN:
-1. Identifica el Evangelio y Santo correspondiente a la fecha ${target}.
-2. Evalúa cuál de las Fuentes Permitidas guarda la mayor relación temática, litúrgica o espiritual con el Evangelio de hoy.
-3. Redacta la REFLEXIÓN GENERAL conectando: El Evangelio + La realidad y fe de Venezuela + El mensaje/fuente seleccionado.
-4. Genera las oraciones de la Liturgia de las Horas (Laudes, Vísperas, Completas), Lecturas completas y Catecismo (CEC real directamente relacionado con el Evangelio del día).
+  PROCESO DE GENERACIÓN E INTEGRACIÓN:
+  1. Identifica el Evangelio y Santo correspondiente a la fecha ${target}.
+  2. Evalúa cuál de las Fuentes Permitidas guarda la mayor relación temática, litúrgica o espiritual con el Evangelio de hoy.
+  3. Redacta la REFLEXIÓN GENERAL conectando: El Evangelio + La realidad y fe de Venezuela + El mensaje/fuente seleccionado.
+  4. Genera Lecturas completas y Catecismo (CEC real directamente relacionado con el Evangelio del día).
+  5. Laudes, Vísperas y Completas se cargan por separado desde el feed RSS de YouTube (no las generes aquí).
 
-Estructura JSON requerida:
-{
-  "date": "${target}",
-  "weekday": "día de la semana",
-  "season": "tiempo liturgico",
-  "liturgicalColor": "color litúrgico",
-  "liturgicalRank": "solemnidad|fiesta|memoria|feria",
-  "isSolemnity": false,
-  "saint": {
-    "name": "nombre del santo",
-    "title": "título",
-    "initial": "inicial",
-    "story": "historia resumida (200-300 palabras)",
-    "highlights": ["hito1", "hito2"],
-    "lessons": ["lección1", "lección2"],
-    "exampleToday": "ejemplo práctico para hoy",
-    "gospelConnection": "relación directa con el evangelio de hoy",
-    "venezuelaRelevance": "relevancia espiritual para Venezuela",
-    "prayer": "oración de intercesión"
-  },
-  "quote": { "text": "cita bíblica o de un padre de la iglesia", "ref": "referencia" },
-  "gospel": { "ref": "referencia", "title": "título", "body": "texto completo del evangelio", "evangelist": "nombre del evangelista" },
-  "psalm": { "ref": "referencia", "title": "título", "body": "texto completo del salmo con respuestas" },
-  "firstReading": { "ref": "referencia", "title": "título", "body": "texto completo" },
-  "secondReading": null,
-  "marian": {
-    "source": "Nombre exacto de la fuente elegida de la lista",
-    "reason": "Explicación breve de por qué se conectó con el evangelio de hoy",
-    "text": "Mensaje o reflexión mariana/vocacional (max 100 palabras)",
-    "relevant": true
-  },
-  "reflection": "Síntesis integradora de la jornada (Evangelio + Fuente escogida + Aplicación pastoral a Venezuela)",
-  "catechism": { "number": "Número CEC temáticamente ligado al Evangelio", "title": "Título", "text": "Texto doctrinal", "applyToday": "Aplicación" },
-  "laudes": { "title": "Laudes", "hour": "07:00", "mood": "dawn", "parts": [] },
-  "vespers": { "title": "Vísperas", "hour": "18:00", "mood": "dusk", "parts": [] },
-  "compline": { "title": "Completas", "hour": "21:00", "mood": "night", "parts": [] },
-  "angelus": { "title": "Ángelus", "body": "texto", "verses": [], "closingPrayer": "oración" },
-  "imagePrompt": "Descripción artística en inglés para generar una imagen sacra de alta calidad"
-}`;
+  Estructura JSON requerida:
+  {
+    "date": "${target}",
+    "weekday": "día de la semana",
+    "season": "tiempo liturgico",
+    "liturgicalColor": "color litúrgico",
+    "liturgicalRank": "solemnidad|fiesta|memoria|feria",
+    "isSolemnity": false,
+    "saint": {
+      "name": "nombre del santo",
+      "title": "título",
+      "initial": "inicial",
+      "story": "historia resumida (200-300 palabras)",
+      "highlights": ["hito1", "hito2"],
+      "lessons": ["lección1", "lección2"],
+      "exampleToday": "ejemplo práctico para hoy",
+      "gospelConnection": "relación directa con el evangelio de hoy",
+      "venezuelaRelevance": "relevancia espiritual para Venezuela",
+      "prayer": "oración de intercesión"
+    },
+    "quote": { "text": "cita bíblica o de un padre de la iglesia", "ref": "referencia" },
+    "gospel": { "ref": "referencia", "title": "título", "body": "texto completo del evangelio", "evangelist": "nombre del evangelista" },
+    "psalm": { "ref": "referencia", "title": "título", "body": "texto completo del salmo con respuestas" },
+    "firstReading": { "ref": "referencia", "title": "título", "body": "texto completo" },
+    "secondReading": null,
+    "marian": {
+      "source": "Nombre exacto de la fuente elegida de la lista",
+      "reason": "Explicación breve de por qué se conectó con el evangelio de hoy",
+      "text": "Mensaje o reflexión mariana/vocacional (max 100 palabras)",
+      "relevant": true
+    },
+    "reflection": "Síntesis integradora de la jornada (Evangelio + Fuente escogida + Aplicación pastoral a Venezuela)",
+    "catechism": { "number": "Número CEC temáticamente ligado al Evangelio", "title": "Título", "text": "Texto doctrinal", "applyToday": "Aplicación" },
+    "laudes": { "title": "Laudes", "hour": "07:00", "mood": "dawn", "parts": [] },
+    "vespers": { "title": "Vísperas", "hour": "18:00", "mood": "dusk", "parts": [] },
+    "compline": { "title": "Completas", "hour": "21:00", "mood": "night", "parts": [] },
+    "angelus": { "title": "Ángelus", "body": "texto", "verses": [], "closingPrayer": "oración" },
+    "imagePrompt": "Descripción artística en inglés para generar una imagen sacra de alta calidad"
+  }`;
 
   const liturgySchema = {
     type: "OBJECT",
@@ -691,84 +827,6 @@ Estructura JSON requerida:
         },
         required: ["number", "title", "text", "applyToday"],
       },
-      laudes: {
-        type: "OBJECT",
-        properties: {
-          title: { type: "STRING" },
-          hour: { type: "STRING" },
-          mood: { type: "STRING" },
-          body: { type: "STRING" },
-          parts: {
-            type: "ARRAY",
-            items: {
-              type: "OBJECT",
-              properties: {
-                kind: { type: "STRING" },
-                label: { type: "STRING" },
-                text: { type: "STRING" },
-                response: { type: "STRING" },
-                rubric: { type: "STRING" },
-                type: { type: "STRING" },
-                content: { type: "STRING" },
-              },
-              required: ["kind", "label", "text"],
-            },
-          },
-        },
-        required: ["title", "hour", "parts"],
-      },
-      vespers: {
-        type: "OBJECT",
-        properties: {
-          title: { type: "STRING" },
-          hour: { type: "STRING" },
-          mood: { type: "STRING" },
-          body: { type: "STRING" },
-          parts: {
-            type: "ARRAY",
-            items: {
-              type: "OBJECT",
-              properties: {
-                kind: { type: "STRING" },
-                label: { type: "STRING" },
-                text: { type: "STRING" },
-                response: { type: "STRING" },
-                rubric: { type: "STRING" },
-                type: { type: "STRING" },
-                content: { type: "STRING" },
-              },
-              required: ["kind", "label", "text"],
-            },
-          },
-        },
-        required: ["title", "hour", "parts"],
-      },
-      compline: {
-        type: "OBJECT",
-        properties: {
-          title: { type: "STRING" },
-          hour: { type: "STRING" },
-          mood: { type: "STRING" },
-          body: { type: "STRING" },
-          parts: {
-            type: "ARRAY",
-            items: {
-              type: "OBJECT",
-              properties: {
-                kind: { type: "STRING" },
-                label: { type: "STRING" },
-                text: { type: "STRING" },
-                response: { type: "STRING" },
-                rubric: { type: "STRING" },
-                type: { type: "STRING" },
-                content: { type: "STRING" },
-              },
-              required: ["kind", "label", "text"],
-            },
-          },
-        },
-        required: ["title", "hour", "parts"],
-      },
       angelus: {
         type: "OBJECT",
         properties: {
@@ -796,9 +854,6 @@ Estructura JSON requerida:
       "marian",
       "reflection",
       "catechism",
-      "laudes",
-      "vespers",
-      "compline",
       "angelus",
       "imagePrompt",
     ],
@@ -851,9 +906,6 @@ Estructura JSON requerida:
 
   parsed.date = target;
 
-  if (!parsed.laudes?.parts?.length) parsed.laudes = getDefaultLaudes();
-  if (!parsed.vespers?.parts?.length) parsed.vespers = getDefaultVespers();
-  if (!parsed.compline?.parts?.length) parsed.compline = getDefaultCompline();
   if (!parsed.catechism || typeof parsed.catechism !== "object") {
     parsed.catechism = publicDomainCatechism(target);
   }
@@ -988,9 +1040,9 @@ function getDefaultLiturgy(date: string): any {
     marian: { source: "San José Gregorio Hernández", text: "Confía en la Providencia como lo hizo el Padre de los Pobres.", relevant: true, reason: "" },
     reflection: "Síntesis del día: confía en el Señor y vive el evangelio con entrega.",
     catechism: publicDomainCatechism(date),
-    laudes: getDefaultLaudes(),
-    vespers: getDefaultVespers(),
-    compline: getDefaultCompline(),
+    laudes: { title: "Laudes", hour: "07:00", mood: "dawn", parts: [] },
+    vespers: { title: "Vísperas", hour: "18:00", mood: "dusk", parts: [] },
+    compline: { title: "Completas", hour: "21:00", mood: "night", parts: [] },
     angelus: { title: "Ángelus", body: "", verses: [], closingPrayer: "" },
     imagePrompt: "",
     messages: [{ source: "San José Gregorio Hernández", text: "Dios te invita hoy a vivir el evangelio con mayor entrega.", relevant: true }],
@@ -1754,6 +1806,18 @@ export default {
         const date = url.searchParams.get("date") || getTodayKey();
         let liturgy = await supabaseFetchDaily(env, date);
         if (!liturgy) liturgy = await cachedOrGenerate(env);
+
+        let oraciones = null;
+        try {
+          oraciones = await supabaseFetchOraciones(env, date);
+        } catch {
+          // oraciones_diarias table may not exist yet
+          console.warn("[daily] oraciones_diarias not available, skipping prayer videos");
+        }
+        if (oraciones) {
+          liturgy = await injectPrayerVideos(liturgy, oraciones);
+        }
+
         return jsonResponse(liturgy, 200, {
           "Cache-Control": "public, max-age=60, must-revalidate",
         });
@@ -1807,7 +1871,34 @@ export default {
       }
     }
 
-    if (url.pathname === "/notifications/vapid-public-key" && request.method === "GET") {
+      if (url.pathname === "/youtube/prayer-videos" && request.method === "GET") {
+        try {
+          const oraciones = await fetchYouTubePrayerVideos();
+          const today = getTodayKey();
+          await supabaseUpsertOraciones(env, today, oraciones);
+          return jsonResponse({ date: today, ...oraciones });
+        } catch (e: any) {
+          return jsonResponse({ error: e.message }, 500);
+        }
+      }
+
+      if (url.pathname === "/youtube/prayer-videos" && request.method === "POST") {
+        try {
+          const body: any = await request.json().catch(() => ({}));
+          const targetDate = typeof body?.date === "string" && body.date ? body.date : getTodayKey();
+          const oraciones = {
+            laudes: typeof body?.laudes === "string" ? body.laudes : undefined,
+            visperas: typeof body?.visperas === "string" ? body.visperas : undefined,
+            completas: typeof body?.completas === "string" ? body.completas : undefined,
+          };
+          await supabaseUpsertOraciones(env, targetDate, oraciones);
+          return jsonResponse({ date: targetDate, ...oraciones });
+        } catch (e: any) {
+          return jsonResponse({ error: e.message }, 500);
+        }
+      }
+
+      if (url.pathname === "/notifications/vapid-public-key" && request.method === "GET") {
       return handleVapidKey(request, env);
     }
 
@@ -2002,6 +2093,60 @@ export default {
        }
      }
 
+     if (url.pathname === "/community/reflections" && request.method === "GET") {
+       try {
+         const date = url.searchParams.get("date") || getTodayKey();
+         const limit = Math.min(Number(url.searchParams.get("limit")) || 50, 100);
+         const reflectionsUrl = `${env.SUPABASE_URL}/rest/v1/garden_events?event_type=in.(REFLECTION_COMPLETED,SILENCE_TIME)&created_at=gte.${encodeURIComponent(date)}T00:00:00&select=id,user_id,event_type,value,intention,created_at&order=created_at.desc&limit=${limit}`;
+         const res = await fetch(reflectionsUrl, {
+           headers: {
+             Accept: "application/json",
+             apikey: env.SUPABASE_SERVICE_ROLE,
+             Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE}`,
+           },
+         });
+         if (!res.ok) {
+           const text = await res.text();
+           return jsonResponse({ error: `Supabase fetch failed: ${res.status} ${text}` }, 500);
+         }
+         const data = await res.json();
+         // enrich with profile info
+         const userIds = [...new Set((data as any[]).map((r: any) => r.user_id))];
+         let profilesMap: Record<string, any> = {};
+         if (userIds.length > 0) {
+           const profileIds = userIds.map((uid: string) => `id.eq.${encodeURIComponent(uid)}`).join(",");
+           try {
+             const profilesUrl = `${env.SUPABASE_URL}/rest/v1/profiles?or=(${profileIds})&select=id,full_name,email,name`;
+             const profilesRes = await fetch(profilesUrl, {
+               headers: {
+                 apikey: env.SUPABASE_SERVICE_ROLE,
+                 Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE}`,
+               },
+             });
+             if (profilesRes.ok) {
+               const profiles = await profilesRes.json();
+               for (const p of profiles) {
+                 profilesMap[p.id] = { full_name: p.full_name || p.name || "Anónimo", email: p.email };
+               }
+             }
+           } catch {
+             // ignore profile enrichment errors
+           }
+         }
+         const enriched = (data as any[]).map((r: any) => ({
+           id: r.id,
+           type: r.event_type,
+           value: r.value,
+           intention: r.intention,
+           created_at: r.created_at,
+           user: profilesMap[r.user_id] || { full_name: "Anónimo" },
+         }));
+         return jsonResponse({ reflections: enriched });
+       } catch (e: any) {
+         return jsonResponse({ error: e.message }, 500);
+       }
+     }
+
      return new Response("Not Found", { status: 404, headers: corsHeaders() });
   },
 
@@ -2009,6 +2154,7 @@ export default {
     try {
       await cachedOrGenerate(env);
       await processReminders(env);
+      await updatePrayerVideos(env);
     } catch (e) {
       console.error("Cron failed", e);
     }

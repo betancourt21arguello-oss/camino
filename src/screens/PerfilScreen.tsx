@@ -88,7 +88,7 @@ function WaterModal({ mode, water, onClose, onConfirm }: {
           </div>
         </div>
 
-        <textarea value={intention} onChange={(e) => setIntention(e.target.value)}
+        <textarea id="water-intention" name="water-intention" value={intention} onChange={(e) => setIntention(e.target.value)}
           placeholder="¿Por qué intención riegas hoy? (opcional)" rows={3}
           className="w-full resize-none rounded-2xl border border-[#e6e3db] bg-[#f7f6f3] p-3 text-sm text-[#1c1c1e] placeholder:text-[#a8a8ad] focus:border-[#c4a35a] focus:outline-none" />
 

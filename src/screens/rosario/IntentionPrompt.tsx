@@ -37,6 +37,8 @@ export function IntentionPrompt({ existing = [], onConfirm, onSkip }: Props) {
         )}
 
         <textarea
+          id="rosary-intention"
+          name="rosary-intention"
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="Añade otra intención (opcional)…"

@@ -8,7 +8,7 @@ import { derivePersonalTraits, type PersonalTraits, type PersonalInput } from ".
 import type { DnaTraits, GardenState } from "../garden/types";
 
 export function AdminPortal({ onClose }: { onClose: () => void }) {
-  const [tab, setTab] = useState<"garden" | "gemini" | "upload" | "telegram" | "tasks" | "images">("gemini");
+  const [tab, setTab] = useState<"garden" | "gemini" | "upload" | "telegram" | "tasks" | "images" | "oraciones">("gemini");
 
   return (
     <div className="absolute inset-0 z-[70] flex flex-col bg-[#0e0e10] text-white">
@@ -19,7 +19,7 @@ export function AdminPortal({ onClose }: { onClose: () => void }) {
       </header>
 
       <nav className="flex shrink-0 gap-1 px-3 pt-3">
-        {(["gemini", "upload", "tasks", "garden", "telegram", "images"] as const).map((t) => (
+        {(["gemini", "upload", "tasks", "garden", "telegram", "images", "oraciones"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -27,7 +27,7 @@ export function AdminPortal({ onClose }: { onClose: () => void }) {
               tab === t ? "bg-[var(--gold)] text-black" : "bg-white/[0.06] text-white/60"
             }`}
           >
-            {t === "gemini" ? "Gemini" : t === "upload" ? "Subir audio" : t === "tasks" ? "Tareas" : t === "garden" ? "Jardín" : t === "telegram" ? "Telegram" : "Imágenes"}
+            {t === "gemini" ? "Gemini" : t === "upload" ? "Subir audio" : t === "tasks" ? "Tareas" : t === "garden" ? "Jardín" : t === "telegram" ? "Telegram" : t === "images" ? "Imágenes" : "Oraciones"}
           </button>
         ))}
       </nav>
@@ -39,6 +39,7 @@ export function AdminPortal({ onClose }: { onClose: () => void }) {
         {tab === "garden" && <GardenEditor />}
         {tab === "telegram" && <TelegramPanel />}
         {tab === "images" && <ImagePanel />}
+        {tab === "oraciones" && <OracionesPanel />}
       </div>
     </div>
   );
@@ -140,6 +141,8 @@ function GeminiPanel() {
       {editing && (
         <div className="space-y-2">
           <textarea
+            id="admin-content"
+            name="admin-content"
             value={content}
             onChange={(e) => setContent(e.target.value)}
             className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-white/30"
@@ -1567,6 +1570,134 @@ function ImagePanel() {
           {busy ? "Guardando…" : "Guardar imágenes"}
         </button>
       )}
+
+      {result && <p className="text-sm">{result}</p>}
+    </div>
+  );
+}
+
+function OracionesPanel() {
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [laudes, setLaudes] = useState("");
+  const [visperas, setVisperas] = useState("");
+  const [completas, setCompletas] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState("");
+
+  const fetchRss = async () => {
+    setBusy(true);
+    setResult("");
+    try {
+      const res = await fetch(`${WORKER_API_BASE}/youtube/prayer-videos`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setLaudes(data.laudes || "");
+      setVisperas(data.visperas || "");
+      setCompletas(data.completas || "");
+      setResult(`✅ RSS cargado para ${data.date || date}`);
+    } catch (e) {
+      setResult(`❌ ${e instanceof Error ? e.message : "Error"}`);
+    }
+    setBusy(false);
+  };
+
+  const save = async () => {
+    setBusy(true);
+    setResult("");
+    try {
+      const body: Record<string, any> = { date };
+      if (laudes && !/^https?:\/\//i.test(laudes)) {
+        setResult("❌ Laudes debe ser una URL válida (ej. https://www.youtube.com/watch?v=...)");
+        setBusy(false);
+        return;
+      }
+      if (visperas && !/^https?:\/\//i.test(visperas)) {
+        setResult("❌ Vísperas debe ser una URL válida");
+        setBusy(false);
+        return;
+      }
+      if (completas && !/^https?:\/\//i.test(completas)) {
+        setResult("❌ Completas debe ser una URL válida");
+        setBusy(false);
+        return;
+      }
+      body.laudes = laudes || null;
+      body.visperas = visperas || null;
+      body.completas = completas || null;
+      const res = await fetch(`${WORKER_API_BASE}/youtube/prayer-videos`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const text = await res.text();
+      setResult(res.ok ? `✅ Oraciones guardadas para ${date}` : `❌ Error ${res.status}: ${text}`);
+    } catch (e) {
+      setResult(`❌ ${e instanceof Error ? e.message : "Error"}`);
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div className="space-y-4">
+      <h2 className="text-lg font-semibold">Oraciones del día (YouTube RSS)</h2>
+      <p className="text-sm text-white/60">Gestiona las URLs de video de Laudes, Vísperas y Completas. Fallback manual de emergencia.</p>
+
+      <div className="space-y-2">
+        <label className="text-xs font-medium uppercase tracking-wider text-white/50">Fecha</label>
+        <div className="flex gap-2">
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="h-11 flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white"
+          />
+          <button
+            onClick={fetchRss}
+            disabled={busy}
+            className="h-11 w-40 rounded-2xl bg-white/10 font-medium text-white disabled:opacity-50"
+          >
+            {busy ? "Cargando…" : "Cargar del RSS"}
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="space-y-2">
+          <label className="text-xs font-medium uppercase tracking-wider text-white/50">Laudes (07:00)</label>
+          <input
+            value={laudes}
+            onChange={(e) => setLaudes(e.target.value)}
+            placeholder="https://www.youtube.com/watch?v=..."
+            className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/30"
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="text-xs font-medium uppercase tracking-wider text-white/50">Vísperas (18:00)</label>
+          <input
+            value={visperas}
+            onChange={(e) => setVisperas(e.target.value)}
+            placeholder="https://www.youtube.com/watch?v=..."
+            className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/30"
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="text-xs font-medium uppercase tracking-wider text-white/50">Completas (21:00)</label>
+          <input
+            value={completas}
+            onChange={(e) => setCompletas(e.target.value)}
+            placeholder="https://www.youtube.com/watch?v=..."
+            className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/30"
+          />
+        </div>
+      </div>
+
+      <button
+        onClick={save}
+        disabled={busy}
+        className="h-12 w-full rounded-2xl bg-[var(--gold)] font-medium text-black disabled:opacity-50"
+      >
+        {busy ? "Guardando…" : "Guardar URLs"}
+      </button>
 
       {result && <p className="text-sm">{result}</p>}
     </div>
