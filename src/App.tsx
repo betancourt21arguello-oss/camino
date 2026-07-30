@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { motion } from "framer-motion";
 import { useWhatsAppAssets } from "./media/useWhatsAppAssets";
 import { BottomNav, type Tab } from "./components/BottomNav";
 import { CaminoScreen, type ReaderTarget } from "./screens/CaminoScreen";
@@ -81,9 +82,11 @@ function Shell() {
   const [prayerPortal, setPrayerPortal] = useState<PrayerKind | null>(null);
   const [assetId, setAssetId] = useState<string | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
+  const [authInitialMode, setAuthInitialMode] = useState<"login" | "signup" | "magiclink" | "reset" | "setpassword" | undefined>(undefined);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [prayerActive, setPrayerActive] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
   const { emit } = useSpiritual();
   const { user } = useAuth();
   const assets = useWhatsAppAssets();
@@ -124,6 +127,17 @@ function Shell() {
     setJornadaOpen(false);
     setTab("camino");
   };
+
+  // Detectar ?set_password=true (viene del recovery flow)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("set_password") === "true" && user) {
+      setAuthInitialMode("setpassword");
+      setAuthOpen(true);
+      // Limpiar URL
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, [user]);
 
   useEffect(() => {
     if (typeof window !== "undefined" && window.location.pathname === "/admin") {
@@ -168,10 +182,53 @@ function Shell() {
               />
             )}
             {tab === "comunidad" && <ComunidadScreen />}
-            {tab === "perfil" && <PerfilScreen onOpenAuth={() => setAuthOpen(true)} />}
+            {tab === "perfil" && <PerfilScreen onOpenAuth={() => setAuthOpen(true)} onOpenSetPassword={() => { setAuthInitialMode("setpassword"); setAuthOpen(true); }} />}
           </div>
 
-          {!overlay && !prayerActive && <BottomNav active={tab} onChange={setTab} dark={dark} />}
+          {!overlay && !prayerActive && (
+            <>
+              {!user && !bannerDismissed && !authOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 20 }}
+                  transition={{ duration: 0.3, ease: "easeOut" }}
+                  className="absolute bottom-20 left-3 right-3 z-30 cursor-pointer"
+                  onClick={() => setAuthOpen(true)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setAuthOpen(true); }}
+                  aria-label="Iniciar sesión para guardar tu progreso"
+                >
+                  <div className="flex items-center gap-3 rounded-2xl border border-[#e8e4db] bg-white/85 px-4 py-3 shadow-sm backdrop-blur-md">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#7a8a5c]/10">
+                      <svg viewBox="0 0 24 24" className="h-4 w-4 text-[#7a8a5c]" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className="text-[13px] font-medium text-[#1c1c1e] leading-tight">
+                        Guarda tu Camino
+                      </p>
+                      <p className="text-[11px] text-[#9a9a9f] leading-tight">
+                        Inicia sesión o crea una cuenta
+                      </p>
+                    </div>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setBannerDismissed(true); }}
+                      className="flex h-7 w-7 items-center justify-center rounded-full text-[#b0b0b5] hover:bg-[#f0ede8] hover:text-[#77736b]"
+                      aria-label="Descartar"
+                    >
+                      <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5">
+                        <path d="M4 4l8 8M12 4L4 12" strokeLinecap="round" />
+                      </svg>
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+              <BottomNav active={tab} onChange={setTab} dark={dark} />
+            </>
+          )}
 
           {jornadaOpen && <JornadaScreen liturgy={daily.liturgy} onClose={() => setJornadaOpen(false)} onComplete={settleJornada} />}
 
@@ -199,7 +256,7 @@ function Shell() {
           )}
 
           {selectedAsset && <AudioAssetScreen asset={selectedAsset} onClose={() => setAssetId(null)} />}
-          {authOpen && <AuthPortal onClose={() => setAuthOpen(false)} />}
+          {authOpen && <AuthPortal onClose={() => { setAuthOpen(false); setAuthInitialMode(undefined); }} initialMode={authInitialMode} />}
           {galleryOpen && <GalleryScreen onClose={() => setGalleryOpen(false)} />}
           {adminOpen && <AdminPortal onClose={() => setAdminOpen(false)} />}
         </div>

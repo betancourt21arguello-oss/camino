@@ -15,7 +15,10 @@ import { cn } from "@/utils/cn";
 import { caracasDateOnly } from "@/utils/caracas";
 
 type PerfilTab = "jardin" | "intenciones" | "oratorio";
-interface Props { onOpenAuth: () => void; }
+interface Props {
+  onOpenAuth: () => void;
+  onOpenSetPassword?: () => void;
+}
 
 function Avatar({ name, size = 44 }: { name: string; size?: number }) {
   const initial = name?.charAt(0).toUpperCase() || "?";
@@ -453,7 +456,7 @@ function OratorioTab() {
   );
 }
 
-export function PerfilScreen({ onOpenAuth }: Props) {
+export function PerfilScreen({ onOpenAuth, onOpenSetPassword }: Props) {
   const { user, signOut } = useAuth();
   const [tab, setTab] = useState<PerfilTab>("jardin");
 
@@ -464,7 +467,28 @@ export function PerfilScreen({ onOpenAuth }: Props) {
     { id: "jardin", label: "Mi Jardín", icon: "🌿" },
     { id: "intenciones", label: "Intenciones", icon: "🕯️" },
     { id: "oratorio", label: "Oratorio", icon: "🎙️" },
+    { id: "ajustes", label: "Ajustes", icon: "⚙️" },
   ];
+
+  const SettingsTab = () => (
+    <div className="space-y-4 p-4">
+      <button onClick={onOpenSetPassword} className="w-full rounded-lg bg-[#1c1c1e] py-3 text-white text-center">
+        Establecer o cambiar contraseña
+      </button>
+      <button className="w-full rounded-lg bg-[#1c1c1e] py-3 text-white text-center">
+        Cambiar nombre de usuario
+      </button>
+      <button className="w-full rounded-lg bg-[#1c1c1e] py-3 text-white text-center">
+        Cambiar avatar
+      </button>
+      <button className="w-full rounded-lg bg-[#1c1c1e] py-3 text-white text-center">
+        Cambiar correo electrónico
+      </button>
+      <button onClick={signOut} className="w-full rounded-lg bg-[#1c1c1e] py-3 text-white text-center">
+        Cerrar sesión
+      </button>
+    </div>
+  );
 
   return (
     <div className="no-scrollbar relative min-h-full" style={{ background: "#f7f6f3" }}>
@@ -477,6 +501,12 @@ export function PerfilScreen({ onOpenAuth }: Props) {
               className="text-xs text-[#9a9a9f] transition-colors hover:text-[#1c1c1e]">
               {user ? "Cerrar sesión" : "Acceder con tu cuenta"}
             </button>
+            {user && onOpenSetPassword && (
+              <button onClick={onOpenSetPassword}
+                className="mt-2 block text-xs text-[#9a9a9f] transition-colors hover:text-[#a68b4e]">
+                Ajustes
+              </button>
+            )}
           </div>
         </div>
 

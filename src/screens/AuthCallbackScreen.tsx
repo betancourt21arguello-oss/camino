@@ -9,7 +9,6 @@ export function AuthCallbackScreen() {
   const [standalone, setStandalone] = useState<boolean | null>(null);
   const [saved, setSaved] = useState(false);
 
-  // 1. Detectamos si estamos en standalone (PWA) o navegador
   useEffect(() => {
     const checkStandalone = () => {
       const isStandalone =
@@ -21,19 +20,18 @@ export function AuthCallbackScreen() {
     checkStandalone();
   }, []);
 
-  // 2. Una vez que tenemos usuario Y sabemos si es standalone o no
   useEffect(() => {
     if (loading || standalone === null) return;
     if (!user) return;
 
+    const isRecovery = window.location.hash.includes("type=recovery");
+
     if (standalone) {
-      // Ya estamos dentro de la PWA → todo bien, redirigimos al home
-      window.location.replace("/");
+      // Ya estamos en la PWA → redirigir al home
+      window.location.replace(isRecovery ? "/?set_password=true" : "/");
       return;
     }
 
-    // Estamos en Safari (navegador) → guardamos la sesión en localStorage
-    // y redirigimos al usuario de vuelta a la app
     if (!saved) {
       setSaved(true);
       (async () => {
@@ -45,8 +43,7 @@ export function AuthCallbackScreen() {
             expires_at: data.session.expires_at,
           });
         }
-        // Redirigir al home; si la PWA está instalada, iOS la abrirá
-        window.location.replace(FRONTEND_URL);
+        window.location.replace(isRecovery ? FRONTEND_URL + "/?set_password=true" : FRONTEND_URL);
       })();
     }
   }, [loading, user, standalone, saved]);

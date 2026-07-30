@@ -1560,7 +1560,35 @@ async function processReminders(env: any): Promise<void> {
     }
   }
 
-  // 3. Hourly task reminders (correct UTC mapping for Venezuela UTC-4)
+  // 3. 3 PM (15:00 local = 19:00 UTC) Divina Misericordia prayer reminder
+  if (localHour === 15 && utcMinute === 0) {
+    const allSubs = await supabaseSelect(env, "push_subscriptions", {});
+
+    for (const sub of (allSubs || [])) {
+      if (!sub.profile_id) continue;
+
+      const notifiedKey = `notified:divina-misericordia:${today}:${sub.profile_id}`;
+      const alreadySent = await env.DAILY_CACHE.get(notifiedKey);
+      if (alreadySent) continue;
+
+      try {
+        const subscription = JSON.parse(sub.subscription || "{}");
+        if (subscription?.endpoint) {
+          await sendPushNotification(env, subscription, {
+            title: "Camino · Oración",
+            body: "Es hora de rezar la Coronilla de la Divina Misericordia",
+            url: "/#/divina-misericordia",
+          });
+        }
+      } catch (e) {
+        console.error("Divina Misericordia push failed for", sub.endpoint, e);
+      }
+
+      await env.DAILY_CACHE.put(notifiedKey, "1", { expirationTtl: 3600 });
+    }
+  }
+
+  // 4. Hourly task reminders (correct UTC mapping for Venezuela UTC-4)
   const hourTaskMap: Record<number, string> = {
     11: "laudes",
     16: "angelus",

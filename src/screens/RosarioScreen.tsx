@@ -12,11 +12,12 @@ type Props = {
   onOpenGallery?: () => void;
   onActiveChange?: (active: boolean) => void;
   onOpenHour?: (kind: "laudes" | "vespers" | "compline") => void;
+  initialDevotionId?: string;
 };
 
-export function RosarioScreen({ onOpenGallery, onActiveChange, onOpenHour }: Props) {
+export function RosarioScreen({ onOpenGallery, onActiveChange, onOpenHour, initialDevotionId }: Props) {
   const todayDevotionId = useMemo(() => devotionIdForToday(), []);
-  const [selectedDevotionId, setSelectedDevotionId] = useState(todayDevotionId);
+  const [selectedDevotionId, setSelectedDevotionId] = useState(initialDevotionId || todayDevotionId);
   const rosario = useRosario(selectedDevotionId);
   const { emit, lightCandle, activeIntentions, candles } = useSpiritual();
   const { rooms, loading: roomsLoading, total: totalPraying } = useActiveRooms();
