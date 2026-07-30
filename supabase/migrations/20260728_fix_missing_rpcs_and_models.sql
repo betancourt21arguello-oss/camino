@@ -129,14 +129,14 @@ begin
   from public.daily_completions
   where profile_id = v_user_id
     and event_type = p_event_type
-    and completed_date = current_date;
+    and completed_date = timezone('America/Caracas', current_date);
 
   if v_count > 0 then
     return false;
   end if;
 
   insert into public.daily_completions(profile_id, event_type, completed_date)
-  values (v_user_id, p_event_type, current_date)
+  values (v_user_id, p_event_type, timezone('America/Caracas', current_date))
   on conflict (profile_id, event_type, completed_date) do nothing;
 
   return true;
@@ -153,7 +153,7 @@ create table if not exists public.daily_completions (
   id uuid primary key default gen_random_uuid(),
   profile_id uuid not null,
   event_type text not null,
-  completed_date date not null default current_date,
+  completed_date date not null default (timezone('America/Caracas', current_date)),
   created_at timestamptz default now(),
   unique (profile_id, event_type, completed_date)
 );

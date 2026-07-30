@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { supabase } from "../lib/supabase";
+import { caracasDate } from "../utils/caracas";
 
 export type DailyPrayerKind = "laudes" | "angelus";
 
@@ -17,7 +18,7 @@ export function useDailyPrayerPresence(kind: DailyPrayerKind, active = false) {
     const client = supabase;
     if (!client || !available) return;
     let mounted = true;
-    const date = new Date().toISOString().slice(0, 10);
+    const date = caracasDate();
 
     const disable = () => {
       if (mounted) {

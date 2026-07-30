@@ -4,9 +4,10 @@
  * la iluminación, la longitud de sombras y la apertura floral de cada momento.
  * ==========================================================================*/
 import type { TimeOfDay, TimePalette, GardenSeason } from "./types";
+import { caracasNow } from "../utils/caracas";
 
 /** madrugada 4–7 · mañana 7–11 · mediodía 11–18 · noche 18–4 */
-export function computeTimeOfDay(d: Date = new Date()): TimeOfDay {
+export function computeTimeOfDay(d: Date = caracasNow()): TimeOfDay {
   const h = d.getHours();
   if (h >= 4 && h < 7) return "madrugada";
   if (h >= 7 && h < 11) return "manana";

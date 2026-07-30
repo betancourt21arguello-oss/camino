@@ -284,19 +284,23 @@ const WaterLayer = memo(function WaterLayer({ pond, river }: { pond: PondModel; 
       )}
       {pond.visible && (
         <g>
-          <ellipse cx={pond.cx} cy={pond.cy} rx={pond.rx + 4} ry={pond.ry + 2.5} fill="rgb(88 78 54 / 0.24)" />
-          <ellipse cx={pond.cx} cy={pond.cy} rx={pond.rx} ry={pond.ry} fill="url(#g-pond)" />
-          <ellipse cx={pond.cx} cy={pond.cy} rx={pond.rx * 0.3} ry={pond.ry * 0.3}
+          <ellipse cx={pond.cx} cy={pond.cy} rx={Math.max(0.1, pond.rx + 4)} ry={Math.max(0.1, pond.ry + 2.5)} fill="rgb(88 78 54 / 0.24)" />
+          <ellipse cx={pond.cx} cy={pond.cy} rx={Math.max(0.1, pond.rx)} ry={Math.max(0.1, pond.ry)} fill="url(#g-pond)" />
+          <ellipse cx={pond.cx} cy={pond.cy} rx={Math.max(0.1, pond.rx * 0.3)} ry={Math.max(0.1, pond.ry * 0.3)}
             fill="none" stroke="rgb(255 255 255 / 0.4)" strokeWidth={0.9}>
-            <animate attributeName="rx" values={`${pond.rx * 0.3};${pond.rx * 0.9}`} dur="4s" repeatCount="indefinite" />
-            <animate attributeName="ry" values={`${pond.ry * 0.3};${pond.ry * 0.9}`} dur="4s" repeatCount="indefinite" />
+            <animate attributeName="rx" values={`${Math.max(0.1, pond.rx * 0.3)};${Math.max(0.1, pond.rx * 0.9)}`} dur="4s" repeatCount="indefinite" />
+            <animate attributeName="ry" values={`${Math.max(0.1, pond.ry * 0.3)};${Math.max(0.1, pond.ry * 0.9)}`} dur="4s" repeatCount="indefinite" />
             <animate attributeName="opacity" values="0.45;0" dur="4s" repeatCount="indefinite" />
           </ellipse>
-          {pond.koi.map((k, i) => (
-            <motion.ellipse key={i} cx={k.x} cy={k.y} rx={5.4} ry={2.3} fill={hsl(k.hue, 80, 58)} opacity={0.88}
-              animate={{ x: [0, pond.rx * 0.4, 0, -pond.rx * 0.4, 0], y: [0, pond.ry * 0.3, 0, -pond.ry * 0.3, 0] }}
-              transition={{ duration: k.dur, repeat: Infinity, ease: "easeInOut", delay: k.delay }} />
-          ))}
+          {pond.koi.map((k, i) => {
+            const safeRx = Math.max(0.1, pond.rx);
+            const safeRy = Math.max(0.1, pond.ry);
+            return (
+              <motion.ellipse key={i} cx={k.x} cy={k.y} rx={5.4} ry={2.3} fill={hsl(k.hue, 80, 58)} opacity={0.88}
+                animate={{ x: [0, safeRx * 0.4, 0, -safeRx * 0.4, 0], y: [0, safeRy * 0.3, 0, -safeRy * 0.3, 0] }}
+                transition={{ duration: k.dur, repeat: Infinity, ease: "easeInOut", delay: k.delay }} />
+            );
+          })}
           {pond.lilies.map((l, i) => (
             <motion.ellipse key={i} cx={l.x} cy={l.y} rx={l.r} ry={l.r * 0.42}
               fill={hsl(128, 40, 33)} opacity={0.9} transform={`rotate(${l.rot} ${l.x} ${l.y})`}
@@ -794,9 +798,9 @@ export function GardenSvg({ dna, state, justWatered = false, personal }: Props) 
         ))}
       </AnimatePresence>
       {justWatered && [0, 0.5].map((delay, i) => (
-        <motion.ellipse key={i} cx={360} cy={GROUND_CY} rx={24} ry={8}
+        <motion.ellipse key={i} cx={360} cy={GROUND_CY} rx={Math.max(0.1, 24)} ry={Math.max(0.1, 8)}
           fill="none" stroke="rgb(130 205 255 / 0.55)" strokeWidth={1.8}
-          animate={{ rx: [24, 170], ry: [8, 54], opacity: [0.55, 0] }}
+          animate={{ rx: [Math.max(0.1, 24), Math.max(0.1, 170)], ry: [Math.max(0.1, 8), Math.max(0.1, 54)], opacity: [0.55, 0] }}
           transition={{ duration: 1.9, repeat: Infinity, delay, ease: "easeOut" }} />
       ))}
 

@@ -13,6 +13,7 @@
  * └───────────────────────────┴──────────────────┴──────────────────────────┘
  * ==========================================================================*/
 import { clamp } from "./prng";
+import { caracasNow, caracasDateOnly } from "../utils/caracas";
 import type { FlowerSpecies } from "./flowers";
 
 export interface PersonalInput {
@@ -93,7 +94,7 @@ function nameLength(name: string): number {
 
 export function derivePersonalTraits(input: PersonalInput): PersonalTraits {
   const { name, registeredAt, points } = input;
-  const lastSeen = input.lastSeenAt ?? new Date();
+  const lastSeen = input.lastSeenAt ?? caracasNow();
 
   /* ── 1 · Longitud del nombre → nº de pétalos (5–13, números de Fibonacci) ── */
   const len = nameLength(name);

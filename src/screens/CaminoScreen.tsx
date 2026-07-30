@@ -10,6 +10,7 @@ import { resolveCatholicImage, resolveDailyImage, resolveSaintImage } from "../m
 import { useInstallPrompt } from "../pwa/useInstallPrompt";
 import { InstallBanner } from "../pwa/InstallBanner";
 import { BibliaShell } from "./biblia/BibliaShell";
+import { caracasNow } from "../utils/caracas";
 
 export type ReaderTarget =
   | "gospel"
@@ -117,7 +118,7 @@ export const CaminoScreen: React.FC<Props> = ({
       active = false;
     };
   }, [L?.saint?.name, L?.saint?.imageUrl, L?.imageUrl, L?.gospel?.ref, L?.quote?.text]);
-  const currentDate = L?.date ? new Date(`${L.date}T00:00:00`) : new Date();
+  const currentDate = L?.date ? new Date(`${L.date}T00:00:00`) : caracasNow();
   const monthName = currentDate.toLocaleDateString("es", { month: "long" });
   const year = currentDate.getFullYear();
   const laudesPresence = useDailyPrayerPresence("laudes");

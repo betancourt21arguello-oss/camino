@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { WORKER_API_BASE } from '@/config';
+import { caracasDate } from '@/utils/caracas';
 
 export type BibleDailyContent = {
   id?: number;
@@ -54,7 +55,7 @@ export function useBibliaDaily(userId?: string, date?: string): UseBibliaDailyRe
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const targetDate = useMemo(() => date || (typeof window !== 'undefined' ? new Date().toISOString().slice(0, 10) : ''), [date]);
+  const targetDate = useMemo(() => date || caracasDate(), [date]);
 
   useEffect(() => {
     if (!userId) {

@@ -1,23 +1,221 @@
 import webpush from "web-push";
 
-// Camino API Worker - resilient AI fallback + JSON repair
+// ==========================================
+// Camino API Worker - Resilient AI Fallback + JSON Repair
+// Compatible con Gemini Interactions API (2026)
+// ==========================================
+
 let vapidConfigured = false;
 
+/**
+ * Cadena de respaldo infalible con modelos GA vigentes en 2026.
+ * Todos los modelos 1.0, 1.5 y 2.0 fueron dados de baja (HTTP 404).
+ */
 const MODEL_FALLBACK_CHAIN = [
-  "gemini-2.0-flash",
-  "gemini-1.5-flash",
-  "gemini-2.0-flash-lite",
+  "gemini-3.5-flash",       // 1er intento: GA 2026 - Mejor balance inteligencia/velocidad
+  "gemini-3.5-flash-lite",  // 2do intento: GA 2026 - Ultrarrápido y alta disponibilidad
+  "gemini-3.1-flash-lite",  // 3er intento: Respaldo estable GA
+  "gemini-2.5-flash",       // 4to intento: Respaldo estable de generación anterior
 ];
 
 const MAX_RETRIES_PER_MODEL = 3;
+const BASE_RETRY_DELAY_MS = 1000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Configuración de VAPID para web-push de manera segura.
+ */
+export function ensureVapidConfigured(
+  subject: string,
+  publicKey: string,
+  privateKey: string
+): void {
+  if (!vapidConfigured) {
+    webpush.setVapidDetails(subject, publicKey, privateKey);
+    vapidConfigured = true;
+  }
+}
+
+/**
+ * Utilidad de reparación de JSON resistente ante salidas imprecisas del modelo.
+ * Elimina bloques Markdown, comas finales inválidas y extrae el objeto JSON.
+ */
+export function repairJson<T = any>(rawText: string): T {
+  if (!rawText || typeof rawText !== "string") {
+    throw new Error("Texto vacío o inválido para procesar como JSON.");
+  }
+
+  let cleaned = rawText.trim();
+
+  // 1. Remover bloques de código Markdown (```json ... ```)
+  cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+
+  // 2. Extraer bloque entre el primer '{' o '[' y el último '}' o ']'
+  const firstBrace = cleaned.search(/[\{\[]/);
+  const lastBrace = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+  }
+
+  // 3. Intento de parseo directo
+  try {
+    return JSON.parse(cleaned);
+  } catch (initialError) {
+    // 4. Reparaciones comunes de JSON mal formado
+    // Eliminar comas flotantes antes de cerrar objetos/arreglos: {,} o [,]
+    cleaned = cleaned.replace(/,\s*([\}\]])/g, "$1");
+
+    try {
+      return JSON.parse(cleaned);
+    } catch (finalError) {
+      throw new Error(
+        `Fallo al reparar y parsear JSON del modelo: ${(finalError as Error).message}\nTexto original limpiado: ${cleaned}`
+      );
+    }
+  }
+}
+
+/**
+ * Interfaz para la respuesta de la Interactions API de Gemini v1beta
+ */
+interface InteractionResponse {
+  id?: string;
+  output_text?: string;
+  steps?: Array<{
+    content?: {
+      text?: string;
+    };
+    [key: string]: any;
+  }>;
+  error?: {
+    code: number;
+    message: string;
+    status: string;
+  };
+}
+
+/**
+ * Llama a la nueva Interactions API de Gemini con fallback en cadena y reintentos automáticos.
+ * 
+ * Endpoint actual (2026): POST https://generativelanguage.googleapis.com/v1beta/interactions
+ */
+export async function generateContentResilient(
+  prompt: string,
+  apiKey: string,
+  options: {
+    systemInstruction?: string;
+    requireJson?: boolean;
+    timeoutMs?: number;
+  } = {}
+): Promise<string> {
+  const errorsLog: string[] = [];
+
+  for (const model of MODEL_FALLBACK_CHAIN) {
+    for (let attempt = 1; attempt <= MAX_RETRIES_PER_MODEL; attempt++) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = options.timeoutMs
+          ? setTimeout(() => controller.abort(), options.timeoutMs)
+          : null;
+
+        // Estructura para la nueva Interactions API (/v1beta/interactions)
+        // También compatible si se especifica el modelo en el cuerpo
+        const requestBody: Record<string, any> = {
+          model: `models/${model}`,
+          input: prompt,
+          // La API Interactions gestiona el estado por defecto; store: false para llamadas stateless tipo Worker
+          store: false,
+        };
+
+        if (options.systemInstruction) {
+          requestBody.system_instruction = options.systemInstruction;
+        }
+
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/interactions`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-goog-api-key": apiKey,
+            },
+            body: JSON.stringify(requestBody),
+            signal: controller.signal,
+          }
+        );
+
+        if (timeoutId) clearTimeout(timeoutId);
+
+        const data = (await response.json()) as InteractionResponse;
+
+        if (!response.ok || data.error) {
+          const errMsg = data.error?.message || response.statusText || `HTTP ${response.status}`;
+          throw new Error(`[${model}] HTTP ${response.status}: ${errMsg}`);
+        }
+
+        // Extraer texto de la respuesta en formato Interactions API
+        let outputText = data.output_text;
+        if (!outputText && data.steps && data.steps.length > 0) {
+          outputText = data.steps
+            .map((step) => step.content?.text || "")
+            .join("")
+            .trim();
+        }
+
+        if (!outputText) {
+          throw new Error(`[${model}] Respuesta vacía de la API Interactions.`);
+        }
+
+        return outputText;
+      } catch (error: any) {
+        const errorMsg = error?.message || String(error);
+        errorsLog.push(`Model: ${model} | Intento: ${attempt}/${MAX_RETRIES_PER_MODEL} | Error: ${errorMsg}`);
+
+        // Si el error es 404 (modelo no disponible/retirado), saltar directamente al siguiente modelo
+        if (errorMsg.includes("404") || errorMsg.includes("NOT_FOUND") || errorMsg.includes("no longer available")) {
+          break;
+        }
+
+        // Si no es el último intento de este modelo, aplicar backoff exponencial
+        if (attempt < MAX_RETRIES_PER_MODEL) {
+          const delay = BASE_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
+          await sleep(delay);
+        }
+      }
+    }
+  }
+
+  // Si todos los modelos de la cadena fallaron
+  throw new Error(
+    `Todos los proveedores de IA fallaron (Error 500/Fallback agotado).\nHistorial de errores:\n${errorsLog.join("\n")}`
+  );
+}
+
+/**
+ * Helper listo para usar: Genera salida JSON validada y autorreparada.
+ */
+export async function generateJsonResilient<T = any>(
+  prompt: string,
+  apiKey: string,
+  systemInstruction?: string
+): Promise<T> {
+  const jsonPrompt = `${prompt}\n\nIMPORTANT: Return ONLY a valid JSON object without markdown formatting or extra commentary.`;
+  const rawText = await generateContentResilient(jsonPrompt, apiKey, {
+    systemInstruction,
+    requireJson: true,
+  });
+  return repairJson<T>(rawText);
+}
+
 // ===== Vertex AI support =====
 const VERTEX_MODEL_MAP: Record<string, string> = {
-  "gemini-1.5-flash": "gemini-1.5-flash-002",
+  "gemini-3.5-flash": "gemini-3.5-flash-001",
+  "gemini-3.5-flash-lite": "gemini-3.5-flash-lite-001",
+  "gemini-3.1-flash-lite": "gemini-3.1-flash-lite-001",
+  "gemini-2.5-flash": "gemini-2.5-flash-001",
 };
 
 function mapModelToVertex(model: string): string {
@@ -156,50 +354,6 @@ async function vertexAiPredict(model: string, env: any, body: any): Promise<Resp
 
 // ===== End Vertex AI support =====
 
-async function generateWithFallback<T>(
-  apiCallFn: (model: string) => Promise<T>,
-  maxRetriesPerModel: number = MAX_RETRIES_PER_MODEL
-): Promise<T> {
-  let lastError: unknown = null;
-
-  for (const model of MODEL_FALLBACK_CHAIN) {
-    for (let attempt = 1; attempt <= maxRetriesPerModel; attempt++) {
-      try {
-        return await apiCallFn(model);
-      } catch (error: any) {
-        lastError = error;
-        const errorMessage = error?.message || String(error);
-        const isTransientError =
-          errorMessage.includes("503") ||
-          errorMessage.includes("429") ||
-          errorMessage.includes("UNAVAILABLE") ||
-          errorMessage.includes("RESOURCE_EXHAUSTED");
-
-        console.warn(
-          `[AI Fallback] ${model} failed (attempt ${attempt}/${maxRetriesPerModel}):`,
-          errorMessage
-        );
-
-        if (isTransientError && attempt < maxRetriesPerModel) {
-          const backoffDelay = Math.pow(2, attempt) * 1000;
-          console.log(`[AI Fallback] Retrying ${model} in ${backoffDelay}ms...`);
-          await sleep(backoffDelay);
-        } else {
-          break;
-        }
-      }
-    }
-
-    console.warn(`[AI Fallback] Moving to next model in fallback chain...`);
-  }
-
-  throw new Error(
-    `All models in fallback chain failed. Last error: ${
-      lastError instanceof Error ? lastError.message : String(lastError)
-    }`
-  );
-}
-
 /**
  * Provider-aware fallback: Gemini (AI Studio) uses API key + generativelanguage.googleapis.com.
  * Vertex AI uses OAuth2 service account + aiplatform.googleapis.com.
@@ -278,84 +432,48 @@ async function generateWithProviderFallback(
   );
 }
 
-function repairJson(text: string): string {
-  let result = "";
-  let inString = false;
-  let escapeNext = false;
+async function generateWithFallback<T>(
+  apiCallFn: (model: string) => Promise<T>,
+  maxRetriesPerModel: number = MAX_RETRIES_PER_MODEL
+): Promise<T> {
+  let lastError: unknown = null;
 
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
+  for (const model of MODEL_FALLBACK_CHAIN) {
+    for (let attempt = 1; attempt <= maxRetriesPerModel; attempt++) {
+      try {
+        return await apiCallFn(model);
+      } catch (error: any) {
+        lastError = error;
+        const errorMessage = error?.message || String(error);
+        const isTransientError =
+          errorMessage.includes("503") ||
+          errorMessage.includes("429") ||
+          errorMessage.includes("UNAVAILABLE") ||
+          errorMessage.includes("RESOURCE_EXHAUSTED");
 
-    if (escapeNext) {
-      result += char;
-      escapeNext = false;
-      continue;
-    }
+        console.warn(
+          `[AI Fallback] ${model} failed (attempt ${attempt}/${maxRetriesPerModel}):`,
+          errorMessage
+        );
 
-    if (char === "\\") {
-      result += char;
-      escapeNext = true;
-      continue;
-    }
-
-    if (char === '"') {
-      if (inString) {
-        const nextNonSpace = text.slice(i + 1).match(/^\s*/)[0];
-        const nextChar = text[i + 1 + nextNonSpace.length];
-        if (nextChar === "," || nextChar === "}" || nextChar === "]" || nextChar === undefined) {
-          inString = false;
-          result += char;
+        if (isTransientError && attempt < maxRetriesPerModel) {
+          const backoffDelay = Math.pow(2, attempt) * 1000;
+          console.log(`[AI Fallback] Retrying ${model} in ${backoffDelay}ms...`);
+          await sleep(backoffDelay);
         } else {
-          result += "\\" + char;
+          break;
         }
-      } else {
-        inString = true;
-        result += char;
       }
-      continue;
     }
 
-    if (!inString) {
-      if (char === "'") {
-        result += '"';
-        continue;
-      }
-      if (char === "\n" || char === "\r") {
-        continue;
-      }
-      if (char === "," && i + 1 < text.length) {
-        const next = text[i + 1];
-        if (next === "}" || next === "]") {
-          continue;
-        }
-      }
-      if (char === "/" && i + 1 < text.length) {
-        const next = text[i + 1];
-        if (next === "/") {
-          while (i < text.length && text[i] !== "\n") i++;
-          continue;
-        }
-        if (next === "*") {
-          i += 2;
-          while (i < text.length - 1) {
-            if (text[i] === "*" && text[i + 1] === "/") {
-              i += 2;
-              break;
-            }
-            i++;
-          }
-          continue;
-        }
-      }
-    } else if (char === "'" && text[i - 1] !== "\\") {
-      result += "\\'";
-      continue;
-    }
-
-    result += char;
+    console.warn(`[AI Fallback] Moving to next model in fallback chain...`);
   }
 
-  return result;
+  throw new Error(
+    `All models in fallback chain failed. Last error: ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`
+  );
 }
 
 function parseJsonWithRepair(text: string): any {
@@ -367,7 +485,7 @@ function parseJsonWithRepair(text: string): any {
         .replace(/```json\s*/i, "")
         .replace(/```/g, "")
         .replace(/,\s*([}\]])/g, "$1")
-        .replace(/'((?:[^'\\]|\\.)*)'/g, '"$1"')
+        .replace(/('(?:[^'\\]|\\.)*')/g, '"$1"')
         .replace(/\/\/[^\n]*/g, "")
         .replace(/\/\*[\s\S]*?\*\//g, "");
       return JSON.parse(cleaned);
@@ -399,8 +517,14 @@ function configureVapid(env: any) {
   vapidConfigured = true;
 }
 
+function caracasDate(iso?: string | Date): string {
+  const d = iso ? new Date(iso) : new Date();
+  if (Number.isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Caracas", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+}
+
 function getTodayKey(): string {
-  return new Date().toISOString().slice(0, 10);
+  return caracasDate();
 }
 
 function handleVapidKey(_request: Request, env: any): Response {
@@ -657,7 +781,7 @@ async function generateLiturgy(env: any, targetDate?: string): Promise<any> {
 
   let previousSource = "";
   try {
-    const yesterday = new Date(new Date(target).getTime() - 86400000).toISOString().slice(0, 10);
+    const yesterday = caracasDate(new Date(Date.now() - 86400000));
     const prevLiturgy = await supabaseFetchDaily(env, yesterday);
     if (prevLiturgy?.marian?.source) {
       previousSource = prevLiturgy.marian.source;
@@ -666,7 +790,7 @@ async function generateLiturgy(env: any, targetDate?: string): Promise<any> {
     console.warn("No se pudo obtener la liturgia anterior para el filtro de variedad:", e);
   }
 
-  const prompt = `Eres un asistente litúrgico, teólogo y catequista católico experto para la aplicación "Camino" en Venezuela.
+const prompt = `Eres un asistente litúrgico, teólogo y catequista católico experto para la aplicación "Camino" en Venezuela.
 Genera el contenido litúrgico completo y coherente para la fecha: ${target}.
 Devuelve ÚNICAMENTE un objeto JSON válido (sin markdown, sin bloques \`\`\`json).
 
@@ -689,178 +813,162 @@ Fuentes permitidas para el mensaje diario:
 
 REGLA DE FUENTE ANTERIOR: La fuente utilizada ayer fue "${previousSource || 'Ninguna'}". NO repitas esta misma fuente hoy a menos que sea estrictamente necesario por solemnidad.
 
-  PROCESO DE GENERACIÓN E INTEGRACIÓN:
-  1. Identifica el Evangelio y Santo correspondiente a la fecha ${target}.
-  2. Evalúa cuál de las Fuentes Permitidas guarda la mayor relación temática, litúrgica o espiritual con el Evangelio de hoy.
-  3. Redacta la REFLEXIÓN GENERAL conectando: El Evangelio + La realidad y fe de Venezuela + El mensaje/fuente seleccionado.
-  4. Genera Lecturas completas y Catecismo (CEC real directamente relacionado con el Evangelio del día).
-  5. Laudes, Vísperas y Completas se cargan por separado desde el feed RSS de YouTube (no las generes aquí).
+PROCESO DE GENERACIÓN E INTEGRACIÓN:
+1. Identifica el Evangelio y Santo correspondiente a la fecha ${target}.
+2. Evalúa cuál de las Fuentes Permitidas guarda la mayor relación temática, litúrgica o espiritual con el Evangelio de hoy.
+3. REFLEXIÓN GENERAL (EL CORAZÓN DEL MENSAJE): Escribe el campo "reflection" asumiendo la voz viva, amorosa y cercana del mismísimo Jesucristo hablándole directamente al corazón del creyente venezolano. Actúa como un escritor humano, empático y cercano. Escribe con calidez, alma y corazón, usando un tono conversacional, honesto y reflexivo. Conecta de forma natural: El mensaje de mi Evangelio de hoy + La realidad de lucha, esperanza y fe en Venezuela + La enseñanza de la fuente seleccionada. PROHIBIDO usar frases cliché de inteligencia artificial, listas, o formalidades exageradas. Haz que el lector sienta mi abrazo consolador, mi paz y mi presencia a su lado.
+4. Genera Lecturas completas y Catecismo (CEC real directamente relacionado con el Evangelio del día).
+5. Nota: Laudes, Vísperas, Completas y Ángelus NO se generan aquí, han sido excluidos del modelo.
 
-  Estructura JSON requerida:
-  {
-    "date": "${target}",
-    "weekday": "día de la semana",
-    "season": "tiempo liturgico",
-    "liturgicalColor": "color litúrgico",
-    "liturgicalRank": "solemnidad|fiesta|memoria|feria",
-    "isSolemnity": false,
-    "saint": {
-      "name": "nombre del santo",
-      "title": "título",
-      "initial": "inicial",
-      "story": "historia resumida (200-300 palabras)",
-      "highlights": ["hito1", "hito2"],
-      "lessons": ["lección1", "lección2"],
-      "exampleToday": "ejemplo práctico para hoy",
-      "gospelConnection": "relación directa con el evangelio de hoy",
-      "venezuelaRelevance": "relevancia espiritual para Venezuela",
-      "prayer": "oración de intercesión"
-    },
-    "quote": { "text": "cita bíblica o de un padre de la iglesia", "ref": "referencia" },
-    "gospel": { "ref": "referencia", "title": "título", "body": "texto completo del evangelio", "evangelist": "nombre del evangelista" },
-    "psalm": { "ref": "referencia", "title": "título", "body": "texto completo del salmo con respuestas" },
-    "firstReading": { "ref": "referencia", "title": "título", "body": "texto completo" },
-    "secondReading": null,
-    "marian": {
-      "source": "Nombre exacto de la fuente elegida de la lista",
-      "reason": "Explicación breve de por qué se conectó con el evangelio de hoy",
-      "text": "Mensaje o reflexión mariana/vocacional (max 100 palabras)",
-      "relevant": true
-    },
-    "reflection": "Síntesis integradora de la jornada (Evangelio + Fuente escogida + Aplicación pastoral a Venezuela)",
-    "catechism": { "number": "Número CEC temáticamente ligado al Evangelio", "title": "Título", "text": "Texto doctrinal", "applyToday": "Aplicación" },
-    "laudes": { "title": "Laudes", "hour": "07:00", "mood": "dawn", "parts": [] },
-    "vespers": { "title": "Vísperas", "hour": "18:00", "mood": "dusk", "parts": [] },
-    "compline": { "title": "Completas", "hour": "21:00", "mood": "night", "parts": [] },
-    "angelus": { "title": "Ángelus", "body": "texto", "verses": [], "closingPrayer": "oración" },
-    "imagePrompt": "Descripción artística en inglés para generar una imagen sacra de alta calidad"
-  }`;
+Estructura JSON requerida:
+{
+  "date": "${target}",
+  "weekday": "día de la semana",
+  "season": "tiempo liturgico",
+  "liturgicalColor": "color litúrgico",
+  "liturgicalRank": "solemnidad|fiesta|memoria|feria",
+  "isSolemnity": false,
+  "saint": {
+    "name": "nombre del santo",
+    "title": "título",
+    "initial": "inicial",
+    "story": "historia resumida (100-150 palabras)",
+    "highlights": ["hito1", "hito2"],
+    "lessons": ["lección1", "lección2"],
+    "exampleToday": "ejemplo práctico para hoy",
+    "gospelConnection": "relación directa con el evangelio de hoy",
+    "venezuelaRelevance": "relevancia espiritual para Venezuela",
+    "prayer": "oración de intercesión"
+  },
+  "quote": { "text": "cita bíblica o de un padre de la iglesia", "ref": "referencia" },
+  "gospel": { "ref": "referencia", "title": "título", "body": "texto completo del evangelio", "evangelist": "nombre del evangelista" },
+  "psalm": { "ref": "referencia", "title": "título", "body": "texto completo del salmo con respuestas" },
+  "firstReading": { "ref": "referencia", "title": "título", "body": "texto completo" },
+  "secondReading": null,
+  "marian": {
+    "source": "Nombre exacto de la fuente elegida de la lista",
+    "reason": "Explicación breve de por qué se conectó con el evangelio de hoy",
+    "text": "Mensaje o reflexión mariana/vocacional (max 100 palabras)",
+    "relevant": true
+  },
+  "reflection": "Mensaje escrito en primera persona por Jesús, lleno de amor, hablando directo al corazón del venezolano.",
+  "catechism": { "number": "Número CEC temáticamente ligado al Evangelio", "title": "Título", "text": "Texto doctrinal", "applyToday": "Aplicación" },
+  "imagePrompt": "Descripción artística en inglés para generar una imagen sacra de alta calidad"
+}`;
 
-  const liturgySchema = {
-    type: "OBJECT",
-    properties: {
-      date: { type: "STRING" },
-      weekday: { type: "STRING" },
-      season: { type: "STRING" },
-      liturgicalColor: { type: "STRING" },
-      liturgicalRank: { type: "STRING" },
-      isSolemnity: { type: "BOOLEAN" },
-      saint: {
-        type: "OBJECT",
-        properties: {
-          name: { type: "STRING" },
-          title: { type: "STRING" },
-          initial: { type: "STRING" },
-          story: { type: "STRING" },
-          highlights: { type: "ARRAY", items: { type: "STRING" } },
-          lessons: { type: "ARRAY", items: { type: "STRING" } },
-          exampleToday: { type: "STRING" },
-          gospelConnection: { type: "STRING" },
-          venezuelaRelevance: { type: "STRING" },
-          prayer: { type: "STRING" },
-        },
-        required: ["name", "title", "story", "gospelConnection", "prayer"],
+const liturgySchema = {
+  type: "OBJECT",
+  properties: {
+    date: { type: "STRING" },
+    weekday: { type: "STRING" },
+    season: { type: "STRING" },
+    liturgicalColor: { type: "STRING" },
+    liturgicalRank: { type: "STRING" },
+    isSolemnity: { type: "BOOLEAN" },
+    saint: {
+      type: "OBJECT",
+      properties: {
+        name: { type: "STRING" },
+        title: { type: "STRING" },
+        initial: { type: "STRING" },
+        story: { type: "STRING" },
+        highlights: { type: "ARRAY", items: { type: "STRING" } },
+        lessons: { type: "ARRAY", items: { type: "STRING" } },
+        exampleToday: { type: "STRING" },
+        gospelConnection: { type: "STRING" },
+        venezuelaRelevance: { type: "STRING" },
+        prayer: { type: "STRING" },
       },
-      quote: {
-        type: "OBJECT",
-        properties: {
-          text: { type: "STRING" },
-          ref: { type: "STRING" },
-        },
-        required: ["text", "ref"],
-      },
-      gospel: {
-        type: "OBJECT",
-        properties: {
-          ref: { type: "STRING" },
-          title: { type: "STRING" },
-          body: { type: "STRING" },
-          evangelist: { type: "STRING" },
-        },
-        required: ["ref", "title", "body", "evangelist"],
-      },
-      psalm: {
-        type: "OBJECT",
-        properties: {
-          ref: { type: "STRING" },
-          title: { type: "STRING" },
-          body: { type: "STRING" },
-          response: { type: "STRING" },
-        },
-        required: ["ref", "title", "body", "response"],
-      },
-      firstReading: {
-        type: "OBJECT",
-        properties: {
-          ref: { type: "STRING" },
-          title: { type: "STRING" },
-          body: { type: "STRING" },
-        },
-        required: ["ref", "title", "body"],
-      },
-      secondReading: {
-        type: "OBJECT",
-        properties: {
-          ref: { type: "STRING" },
-          title: { type: "STRING" },
-          body: { type: "STRING" },
-        },
-      },
-      marian: {
-        type: "OBJECT",
-        properties: {
-          source: { type: "STRING" },
-          text: { type: "STRING" },
-          relevant: { type: "BOOLEAN" },
-          reason: { type: "STRING" },
-        },
-        required: ["source", "text", "relevant", "reason"],
-      },
-      reflection: { type: "STRING" },
-      catechism: {
-        type: "OBJECT",
-        properties: {
-          number: { type: "STRING" },
-          title: { type: "STRING" },
-          text: { type: "STRING" },
-          applyToday: { type: "STRING" },
-        },
-        required: ["number", "title", "text", "applyToday"],
-      },
-      angelus: {
-        type: "OBJECT",
-        properties: {
-          title: { type: "STRING" },
-          body: { type: "STRING" },
-          verses: { type: "ARRAY", items: { type: "STRING" } },
-          closingPrayer: { type: "STRING" },
-        },
-        required: ["title", "body", "verses", "closingPrayer"],
-      },
-      imagePrompt: { type: "STRING" },
+      required: ["name", "title", "story", "gospelConnection", "prayer"],
     },
-    required: [
-      "date",
-      "weekday",
-      "season",
-      "liturgicalColor",
-      "liturgicalRank",
-      "isSolemnity",
-      "saint",
-      "quote",
-      "gospel",
-      "psalm",
-      "firstReading",
-      "marian",
-      "reflection",
-      "catechism",
-      "angelus",
-      "imagePrompt",
-    ],
-  };
-
+    quote: {
+      type: "OBJECT",
+      properties: {
+        text: { type: "STRING" },
+        ref: { type: "STRING" },
+      },
+      required: ["text", "ref"],
+    },
+    gospel: {
+      type: "OBJECT",
+      properties: {
+        ref: { type: "STRING" },
+        title: { type: "STRING" },
+        body: { type: "STRING" },
+        evangelist: { type: "STRING" },
+      },
+      required: ["ref", "title", "body", "evangelist"],
+    },
+    psalm: {
+      type: "OBJECT",
+      properties: {
+        ref: { type: "STRING" },
+        title: { type: "STRING" },
+        body: { type: "STRING" },
+        response: { type: "STRING" },
+      },
+      required: ["ref", "title", "body", "response"],
+    },
+    firstReading: {
+      type: "OBJECT",
+      properties: {
+        ref: { type: "STRING" },
+        title: { type: "STRING" },
+        body: { type: "STRING" },
+      },
+      required: ["ref", "title", "body"],
+    },
+    secondReading: {
+      type: "OBJECT",
+      properties: {
+        ref: { type: "STRING" },
+        title: { type: "STRING" },
+        body: { type: "STRING" },
+      },
+    },
+    marian: {
+      type: "OBJECT",
+      properties: {
+        source: { type: "STRING" },
+        text: { type: "STRING" },
+        relevant: { type: "BOOLEAN" },
+        reason: { type: "STRING" },
+      },
+      required: ["source", "text", "relevant", "reason"],
+    },
+    reflection: { type: "STRING" },
+    catechism: {
+      type: "OBJECT",
+      properties: {
+        number: { type: "STRING" },
+        title: { type: "STRING" },
+        text: { type: "STRING" },
+        applyToday: { type: "STRING" },
+      },
+      required: ["number", "title", "text", "applyToday"],
+    },
+    imagePrompt: { type: "STRING" },
+  },
+  required: [
+    "date",
+    "weekday",
+    "season",
+    "liturgicalColor",
+    "liturgicalRank",
+    "isSolemnity",
+    "saint",
+    "quote",
+    "gospel",
+    "psalm",
+    "firstReading",
+    "marian",
+    "reflection",
+    "catechism",
+    "imagePrompt",
+  ],
+};
   const res = await generateWithProviderFallback(
-    // Gemini call
+    // Gemini call (AI Studio)
     (model, apiKey) =>
       fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
@@ -1133,7 +1241,7 @@ INSTRUCCIONES:
 }`;
 
   const res = await generateWithProviderFallback(
-    // Gemini call
+    // Gemini call (AI Studio)
     (model, apiKey) =>
       fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
@@ -1537,7 +1645,7 @@ async function generateImage(env: any, prompt: string): Promise<string> {
   }
 
   const res = await generateWithProviderFallback(
-    // Gemini call (Imagen uses predict endpoint)
+    // Gemini call (AI Studio - Imagen uses predict endpoint)
     (model, apiKey) =>
       fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:predict?key=${apiKey}`,

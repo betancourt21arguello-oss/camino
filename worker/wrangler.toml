@@ -23,3 +23,5 @@ bucket_name = "camino-images"
 [vars]
 SUPABASE_URL = "https://asfqkirsogozshlzcfpe.supabase.co"
 R2_IMAGES_BASE_URL = "https://images.camino.app"
+VERTEX_PROJECT_ID = "camino-503318"
+VERTEX_REGION = "us-central1"

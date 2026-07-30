@@ -4,6 +4,7 @@
  * ==========================================================================*/
 import { clamp } from "./prng";
 import { computeTimeOfDay } from "./time";
+import { caracasNow } from "../utils/caracas";
 import type {
   GardenEvent, GardenEventType, GardenState,
   GrowthPhase, MaturityTier, GardenSeason, Milestone,
@@ -72,7 +73,7 @@ const DAY = 86_400_000;
 const DECAY_GRACE_MS = 48 * 3_600_000; // 48 h sin actividad → empieza el decaimiento
 
 /* ── Temporada litúrgica aproximada ─────────────────────────────────────── */
-export function currentSeason(d = new Date()): GardenSeason {
+export function currentSeason(d = caracasNow()): GardenSeason {
   const m = d.getMonth() + 1, day = d.getDate();
   if (m === 12 && day <= 24) return "advent";
   if ((m === 12 && day >= 25) || (m === 1 && day <= 12)) return "christmas";
@@ -88,7 +89,7 @@ function computeStreak(events: GardenEvent[]): number {
     events.map((e) => Math.floor(new Date(e.created_at).getTime() / DAY)),
   );
   let streak = 0;
-  let cursor = Math.floor(Date.now() / DAY);
+  let cursor = Math.floor(caracasNow().getTime() / DAY);
   if (!days.has(cursor)) cursor -= 1; // permite que "hoy" aún no tenga actividad
   while (days.has(cursor)) { streak++; cursor--; }
   return streak;

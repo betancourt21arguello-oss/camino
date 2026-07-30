@@ -8,7 +8,7 @@ create table if not exists daily_completions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   event_type text not null,
-  completed_date date not null default current_date,
+  completed_date date not null default (timezone('America/Caracas', current_date)),
   created_at timestamptz not null default now(),
   unique (user_id, event_type, completed_date)
 );
@@ -43,7 +43,7 @@ security definer
 as $$
 declare
   v_user_id uuid := auth.uid();
-  v_today date := current_date;
+  v_today date := timezone('America/Caracas', current_date);
   v_inserted boolean;
 begin
   if v_user_id is null then

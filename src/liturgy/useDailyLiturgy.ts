@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { WORKER_API_BASE } from "../config";
 import type { DailyLiturgy, LiturgicalEvent } from "./types";
+import { caracasDate } from "../utils/caracas";
 
 export interface DailyPayload {
   liturgy: DailyLiturgy | null;
@@ -18,7 +19,7 @@ export function useDailyLiturgy() {
   const [error, setError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
 
-  const date = new Date().toISOString().slice(0, 10);
+  const date = caracasDate();
 
   const load = useCallback(async () => {
     setLoading(true);

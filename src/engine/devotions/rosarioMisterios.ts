@@ -220,11 +220,13 @@ const DAY_TO_SET: Record<number, RosarioSet> = {
   6: "gozosos",
 };
 
-export function rosarioSetForDate(date: Date = new Date()): RosarioSet {
+import { caracasNow } from "../../utils/caracas";
+
+export function rosarioSetForDate(date: Date = caracasNow()): RosarioSet {
   return DAY_TO_SET[date.getDay()];
 }
 
-export function devotionIdForToday(date: Date = new Date()): string {
+export function devotionIdForToday(date: Date = caracasNow()): string {
   return `rosario-${rosarioSetForDate(date)}`;
 }
 

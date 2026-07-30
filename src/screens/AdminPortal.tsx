@@ -6,6 +6,7 @@ import { computeDna, deriveDnaTraits } from "../garden/dna";
 import { aggregateGardenState } from "../garden/events";
 import { derivePersonalTraits, type PersonalTraits, type PersonalInput } from "../garden/personal";
 import type { DnaTraits, GardenState } from "../garden/types";
+import { caracasDate } from "../utils/caracas";
 
 export function AdminPortal({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState<"garden" | "gemini" | "upload" | "telegram" | "tasks" | "images" | "oraciones">("gemini");
@@ -51,7 +52,7 @@ function GeminiPanel() {
   const [result, setResult] = useState("");
   const [editing, setEditing] = useState(false);
   const [content, setContent] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(caracasDate());
 
   const trigger = async () => {
     setBusy(true);
@@ -265,7 +266,7 @@ function TasksPanel() {
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<{ id: string; email: string; full_name?: string }[]>([]);
   const [searching, setSearching] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [selectedDate, setSelectedDate] = useState(() => caracasDate());
   const [selectedTasks, setSelectedTasks] = useState<{ title: string; category: TaskCategory; cadence: string; time?: string }[]>([]);
   const [customTitle, setCustomTitle] = useState("");
   const [customCategory, setCustomCategory] = useState<TaskCategory>("custom");
@@ -1425,7 +1426,7 @@ function GardenEditor() {
 
   // Helper functions
   function formatDateForInput(date: Date): string {
-    return date.toISOString().slice(0, 10);
+    return caracasDate(date);
   }
 
   function formatDateTimeForInput(date: Date): string {
@@ -1462,7 +1463,7 @@ function TelegramPanel() {
 
 // Image management panel — override saint and daily images
 function ImagePanel() {
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => caracasDate());
   const [saintUrl, setSaintUrl] = useState<string>("");
   const [dailyUrl, setDailyUrl] = useState<string>("");
   const [busy, setBusy] = useState(false);
@@ -1577,7 +1578,7 @@ function ImagePanel() {
 }
 
 function OracionesPanel() {
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => caracasDate());
   const [laudes, setLaudes] = useState("");
   const [visperas, setVisperas] = useState("");
   const [completas, setCompletas] = useState("");

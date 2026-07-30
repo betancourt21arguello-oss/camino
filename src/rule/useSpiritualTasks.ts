@@ -3,6 +3,7 @@ import { useAuth } from "../auth/AuthProvider";
 import { supabase } from "../lib/supabase";
 import { defaultTasks, type SpiritualTask, type TaskCategory } from "./tasks";
 import type { DailyLiturgy } from "../liturgy/types";
+import { caracasDate } from "../utils/caracas";
 
 interface TaskRow {
   id: string;
@@ -61,7 +62,7 @@ export function useSpiritualTasks(liturgy: DailyLiturgy | null) {
       return;
     }
     let active = true;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = caracasDate();
 
     const load = async () => {
       // RPC idempotente: crea las tareas base del día si aún no existen.
@@ -119,7 +120,7 @@ export function useSpiritualTasks(liturgy: DailyLiturgy | null) {
 
   const add = useCallback(async (title: string, time?: string, taskDate?: string, cadence?: "daily" | "weekly" | "monthly" | "once") => {
     if (!supabase || !user || !title.trim()) return false;
-    const date = taskDate || new Date().toISOString().slice(0, 10);
+    const date = taskDate || caracasDate();
     const finalCadence = cadence || "once";
     const { error } = await supabase.from("spiritual_tasks").insert({
       profile_id: user.id,

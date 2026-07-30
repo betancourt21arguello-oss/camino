@@ -5,6 +5,7 @@ import { NotificationsPanel } from "../notifications/NotificationsPanel";
 import { useSpiritualTasks } from "../rule/useSpiritualTasks";
 import type { DailyLiturgy } from "../liturgy/types";
 import type { ReaderTarget } from "./CaminoScreen";
+import { caracasDate } from "../utils/caracas";
 
 type Props = {
   onOpenReader?: (t: ReaderTarget) => void;
@@ -19,7 +20,7 @@ export function ReglaScreen({ onOpenReader, onStartRosary, liturgy }: Props) {
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState("");
   const [taskTime, setTaskTime] = useState("");
-  const [taskDate, setTaskDate] = useState(new Date().toISOString().slice(0, 10));
+  const [taskDate, setTaskDate] = useState(caracasDate());
   const [taskCadence, setTaskCadence] = useState<TaskCadence>("once");
 
   const daily = useMemo(() => tasks.filter((t) => t.cadence === "daily"), [tasks]);
@@ -53,7 +54,7 @@ export function ReglaScreen({ onOpenReader, onStartRosary, liturgy }: Props) {
     await taskStore.add(draft, taskTime, taskDate, taskCadence);
     setDraft("");
     setTaskTime("");
-    setTaskDate(new Date().toISOString().slice(0, 10));
+    setTaskDate(caracasDate());
     setTaskCadence("once");
     setAdding(false);
   };

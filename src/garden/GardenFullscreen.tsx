@@ -106,7 +106,7 @@ const InfoCard = memo(function InfoCard({ state }: { state: GardenState }) {
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 16 }}
-      className="absolute bottom-6 left-4 right-4 z-20"
+      className="absolute bottom-6 left-4 right-4 z-20 hidden"
     >
       <div className="rounded-2xl bg-black/60 p-4 backdrop-blur-md text-white">
         <div className="flex items-center justify-between mb-3">

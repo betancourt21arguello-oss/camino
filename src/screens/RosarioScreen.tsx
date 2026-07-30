@@ -15,7 +15,7 @@ type Props = {
 };
 
 export function RosarioScreen({ onOpenGallery, onActiveChange, onOpenHour }: Props) {
-  const todayDevotionId = useMemo(() => devotionIdForToday(new Date()), []);
+  const todayDevotionId = useMemo(() => devotionIdForToday(), []);
   const [selectedDevotionId, setSelectedDevotionId] = useState(todayDevotionId);
   const rosario = useRosario(selectedDevotionId);
   const { emit, lightCandle, activeIntentions, candles } = useSpiritual();

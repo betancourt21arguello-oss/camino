@@ -12,6 +12,7 @@ import { derivePersonalTraits, SPECIES_LABEL, type PersonalInput } from "@/garde
 import { levelTitle } from "@/garden/levels";
 import { getAnonIdentity } from "@/auth/anonId";
 import { cn } from "@/utils/cn";
+import { caracasDateOnly } from "@/utils/caracas";
 
 type PerfilTab = "jardin" | "intenciones" | "oratorio";
 interface Props { onOpenAuth: () => void; }
@@ -67,7 +68,7 @@ function WaterModal({ mode, water, onClose, onConfirm }: {
   const SUGGESTIONS = ["Por mi familia", "Por los enfermos", "Por Venezuela", "En acción de gracias"];
 
   return (
-    <motion.div className="absolute inset-0 z-40 flex items-end justify-center bg-black/45 backdrop-blur-sm"
+    <motion.div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/45 backdrop-blur-sm"
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <motion.div className="w-full max-w-[430px] rounded-t-3xl bg-white p-6 pb-8"
@@ -172,8 +173,8 @@ function JardinTab({ onOpenAuth, displayName }: { onOpenAuth: () => void; displa
 
   const personalInput: PersonalInput = useMemo(() => ({
     name: displayName,
-    registeredAt: user?.created_at ? new Date(user.created_at) : new Date(),
-    lastSeenAt: new Date(),
+    registeredAt: user?.created_at ? caracasDateOnly(user.created_at) : caracasDateOnly(),
+    lastSeenAt: caracasDateOnly(),
     points: state.pointsScore,
   }), [displayName, user?.created_at, state.pointsScore]);
 

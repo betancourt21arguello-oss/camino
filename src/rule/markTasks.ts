@@ -1,7 +1,8 @@
 import { supabase } from "../lib/supabase";
 import type { TaskCategory } from "./tasks";
+import { caracasDate } from "../utils/caracas";
 
-const todayIso = () => new Date().toISOString().slice(0, 10);
+const todayIso = () => caracasDate();
 
 /**
  * Marca como completadas todas las tareas del día cuyas categorías estén en

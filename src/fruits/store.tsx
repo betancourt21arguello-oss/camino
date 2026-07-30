@@ -315,9 +315,18 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
     pushLocalEvent("WATER_GARDEN", 1, intention);
     flagWatered();
     if (user && supabase) {
-      const { error } = await supabase.rpc("water_garden", { p_intention: intention });
-      if (error) {
-        console.warn("[camino] water_garden:", error.message);
+      try {
+        const { data, error } = await supabase.rpc("water_garden", { p_intention: intention });
+        if (error) {
+          console.warn("[camino] water_garden error:", error.message, "code:", error.code);
+          setBalance((p) => ({ ...p, agua: p.agua + 1 }));
+          void reload();
+        } else {
+          console.log("[camino] water_garden success, data:", data);
+          void reload();
+        }
+      } catch (e) {
+        console.warn("[camino] water_garden exception:", e instanceof Error ? e.message : String(e));
         setBalance((p) => ({ ...p, agua: p.agua + 1 }));
         void reload();
       }

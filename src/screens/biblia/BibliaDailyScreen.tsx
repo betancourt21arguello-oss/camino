@@ -3,6 +3,7 @@ import { useBibliaRouter } from '@/hooks/useBibliaRouter';
 import { useAuth } from '@/auth/AuthProvider';
 import { useBibliaDaily } from './useBibliaDaily';
 import { supabase } from '@/lib/supabase';
+import { caracasDate } from '@/utils/caracas';
 
 function Section({ eyebrow, title, children }: { eyebrow?: string; title?: string; children: React.ReactNode }) {
   return (
@@ -58,9 +59,7 @@ export function BibliaDailyScreen() {
       const currentStreak = existingStreak?.current_streak || 0;
       const longestStreak = existingStreak?.longest_streak || 0;
 
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayStr = yesterday.toISOString().slice(0, 10);
+      const yesterdayStr = caracasDate(new Date(Date.now() - 86400000));
 
       let newStreak = currentStreak;
       if (lastCompleted === todayStr) {
