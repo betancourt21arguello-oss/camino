@@ -8,12 +8,23 @@ interface BeforeInstallPromptEvent extends Event {
 const DISMISS_KEY = "camino_install_dismissed_at";
 const DISMISS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-function detectIOS(): boolean {
+/**
+ * iOS / iPadOS no exponen `beforeinstallprompt`, por lo que la forma de
+ * instalar varía según el navegador:
+ *  - Safari (cualquier plataforma, incluido macOS): se muestra la guía manual
+ *    de "Añadir a pantalla de inicio".
+ *  - Resto (Chrome/Edge/Firefox en Android o escritorio): se espera el prompt
+ *    nativo de instalación en un solo toque.
+ * Detectamos Safari descartando los navegadores basados en Chromium/Apple que,
+ * aun compartiendo el UA de Safari, sí disparan `beforeinstallprompt`.
+ */
+function detectSafari(): boolean {
   if (typeof navigator === "undefined") return false;
   const ua = navigator.userAgent;
-  const ios = /iphone|ipad|ipod/i.test(ua);
-  const ipadOs = /macintosh/i.test(ua) && navigator.maxTouchPoints > 1;
-  return ios || ipadOs;
+  return (
+    /safari/i.test(ua) &&
+    !/(chrome|chromium|crios|fxios|edgios|edge|opr|opera|firefox)/i.test(ua)
+  );
 }
 
 function detectStandalone(): boolean {
@@ -37,7 +48,7 @@ export interface InstallController {
 export function useInstallPrompt(): InstallController {
   const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
   const [dismissed, setDismissed] = useState(false);
-  const [ios] = useState<boolean>(detectIOS());
+  const [ios] = useState<boolean>(detectSafari());
   const [standalone, setStandalone] = useState<boolean>(detectStandalone);
 
   useEffect(() => {

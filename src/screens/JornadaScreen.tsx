@@ -3,6 +3,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { buildJornadaSteps, type JornadaStep, type JornadaStepKind } from "../data/jornada";
 import type { DailyLiturgy } from "../liturgy/types";
 import { useSpiritual } from "../fruits/store";
+import { supabase } from "../lib/supabase";
+import { useAuth } from "../auth/AuthProvider";
 
 type Props = {
   liturgy: DailyLiturgy | null;
@@ -34,6 +36,8 @@ export function JornadaScreen({ liturgy, onClose, onComplete }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const completedStepsRef = useRef<Set<string>>(new Set());
   const { emit } = useSpiritual();
+  const { user } = useAuth();
+  const [saving, setSaving] = useState(false);
 
   const step = steps[index];
   const total = steps.length;
@@ -59,6 +63,14 @@ export function JornadaScreen({ liturgy, onClose, onComplete }: Props) {
       }
     }
     if (isLast) {
+      // Save reflection before completing
+      if (reflection.trim() && user && supabase && !saving) {
+        setSaving(true);
+        (async () => {
+          await supabase.rpc("save_jornada_reflection", { p_reflection: reflection.trim() });
+          setSaving(false);
+        })();
+      }
       onComplete();
       return;
     }
@@ -423,7 +435,7 @@ function PersonalView({ step, value, onChange }: { step: JornadaStep; value: str
         placeholder="Escribe aquí tu intención concreta…"
         className="mt-6 min-h-[180px] w-full resize-none rounded-2xl border border-[#e0d8c6] bg-white p-4 font-serif-holy text-[16px] leading-relaxed text-[#1c1c1e] placeholder:font-sans placeholder:text-[#b0b0b5] focus:border-[#c4a35a] focus:outline-none"
       />
-      <p className="mt-3 text-center text-[11px] text-[#a09c93]">Tu respuesta queda entre tú y Dios · No se comparte</p>
+      <p className="mt-3 text-center text-[11px] text-[#a09c93]">Tu reflexión quedará registrada y se compartirá en la comunidad.</p>
     </div>
   );
 }

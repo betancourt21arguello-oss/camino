@@ -5,9 +5,11 @@
 import { clamp } from "./prng";
 import { computeTimeOfDay } from "./time";
 import { caracasNow } from "../utils/caracas";
+import { GROUND_CX, GROUND_CY } from "./model";
 import type {
   GardenEvent, GardenEventType, GardenState,
   GrowthPhase, MaturityTier, GardenSeason, Milestone,
+  HarvestableFruit,
 } from "./types";
 
 /* ── Mapeo SpiritualEventType → GardenEventType ─────────────────────────── */
@@ -27,6 +29,12 @@ const EVENT_MAP: Record<string, GardenEventType> = {
   "reflection-complete": "REFLECTION_COMPLETED",
   "seed-received": "SEED_RECEIVED",
   "water-received": "WATER_RECEIVED",
+  "laudes": "LAUDES",
+  "angelus": "ANGELUS",
+  "vespers": "VESPERS",
+  "compline": "COMPLINE",
+  "catechesis": "CATECHESIS",
+  "harvest-fruit": "HARVEST_FRUIT",
 };
 
 /** Reverse map: GardenEventType → spiritual event type */
@@ -45,6 +53,12 @@ export const GARDEN_TO_SPIRITUAL_MAP: Record<GardenEventType, string> = {
   REFLECTION_COMPLETED: "reflection-complete",
   SEED_RECEIVED: "seed-received",
   WATER_RECEIVED: "water-received",
+  LAUDES: "laudes",
+  ANGELUS: "angelus",
+  VESPERS: "vespers",
+  COMPLINE: "compline",
+  CATECHESIS: "catechesis",
+  HARVEST_FRUIT: "harvest-fruit",
 };
 
 export function gardenEventType(spiritualEventType: string): GardenEventType | null {
@@ -67,6 +81,12 @@ const WEIGHTS: Record<GardenEventType, { pts: number; water: number; light: numb
   CANDLE_LIT:           { pts: 5,  water: 2,  light: 9  },
   PRAY_FOR_OTHER:       { pts: 7,  water: 8,  light: 7  },
   REFLECTION_COMPLETED: { pts: 4,  water: 2,  light: 3  },
+  LAUDES:               { pts: 6,  water: 4,  light: 3  },
+  ANGELUS:              { pts: 4,  water: 1,  light: 5  },
+  VESPERS:              { pts: 6,  water: 2,  light: 8  },
+  COMPLINE:             { pts: 5,  water: 2,  light: 2  },
+  CATECHESIS:           { pts: 8,  water: 2,  light: 4  },
+  HARVEST_FRUIT:        { pts: 0,  water: 0,  light: 0  },
 };
 
 const DAY = 86_400_000;
@@ -97,7 +117,7 @@ function computeStreak(events: GardenEvent[]): number {
 
 /* ── Nivel: raíz cuadrada de puntos, tope 10 ────────────────────────────── */
 function levelFromPoints(points: number): number {
-  return clamp(Math.floor(Math.sqrt(points / 10)) + 1, 1, 10);
+  return Math.max(1, Math.floor(Math.sqrt(points / 10)) + 1);
 }
 
 function maturityFromPoints(points: number): MaturityTier {
@@ -232,6 +252,25 @@ export function aggregateGardenState(
 
   milestones.sort((a, b) => b.at - a.at);
 
+  const totalPrayers = (counts.ROSARY_COMPLETED ?? 0) + (counts.NOVENA_COMPLETED ?? 0) + (counts.CORONILLA_COMPLETED ?? 0);
+  const streakVal = computeStreak(sorted);
+  const streakLeaves = streakVal;
+  const totalHarvested = counts.HARVEST_FRUIT ?? 0;
+  const harvestableFruits: HarvestableFruit[] = [];
+  const fruitCount = Math.max(0, Math.floor(streakLeaves / 10) - totalHarvested);
+  for (let i = 0; i < fruitCount; i++) {
+    const angle = (i / Math.max(1, fruitCount)) * Math.PI * 2;
+    harvestableFruits.push({
+      id: `streak-fruit-${i}`,
+      type: i % 2 === 0 ? "pomegranate" : "fig",
+      x: GROUND_CX + Math.cos(angle) * (80 + i * 6),
+      y: GROUND_CY - 40 - Math.sin(angle) * 20,
+      scale: 0.9 + (i % 3) * 0.2,
+      ripe: true,
+    });
+  }
+  const condensationTier: 1 | 2 | 3 | 4 = totalPrayers === 0 ? 1 : totalPrayers <= 20 ? 1 : totalPrayers <= 100 ? 2 : totalPrayers <= 500 ? 3 : 4;
+
   return {
     waterLevel,
     lightLevel,
@@ -252,7 +291,7 @@ export function aggregateGardenState(
     totalWaterings: counts.WATER_GARDEN ?? 0,
     totalCandles: counts.CANDLE_LIT ?? 0,
     totalSilence: counts.SILENCE_TIME ?? 0,
-    streak: computeStreak(sorted),
+    streak: streakVal,
     commits: counts.COMMUNITY_PRAYER ?? 0,
     season: currentSeason(),
     timeOfDay: computeTimeOfDay(),
@@ -261,10 +300,21 @@ export function aggregateGardenState(
     freshWaterRatio,
     lastWateredAt: lastWaterAt,
     milestones: milestones.slice(0, 8),
+    totalPrayers,
+    streakLeaves,
+    harvestableFruits,
+    totalHarvestedFruits: totalHarvested,
+    condensationTier,
   };
 }
 
 /** Estado neutro para renderizar antes de cargar datos. */
 export function emptyGardenState(): GardenState {
-  return aggregateGardenState([], 0);
+  return {
+    ...aggregateGardenState([], 0),
+    totalPrayers: 0,
+    streakLeaves: 0,
+    harvestableFruits: [],
+    condensationTier: 1,
+  };
 }

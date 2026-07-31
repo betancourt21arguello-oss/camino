@@ -20,6 +20,7 @@ import { AdminPortal } from "./screens/AdminPortal";
 import { AuthCallbackScreen } from "./screens/AuthCallbackScreen";
 import { JORNADA_CATEGORIES, categoriesForTarget, markCategoriesDone } from "./rule/markTasks";
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
+import { OneSignalProvider } from "./onesignal/OneSignalProvider";
 
 type PrayerKind = "laudes" | "angelus" | "vespers" | "compline";
 const PRAYER_KINDS = new Set<ReaderTarget>(["laudes", "angelus", "vespers", "compline"]);
@@ -278,9 +279,11 @@ export default function App() {
 
   return (
     <AuthProvider>
-      <SpiritualProvider>
-        <Shell />
-      </SpiritualProvider>
+      <OneSignalProvider>
+        <SpiritualProvider>
+          <Shell />
+        </SpiritualProvider>
+      </OneSignalProvider>
     </AuthProvider>
   );
 }

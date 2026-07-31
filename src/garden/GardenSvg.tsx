@@ -7,10 +7,11 @@
  * ==========================================================================*/
 import { memo, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { generateGardenModel, VIEW_W, VIEW_H, GROUND_CY } from "./model";
+import { generateGardenModel, VIEW_W, VIEW_H, GROUND_CX, GROUND_CY } from "./model";
 import type {
   GardenModel, PondModel, RiverModel, PlacedFlower,
   StoneShrine, CandleModel, MarianArch,
+  EnergyBranch, HarvestableFruitModel, ArchitecturalElement, SacredStructure,
 } from "./model";
 import type { FractalTree } from "./fractal";
 import type { GrassTuft, ShrubModel, ParametricFlower } from "./flowers";
@@ -24,6 +25,8 @@ interface Props {
   dna: DnaTraits;
   state: GardenState;
   justWatered?: boolean;
+  /** Callback al cosechar un fruto del árbol */
+  onHarvestFruit?: (id: string) => void;
   /** Datos del usuario que personalizan la geometría */
   personal?: PersonalInput;
 }
@@ -594,7 +597,238 @@ const EphemeralLayer = memo(function EphemeralLayer({
   );
 });
 
-/* ══ FIRMA ══════════════════════════════════════════════════════════════ */
+/* ══ HOJAS POR RACHA + FRUTOS COSECHABLES EN EL ÁRBOL ══════════════════════ */
+function LeafAndFruitLayer({
+  branches, fruits, onHarvest,
+}: {
+  branches: EnergyBranch[];
+  fruits: HarvestableFruitModel[];
+  onHarvest?: (id: string) => void;
+}) {
+  if (branches.length === 0) return null;
+  return (
+    <g>
+      {branches.map((b, i) => (
+        <g key={`branch-${i}`}>
+          {/* Tronco de la rama: línea gruesa con textura de corteza */}
+          <line
+            x1={GROUND_CX} y1={GROUND_CY - 4}
+            x2={b.x} y2={b.y}
+            stroke="rgb(90 56 24 / 0.6)"
+            strokeWidth={3}
+            strokeLinecap="round" />
+          {/* Cúmulo de hojas: elipse con venación */}
+          <ellipse
+            cx={b.x} cy={b.y}
+            rx={b.clusterR * 0.55} ry={b.clusterR * 0.34}
+            fill={hsl(b.clusterHue, 42, 52)}
+            opacity={0.85} />
+          <path
+            d={`M ${b.x - b.clusterR * 0.2} ${b.y} L ${b.x + b.clusterR * 0.2} ${b.y}`}
+            stroke={hsl(b.clusterHue, 42, 36)}
+            strokeWidth={1}
+            opacity={0.5} />
+          {/* Venación secundaria */}
+          <path
+            d={`M ${b.x} ${b.y - b.clusterR * 0.12} L ${b.x - b.clusterR * 0.3} ${b.y - b.clusterR * 0.12}`}
+            stroke={hsl(b.clusterHue, 42, 34)}
+            strokeWidth={0.8}
+            opacity={0.4} />
+          <path
+            d={`M ${b.x} ${b.y - b.clusterR * 0.06} L ${b.x + b.clusterR * 0.3} ${b.y - b.clusterR * 0.08}`}
+            stroke={hsl(b.clusterHue, 42, 34)}
+            strokeWidth={0.8}
+            opacity={0.4} />
+        </g>
+      ))}
+
+      {/* Frutos cosechables: interactivos */}
+      {fruits.map((f) => {
+        const branch = branches[f.branchIndex];
+        if (!branch) return null;
+        const fx = branch.x + f.offsetX;
+        const fy = branch.y + f.offsetY;
+        return (
+          <g key={`fruit-${f.id}`} transform={`translate(${fx} ${fy})`}>
+            {f.type === "pomegranate" ? (
+              <path
+                d="M 0 0 C -2 -3 -4 -3 -4 0 C -4 3 -2 4 0 4 C 2 4 4 3 4 0 C 4 -3 2 -3 0 0 Z"
+                fill="rgb(200 30 30)"
+                stroke="rgb(140 20 20)"
+                strokeWidth={0.5}
+                opacity={0.9}
+                style={{ cursor: "pointer" }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onHarvest?.(f.id);
+                }} />
+            ) : (
+              <ellipse
+                cx={0} cy={0}
+                rx={3} ry={4}
+                fill="rgb(140 90 30)"
+                stroke="rgb(100 70 20)"
+                strokeWidth={0.5}
+                opacity={0.9}
+                style={{ cursor: "pointer" }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onHarvest?.(f.id);
+                }} />
+            )}
+            {/* Semillas visibles del granero */}
+            {f.type === "pomegranate" && (
+              <circle cx={-1} cy={1} r={0.7} fill="rgb(220 180 60)" opacity={0.8} />
+            )}
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+/* ══ ARQUITECTURA MENOR Y MAYOR ════════════════════════════════════════════ */
+function ArchitectureLayer({ elements, structures, dominantHue }: {
+  elements: ArchitecturalElement[];
+  structures: SacredStructure[];
+  dominantHue: number;
+}) {
+  return (
+    <g>
+      {elements.map((el, i) => {
+        const key = `arch-${i}`;
+        if (el.kind === "bench") {
+          return (
+            <g key={key} transform={`translate(${el.x} ${el.y})`}>
+              <path
+                d="M -18 0 L 18 0 L 16 6 L -16 6 Z"
+                fill={hsl(el.hue, 12, 42)}
+                stroke={hsl(el.hue, 12, 32)}
+                strokeWidth={0.8} />
+              <path
+                d="M -12 0 Q 0 -4 12 0"
+                fill="none"
+                stroke={hsl(el.hue, 12, 36)}
+                strokeWidth={1.5}
+                opacity={0.7} />
+            </g>
+          );
+        }
+        if (el.kind === "lectern") {
+          return (
+            <g key={key} transform={`translate(${el.x} ${el.y})`}>
+              <rect x={-2} y={-12} width={4} height={14} fill={hsl(el.hue, 24, 48)} />
+              <rect x={-8} y={-2} width={16} height={2} fill={hsl(el.hue, 24, 48)} rx={1} />
+              <path d="M 8 -12 L 16 -8 L 14 -4" stroke={hsl(el.hue, 24, 48)} strokeWidth={1} fill="none" />
+            </g>
+          );
+        }
+        if (el.kind === "fountain") {
+          return (
+            <g key={key} transform={`translate(${el.x} ${el.y})`}>
+              <ellipse cx={0} cy={0} rx={8} ry={4} fill="rgb(140 180 255 / 0.5)" />
+              <ellipse cx={0} cy={0} rx={8} ry={4} fill="url(#g-water)" />
+              <path
+                d="M 0 -3 L 0 -10"
+                stroke="rgb(130 205 255 / 0.6)"
+                strokeWidth={1}
+                strokeLinecap="round">
+                <animate
+                  attributeName="opacity"
+                  values="0.3;0.8;0.3"
+                  dur="2s"
+                  repeatCount="indefinite" />
+              </path>
+            </g>
+          );
+        }
+        return null;
+      })}
+
+      {structures.map((st, i) => {
+        const key = `sacred-${i}`;
+        if (st.kind === "chapel") {
+          return (
+            <g key={key} transform={`translate(${st.x} ${st.y})`}>
+              {/* Base de piedra */}
+              <rect x={-24} y={-4} width={48} height={36} fill={hsl(36, 8, 36)} rx={2} />
+              {/* Pared principal */}
+              <rect x={-20} y={-2} width={40} height={28} fill={hsl(36, 6, 44)} />
+              {/* Ventanas */}
+              <rect x={-14} y={6} width={6} height={10} fill="rgb(180 200 255 / 0.4)" />
+              <rect x={8} y={6} width={6} height={10} fill="rgb(180 200 255 / 0.4)" />
+              {/* Techo a dos aguas */}
+              <path d="M -22 -2 L 0 -16 L 22 -2 Z" fill={hsl(36, 8, 40)} />
+              {/* Ramillete de rosas en el umbral */}
+              {Array.from({ length: st.roseCount }, (_, j) => {
+                const a = (j / st.roseCount) * Math.PI * 2;
+                return (
+                  <circle
+                    key={j}
+                    cx={Math.cos(a) * 8}
+                    cy={Math.sin(a) * 6 + 22}
+                    r={1.4}
+                    fill={hsl(dominantHue, 80, 60)}
+                    opacity={0.8} />
+                );
+              })}
+              {/* Rayos de luz alrededor */}
+              {Array.from({ length: st.lightRays }, (_, j) => {
+                const a = (j / st.lightRays) * Math.PI * 2;
+                return (
+                  <line
+                    key={j}
+                    x1={0} y1={0}
+                    x2={Math.cos(a) * 36} y2={Math.sin(a) * 36}
+                    stroke={hsl(50, 90, 75)}
+                    strokeWidth={0.8}
+                    opacity={0.3} />
+                );
+              })}
+            </g>
+          );
+        }
+        if (st.kind === "sanctuary") {
+          return (
+            <g key={key} transform={`translate(${st.x} ${st.y})`}>
+              {/* Nave principal */}
+              <rect x={-40} y={-8} width={80} height={48} fill={hsl(36, 8, 32)} rx={2} />
+              {/* Torres */}
+              <rect x={-40} y={-36} width={8} height={28} fill={hsl(36, 8, 36)} />
+              <rect x={32} y={-36} width={8} height={28} fill={hsl(36, 8, 36)} />
+              {/* Cúpulas */}
+              <ellipse cx={-36} cy={-38} rx={6} ry={2.4} fill={hsl(50, 90, 70)} opacity={0.5} />
+              <ellipse cx={36} cy={-38} rx={6} ry={2.4} fill={hsl(50, 90, 70)} opacity={0.5} />
+              {/* Fachada con pórtico */}
+              <path d="M -20 -8 L 0 -20 L 20 -8" fill={hsl(36, 8, 36)} />
+              {/* Rosa misterial en el centro */}
+              <circle cx={0} cy={-18} r={4} fill={hsl(dominantHue, 80, 58)} />
+              {/* Rayos de luz del santuario */}
+              {Array.from({ length: st.lightRays }, (_, j) => {
+                const a = (j / st.lightRays) * Math.PI * 2;
+                const len = 38 + Math.sin(j) * 10;
+                return (
+                  <line
+                    key={j}
+                    x1={0} y1={0}
+                    x2={Math.cos(a) * len} y2={Math.sin(a) * len}
+                    stroke={hsl(50, 95, 75)}
+                    strokeWidth={1 + Math.sin(j) * 0.3}
+                    opacity={0.4} />
+                );
+              })}
+              {/* Campanas */}
+              <circle cx={0} cy={-6} r={3} fill={hsl(33, 80, 46)} />
+            </g>
+          );
+        }
+        return null;
+      })}
+    </g>
+  );
+}
+
+
 const SignatureBlock = memo(function SignatureBlock({
   sig, levelTitle, summary,
 }: { sig: GardenSignature; levelTitle: string; summary: string }) {
@@ -635,7 +869,7 @@ const SignatureBlock = memo(function SignatureBlock({
 });
 
 /* ══ COMPONENTE PRINCIPAL ═══════════════════════════════════════════════ */
-export function GardenSvg({ dna, state, justWatered = false, personal }: Props) {
+export function GardenSvg({ dna, state, justWatered = false, personal, onHarvestFruit }: Props) {
   /* Datos del usuario → parámetros geométricos */
   const pt: PersonalTraits = useMemo(
     () => (personal ? derivePersonalTraits(personal) : defaultPersonalTraits()),
@@ -757,16 +991,28 @@ export function GardenSvg({ dna, state, justWatered = false, personal }: Props) 
         ))}
 
         {/* Flores paramétricas */}
-        {model.flowers.map((pf: PlacedFlower, i) => (
-          <FlowerShape key={`fl-${i}`} f={pf.flower} x={pf.x} y={pf.y}
-            wind={wind} delay={pf.windDelay} mature={pf.tier === "mature"} />
-        ))}
+         {model.flowers.map((pf: PlacedFlower, i) => (
+           <FlowerShape key={`fl-${i}`} f={pf.flower} x={pf.x} y={pf.y}
+             wind={wind} delay={pf.windDelay} mature={pf.tier === "mature"} />
+         ))}
 
-        {model.marianArch && <MarianArchShape a={model.marianArch} />}
-        {model.shrine && <ShrineShape sh={model.shrine} />}
+         {model.marianArch && <MarianArchShape a={model.marianArch} />}
+         {model.shrine && <ShrineShape sh={model.shrine} />}
 
-        {/* Árbol fractal */}
-        <FractalTreeLayer tree={model.tree} trunkFill={model.treeTrunkFill} wind={wind} />
+         {/* Arquitectura (bancos, atriles, fuentes, capilla/santuario) */}
+         <ArchitectureLayer
+           elements={model.architecturalElements}
+           structures={model.sacredStructures}
+           dominantHue={pt.dominantHue} />
+
+         {/* Árbol fractal */}
+         <FractalTreeLayer tree={model.tree} trunkFill={model.treeTrunkFill} wind={wind} />
+
+         {/* Ramas de energía + hojas por racha + frutos cosechables */}
+         <LeafAndFruitLayer
+           branches={model.energyBranches}
+           fruits={model.harvestableFruits}
+           onHarvest={onHarvestFruit} />
 
         {/* Luces con latido */}
         {model.lights.map((l, i) => (

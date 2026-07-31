@@ -66,16 +66,42 @@ export function useSpiritualTasks(liturgy: DailyLiturgy | null) {
 
     const load = async () => {
       // RPC idempotente: crea las tareas base del día si aún no existen.
-      const dayOfWeek = new Date(`${today}T00:00:00`).getDay();
+      const dateObj = new Date(`${today}T00:00:00`);
+      const dayOfWeek = dateObj.getDay();
       const isSunday = dayOfWeek === 0;
-      const isFastingDay = dayOfWeek === 3 || dayOfWeek === 5; // Wed, Fri
-      await client.rpc("ensure_daily_spiritual_tasks", {
+      const isFastingDay = dayOfWeek === 3 || dayOfWeek === 5;
+      const dayOfMonth = dateObj.getDate();
+      const isLastDayOfMonth = dayOfMonth === new Date(dateObj.getFullYear(), dateObj.getMonth() + 1, 0).getDate();
+      let tasksError: unknown = null;
+      const sixParamPayload = {
         p_date: today,
         p_is_sunday: isSunday,
         p_is_solemnity: Boolean(liturgy?.isSolemnity),
         p_is_fasting_day: isFastingDay,
-        p_day_of_month: new Date(`${today}T00:00:00`).getDate(),
-      });
+        p_day_of_month: dayOfMonth,
+        p_is_last_day_of_month: isLastDayOfMonth,
+      };
+      const fiveParamPayload = {
+        p_date: today,
+        p_is_sunday: isSunday,
+        p_is_solemnity: Boolean(liturgy?.isSolemnity),
+        p_is_fasting_day: isFastingDay,
+        p_day_of_month: dayOfMonth,
+      };
+      try {
+        await client.rpc("ensure_daily_spiritual_tasks", sixParamPayload);
+      } catch (err) {
+        tasksError = err;
+        try {
+          await client.rpc("ensure_daily_spiritual_tasks", fiveParamPayload);
+          tasksError = null;
+        } catch (retryErr) {
+          tasksError = retryErr;
+        }
+      }
+      if (tasksError) {
+        console.warn("[camino] ensure_daily_spiritual_tasks:", tasksError instanceof Error ? tasksError.message : String(tasksError));
+      }
       try {
         await client.rpc("ensure_recurring_custom_tasks", { p_date: today });
       } catch (error) {

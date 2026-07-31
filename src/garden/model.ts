@@ -19,6 +19,8 @@ export const VIEW_H = 460;
 export const GROUND_CX = 360;
 export const GROUND_CY = 322;
 
+const DEG = Math.PI / 180;
+
 /* ══ TOPES ESTRICTOS ════════════════════════════════════════════════════ */
 export const CAPS = {
   flowers: 7,        // flores paramétricas devocionales
@@ -80,6 +82,42 @@ export interface ParticleModel { x: number; y: number; r: number; dur: number; d
 export interface DeerModel { x: number; y: number; scale: number; facing: 1 | -1; drinking: boolean; }
 export interface DewPoint { x: number; y: number; r: number; delay: number; }
 
+/** Rama principal adicional generada con energía devocional. */
+export interface EnergyBranch {
+  x: number; y: number;       // punto final
+  angle: number;              // grados
+  length: number;
+  clusterR: number;           // radio del cúmulo de hojas
+  clusterHue: number;
+}
+
+/** Fruto coseppable renderizado en el árbol. */
+export interface HarvestableFruitModel {
+  id: string;
+  type: "pomegranate" | "fig";
+  branchIndex: number;
+  offsetX: number;
+  offsetY: number;
+  scale: number;
+}
+
+/** Arquitectura menor: bancos, atriles, fuentes. */
+export type ArchitecturalElement = {
+  kind: "bench" | "lectern" | "fountain";
+  x: number; y: number;
+  scale: number;
+  hue: number;
+};
+
+/** Arquitectura mayor: capilla / santuario. */
+export type SacredStructure = {
+  kind: "chapel" | "sanctuary";
+  x: number; y: number;
+  scale: number;
+  roseCount: number;
+  lightRays: number;
+};
+
 export interface GardenModel {
   palette: { grassHue: number; accentHue: number };
   terrainLayers: TerrainLayer[];
@@ -106,6 +144,14 @@ export interface GardenModel {
   deer: DeerModel | null;
   dewPoints: DewPoint[];
   levelTitle: string;
+  /** Ramas extra generadas con energía devocional */
+  energyBranches: EnergyBranch[];
+  /** Frutos cosechables en el árbol */
+  harvestableFruits: HarvestableFruitModel[];
+  /** Elementos arquitectónicos menores (tier 3) */
+  architecturalElements: ArchitecturalElement[];
+  /** Estructuras sagradas (tier 4) */
+  sacredStructures: SacredStructure[];
 }
 
 const hsl = (h: number, s: number, l: number, a = 1) =>
@@ -186,17 +232,14 @@ function buildTree(t: DnaTraits, s: GardenState, pt: PersonalTraits, grassHue: n
     originY: GROUND_CY - 4,
     trunkLength: 52 * grow,
     trunkWidth: 11 * grow,
-    // Profundidad: DNA + actividad del usuario
     maxDepth: clamp(pt.treeDepth + (s.growthPhase >= 3 ? 1 : 0), 3, 7),
     branchesPerNode: cfg.branches,
     spreadAngle: cfg.spread,
     lengthDecay: cfg.decay,
     widthDecay: cfg.wDecay,
-    // Curvatura del tronco: día de registro del usuario
     trunkCurve: pt.trunkCurve,
     leafHue,
     foliage: clamp(pt.foliage * (0.6 + s.lifeRatio * 0.5), 0.2, 1),
-    // Cada 8 Rosarios florece una rosa en el árbol
     fruitCount: clamp(Math.floor(s.totalRosaries / 8), 0, 9),
     fruitHue: 348,
     chaos: cfg.chaos,
@@ -204,6 +247,112 @@ function buildTree(t: DnaTraits, s: GardenState, pt: PersonalTraits, grassHue: n
 
   const trunkFill = hsl(clamp(grassHue - 68, 8, 40), 22, 24 + s.lifeRatio * 7);
   return { tree, trunkFill };
+}
+
+/* ══ RAMAS DE ENERGÍA DEVOCIONAL ═══════════════════════════════════════ */
+/**
+ * Genera ramas principales adicionales basadas en la energía devocional:
+ * E = rosaries · 1.2 + novenas · 3 + coronillas · 1.5 + streak · 0.6 + waterings · 0.2
+ * B = floor(4 · ln(1 + E/50))
+ * Cada rama i (desde 1 hasta B):
+ *   seed = dna + ":branch:" + i
+ *   ángulo = (-1)^i · (30° + prng(seed) · 15°)
+ *   longitud = raíz base · (1 - i / (B + 2))  → rama i=1 es la más larga
+ */
+function buildEnergyBranches(t: DnaTraits, s: GardenState, tree: FractalTree): EnergyBranch[] {
+  const E = s.totalRosaries * 1.2 + s.totalNovenas * 3 + s.totalCoronillas * 1.5
+    + s.streak * 0.6 + s.totalWaterings * 0.2;
+  const B = Math.floor(4 * Math.log(1 + E / 50));
+  if (B <= 0) return [];
+
+  const trunkTopY = tree.crownY;
+  const trunkTopX = tree.crownX;
+  const clusterHue = (t.baseHue + 14) % 360;
+
+  return Array.from({ length: B }, (_, i) => {
+    const branchIdx = i + 1;
+    const seed = t.dna + ":branch:" + branchIdx;
+    const p = createPrng(seed);
+    const sign = branchIdx % 2 === 0 ? -1 : 1;
+    const angle = sign * (30 + p() * 15); // grados
+    const angleRad = angle * DEG;
+    const length = clamp(tree.totalHeight * 0.35 * (1 - branchIdx / (B + 2)), 18, 62);
+    const endX = trunkTopX + Math.cos(angleRad) * length;
+    const endY = trunkTopY + Math.sin(angleRad) * length * 0.34;
+    const R = 15 + Math.sqrt(s.streak * 10);
+
+    return {
+      x: endX,
+      y: endY,
+      angle,
+      length,
+      clusterR: clamp(R, 15, 60),
+      clusterHue,
+    };
+  });
+}
+
+/* ══ FRUTOS COSECHABLES EN EL ÁRBOL ═════════════════════════════════ */
+function buildTreeFruits(s: GardenState, branches: EnergyBranch[]): HarvestableFruitModel[] {
+  const fruitCount = Math.max(0, Math.floor(s.streak / 10) - s.totalHarvestedFruits);
+  const maxRender = Math.min(fruitCount, 7);
+  if (maxRender <= 0 || branches.length === 0) return [];
+
+  const out: HarvestableFruitModel[] = [];
+  for (let i = 0; i < maxRender; i++) {
+    const branchIdx = (i * 3) % branches.length;
+    const p = createPrng(`tree-fruit-${i}-${s.streak}`);
+    out.push({
+      id: `tree-fruit-${i}`,
+      type: i % 2 === 0 ? "pomegranate" : "fig",
+      branchIndex: branchIdx,
+      offsetX: (p() - 0.5) * 12,
+      offsetY: (p() - 0.5) * 8 - 4,
+      scale: clamp(0.8 + p() * 0.6, 0.7, 1.3),
+    });
+  }
+  return out;
+}
+
+/* ══ ELEMENTOS ARQUITECTÓNICOS POR TIER ═════════════════════════════ */
+function buildArchitecture(t: DnaTraits, s: GardenState, pt: PersonalTraits): {
+  elements: ArchitecturalElement[];
+  structures: SacredStructure[];
+} {
+  const elements: ArchitecturalElement[] = [];
+  const structures: SacredStructure[] = [];
+  const p = createPrng(t.dna + "::architecture");
+
+  if (s.condensationTier >= 3) {
+    if (s.totalPrayers >= 100) {
+      const benchX = GROUND_CX + (p() > 0.5 ? 1 : -1) * rnd(p, 120, 180);
+      const benchY = GROUND_CY + rnd(p, -4, 8);
+      elements.push({ kind: "bench", x: benchX, y: benchY, scale: rnd(p, 0.9, 1.2), hue: (t.baseHue + 20) % 360 });
+    }
+    if (s.totalPrayers >= 150) {
+      const lectX = GROUND_CX + (p() > 0.5 ? 1 : -1) * rnd(p, 100, 160);
+      const lectY = GROUND_CY - 12;
+      elements.push({ kind: "lectern", x: lectX, y: lectY, scale: rnd(p, 0.85, 1.15), hue: pt.dominantHue });
+    }
+    if (s.totalPrayers >= 200) {
+      const ftnX = pathAnchor(t).x + rnd(p, -20, 20);
+      const ftnY = pathAnchor(t).y + rnd(p, -8, 4);
+      elements.push({ kind: "fountain", x: ftnX, y: ftnY, scale: rnd(p, 0.8, 1.1), hue: (pt.dominantHue + 40) % 360 });
+    }
+  }
+
+  if (s.condensationTier >= 4) {
+    if (s.totalPrayers >= 500) {
+      const structX = GROUND_CX;
+      const structY = GROUND_CY - 40;
+      const kind = s.totalPrayers >= 1500 ? "sanctuary" : "chapel";
+      const roseCount = clamp(Math.floor(s.totalRosaries / 12), 6, 30);
+      const lightRays = clamp(Math.floor(s.totalCandles / 5), 4, 20);
+      structures.push({ kind, x: structX, y: structY, scale: clamp(0.8 + s.level * 0.05, 0.8, 2.5), roseCount, lightRays });
+    }
+  }
+
+  return { elements, structures };
 }
 
 /* ══ FLORES PARAMÉTRICAS CON TOPE Y CONSOLIDACIÓN ═══════════════════════ */
@@ -238,7 +387,6 @@ function buildFlowers(t: DnaTraits, s: GardenState, pt: PersonalTraits, bloomOpe
       flower: generateFlower({
         seed: `${t.dna}::${species}::${placed.length}`,
         species,
-        // Nº de pétalos del usuario; las consolidadas suman una capa Fibonacci
         petalCount: big ? Math.round(pt.petalCount * 1.6) : pt.petalCount,
         layers: big ? pt.petalLayers + 2 : pt.petalLayers,
         hue,
@@ -246,13 +394,22 @@ function buildFlowers(t: DnaTraits, s: GardenState, pt: PersonalTraits, bloomOpe
         stemLength: rnd(p, 16, 27) * (big ? 1.25 : 1) * pt.growthScale,
         lean: rnd(p, -12, 12),
         openness: bloomOpen,
-        // Girasoles y flores maduras muestran el corazón de Fibonacci
         seedCount: species === "sunflower" ? 120 : big ? 55 : 0,
       }),
     });
   };
 
-  /* Rosarios → especie dominante del usuario · tope 5 → "de Gracia" */
+  /* ── Condensación visual por tier de oraciones ───────────────────────── */
+  // En tiers altos, la flora individual se condensa en arbustos/estructuras.
+  // Reducimos la cantidad de flores individuales según el tier:
+  //   Tier 1 (1-20):    100% flores individuales (comportamiento actual)
+  //   Tier 2 (21-100):  50% flores individuales + rosal condensado
+  //   Tier 3 (101-500): 20% flores individuales
+  //   Tier 4 (500+):    10% flores individuales
+  const flowerRatio = [1, 0.5, 0.2, 0.1][s.condensationTier - 1];
+  const maxFlorales = Math.round(CAPS.flowers * flowerRatio);
+
+  /* Rosarios → especie dominante del usuario */
   const dom = pt.flowerSpecies;
   const roseUnits = Math.floor(s.totalRosaries / 4);
   if (roseUnits > 5) {
@@ -262,7 +419,7 @@ function buildFlowers(t: DnaTraits, s: GardenState, pt: PersonalTraits, bloomOpe
     for (let i = 0; i < roseUnits; i++) add(dom, pt.dominantHue, "simple");
   }
 
-  /* Novenas → lirios · tope 3 → "Lirio Dorado" */
+  /* Novenas → lirios */
   const lilyUnits = Math.floor(s.totalNovenas / 2);
   if (lilyUnits > 3) add("lily", 46, "mature", "Lirio Dorado");
   else for (let i = 0; i < lilyUnits; i++) add("lily", 46, "simple");
@@ -276,7 +433,7 @@ function buildFlowers(t: DnaTraits, s: GardenState, pt: PersonalTraits, bloomOpe
     add("iris", 268, "simple");
 
   /* Ambientales según la vitalidad */
-  const ambient = clamp(Math.round(s.lifeRatio * 3), 0, CAPS.flowers - placed.length);
+  const ambient = clamp(Math.round(s.lifeRatio * 3 * flowerRatio), 0, Math.max(0, maxFlorales - placed.length));
   for (let i = 0; i < ambient; i++)
     add(dom, (pt.dominantHue + i * 34) % 360, "simple");
 
@@ -568,6 +725,10 @@ export function generateGardenModel(
   const river = buildRiver(traits, state);
   const { placed: flowers, arch: marianArch } = buildFlowers(traits, state, personal, bloomOpen);
 
+  const energyBranches = buildEnergyBranches(traits, state, tree);
+  const harvestableFruits = buildTreeFruits(state, energyBranches);
+  const { elements: archElements, structures: sacredStructures } = buildArchitecture(traits, state, personal);
+
   return {
     palette: { grassHue, accentHue },
     terrainLayers: buildTerrain(traits, state, grassHue),
@@ -598,5 +759,9 @@ export function generateGardenModel(
     deer: buildDeer(traits, state, river),
     dewPoints: buildDew(traits, state),
     levelTitle: lv.title,
+    energyBranches,
+    harvestableFruits,
+    architecturalElements: archElements,
+    sacredStructures,
   };
 }

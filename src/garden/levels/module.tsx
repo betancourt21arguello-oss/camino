@@ -24,8 +24,8 @@ export function LevelModule({ dna, level, accentHue, lifeRatio }: Props) {
   const p = createPrng(dna + "::levelmodule::" + lv.level);
 
   // Coronas de nivel: pequeños destellos dorados que marcan el rango alcanzado
-  const crowns = Array.from({ length: Math.min(lv.level, 10) }, (_, i) => {
-    const a = (i / Math.max(1, Math.min(lv.level, 10))) * Math.PI * 2 + 0.4;
+  const crowns = Array.from({ length: lv.level }, (_, i) => {
+    const a = (i / Math.max(1, lv.level)) * Math.PI * 2 + 0.4;
     const g = gp(a, 236);
     return { ...g, delay: i * 0.18, r: 2 + (i % 3) * 0.6 };
   });

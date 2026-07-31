@@ -15,3 +15,6 @@ export const FRONTEND_URL = normalizeBase(import.meta.env.VITE_FRONTEND_URL);
 
 export const VAPID_PUBLIC_KEY =
   (import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined) ?? "";
+
+export const ONESIGNAL_APP_ID =
+  (import.meta.env.VITE_ONESIGNAL_APP_ID as string | undefined) ?? "";

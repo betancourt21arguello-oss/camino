@@ -2,8 +2,16 @@ import { useState, useEffect } from "react";
 import { useSpiritual } from "../fruits/store";
 import { useAuth } from "../auth/AuthProvider";
 import { WORKER_API_BASE } from "../config";
+import { supabase } from "../lib/supabase";
 import type { Candle } from "../fruits/types";
 import type { GardenEvent } from "../garden/types";
+
+interface JornadaReflection {
+  id: string;
+  reflection: string;
+  created_at: string;
+  user_id: string;
+}
 
 function hoursLeft(c: Candle) {
   const ms = new Date(c.expires_at).getTime() - Date.now();
@@ -82,18 +90,51 @@ function ReflectionCard({ event }: { event: GardenEvent }) {
 }
 
 function ReflexionesTab() {
-  const { gardenEvents } = useSpiritual();
-  const reflections = gardenEvents
-    .filter((e) => e.type === "REFLECTION_COMPLETED" || e.type === "SILENCE_TIME")
-    .slice(-20)
-    .reverse();
+  const [jornadaReflections, setJornadaReflections] = useState<JornadaReflection[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  if (reflections.length === 0) {
+  useEffect(() => {
+    const loadReflections = async () => {
+      if (!supabase) {
+        setLoading(false);
+        return;
+      }
+      try {
+        const { data, error } = await supabase
+          .from("jornada_reflections")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(20);
+
+        if (error) {
+          console.warn("[camino] Error loading jornada reflections:", error.message);
+        } else if (data) {
+          setJornadaReflections(data as JornadaReflection[]);
+        }
+      } catch (err) {
+        console.warn("[camino] Error loading jornada reflections:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadReflections();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <p className="text-sm text-[#9a9a9f]">Cargando reflexiones...</p>
+      </div>
+    );
+  }
+
+  if (jornadaReflections.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
         <div className="mb-4 text-5xl">🕯️</div>
         <p className="text-sm font-medium text-[#1c1c1e]">Tus reflexiones aparecerán aquí</p>
-        <p className="mt-1 text-xs text-[#9a9a9f]">Completa momentos de silencio en el Rosario</p>
+        <p className="mt-1 text-xs text-[#9a9a9f]">Completa tu jornada diaria para compartir</p>
       </div>
     );
   }
@@ -101,8 +142,22 @@ function ReflexionesTab() {
   return (
     <div className="space-y-3 px-6">
       <p className="text-xs font-semibold uppercase tracking-widest text-[#9a9a9f]">Reflexiones recientes</p>
-      {reflections.map((event) => (
-        <ReflectionCard key={event.id} event={event} />
+      {jornadaReflections.map((reflection) => (
+        <div key={reflection.id} className="flex items-start gap-3 rounded-2xl border border-[#e8e4db] bg-white p-4">
+          <span className="text-xl">🙏</span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm text-[#1c1c1e] line-clamp-3">"{reflection.reflection}"</p>
+            <p className="mt-1 text-[11px] text-[#9a9a9f]">
+              {new Date(reflection.created_at).toLocaleDateString("es-ES", {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </p>
+          </div>
+        </div>
       ))}
     </div>
   );

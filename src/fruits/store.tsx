@@ -1,3 +1,4 @@
+
 import {
   createContext, useContext, useEffect, useState, useCallback, useRef, useMemo,
 } from "react";
@@ -26,6 +27,7 @@ interface SpiritualCtx {
   prayForCandle: (id: string) => Promise<void>;
   waterGarden: (intention: string) => Promise<void>;
   bulkWaterGarden: (intention: string) => Promise<void>;
+  harvestFruit: (id: string) => Promise<void>;
   reload: () => Promise<void>;
 }
 
@@ -53,6 +55,7 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
   const [syncError, setSyncError] = useState<string | null>(null);
   const channelRef = useRef<any>(null);
   const waterTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Cargar balance.agua desde localStorage
   useEffect(() => {
     try {
@@ -89,7 +92,6 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
   const reload = useCallback(async () => {
     if (!user || !supabase) { setLoading(false); return; }
     try {
-      // Ensure fruits row exists for the user
       try {
         await supabase.rpc("ensure_fruits");
       } catch (e) {
@@ -115,8 +117,6 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
         setGardenEvents(
           (gardenRes.data as Array<Record<string, unknown>>).map((r) => {
             const rawType = (r.event_type ?? r.type) as string;
-            // Normalize: DB stores both spiritual event types (e.g. "rosary-complete")
-            // and garden event types (e.g. "ROSARY_COMPLETED"). Map to garden type.
             const EVENT_TYPE_MAP: Record<string, GardenEvent["type"]> = {
               "rosary-complete": "ROSARY_COMPLETED",
               "novena-complete": "NOVENA_COMPLETED",
@@ -133,6 +133,12 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
               "reflection-complete": "REFLECTION_COMPLETED",
               "seed-received": "SEED_RECEIVED",
               "water-received": "WATER_RECEIVED",
+              "laudes": "LAUDES",
+              "angelus": "ANGELUS",
+              "vespers": "VESPERS",
+              "compline": "COMPLINE",
+              "catechesis": "CATECHESIS",
+              "harvest-fruit": "HARVEST_FRUIT",
             };
             const gardenType = EVENT_TYPE_MAP[rawType] ?? (rawType as GardenEvent["type"]);
             return {
@@ -210,7 +216,6 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
     eventType: string,
     reward: RewardEntry,
   ): Promise<RewardEntry> => {
-    // Solo deduplicamos eventos que dan recompensa
     if (reward.vela === 0 && reward.semilla === 0 && reward.agua === 0) {
       return reward;
     }
@@ -220,10 +225,9 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
         .rpc("claim_daily_completion", { p_event_type: eventType });
       if (error) {
         console.warn("[camino] claim_daily_completion:", error.message);
-        return reward; // dar recompensa igual si falla la RPC
+        return reward;
       }
       if (isFirst === false) {
-        // Ya se completó hoy → no dar recompensa
         return { vela: 0, semilla: 0, agua: 0, note: reward.note };
       }
     } catch (err) {
@@ -319,14 +323,23 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
         const { data, error } = await supabase.rpc("water_garden", { p_intention: intention });
         if (error) {
           console.warn("[camino] water_garden error:", error.message, "code:", error.code);
+          if (error.code === "23505") {
+            console.warn("[camino] water_garden: duplicate entry detected");
+          }
           setBalance((p) => ({ ...p, agua: p.agua + 1 }));
           void reload();
         } else {
           console.log("[camino] water_garden success, data:", data);
+          if (data === null) {
+            console.warn("[camino] water_garden returned null data");
+          }
           void reload();
         }
       } catch (e) {
         console.warn("[camino] water_garden exception:", e instanceof Error ? e.message : String(e));
+        if (e instanceof Error && e.message.includes("timeout")) {
+          console.warn("[camino] water_garden: timeout detected");
+        }
         setBalance((p) => ({ ...p, agua: p.agua + 1 }));
         void reload();
       }
@@ -345,16 +358,47 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
       });
       if (error) {
         console.warn("[camino] bulk_water_garden:", error.message);
+        if (error.code === "23505") {
+          console.warn("[camino] bulk_water_garden: duplicate entry detected");
+        }
         setBalance((p) => ({ ...p, agua: amount }));
         void reload();
       }
     }
   }, [balance.agua, user, pushLocalEvent, flagWatered, reload]);
 
+  /* ── Cosecha de frutos cosechables ─────────────────────────────────── */
+  const harvestFruit = useCallback(async (id: string) => {
+    const fruit = gardenState.harvestableFruits.find((f) => f.id === id);
+    if (!fruit) return;
+    const localId = `local-harvest-${id}-${Date.now()}`;
+    setGardenEvents((prev) => [
+      ...prev,
+      { id: localId, type: "HARVEST_FRUIT", value: 1, created_at: new Date().toISOString() },
+    ]);
+    setBalance((prev) => ({ ...prev, semilla: prev.semilla + 5, agua: prev.agua + 3 }));
+    if (user && supabase) {
+      const { error } = await supabase.rpc("emit_spiritual_event", {
+        p_event_type: "harvest-fruit",
+        p_value: 1,
+        p_intention: null,
+        p_vela: 0,
+        p_semilla: 5,
+        p_agua: 3,
+        p_note: `Fruto cosechado: ${fruit.type}`,
+      });
+      if (error) {
+        console.warn("[camino] harvest fruit:", error.message);
+        setGardenEvents((prev) => prev.filter((e) => e.id !== localId));
+        setBalance((prev) => ({ ...prev, semilla: prev.semilla - 5, agua: prev.agua - 3 }));
+      }
+    }
+  }, [gardenState, user, supabase]);
+
   const value: SpiritualCtx = {
     balance, candles, history, gardenEvents, activeIntentions,
     gardenState, justWatered, loading, syncError,
-    emit, lightCandle, prayForCandle, waterGarden, bulkWaterGarden, reload,
+    emit, lightCandle, prayForCandle, waterGarden, bulkWaterGarden, harvestFruit, reload,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

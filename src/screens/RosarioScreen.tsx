@@ -7,6 +7,7 @@ import { LiveSession } from "./rosario/LiveSession";
 import { IntentionPrompt } from "./rosario/IntentionPrompt";
 import { useSpiritual } from "../fruits/store";
 import { useActiveRooms, type ActiveRoom } from "../rosary/useActiveRooms";
+import { supabase } from "../lib/supabase";
 
 type Props = {
   onOpenGallery?: () => void;
@@ -80,7 +81,38 @@ export function RosarioScreen({ onOpenGallery, onActiveChange, onOpenHour, initi
     setPendingStart(null);
   };
 
-  const requestStart = (kind: "community" | "solo" | "join") => {
+  const requestStart = async (kind: "community" | "solo" | "join") => {
+    if (kind === "community") {
+      // Send notification to all users that a community prayer is starting
+      try {
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        const functionUrl = `${supabaseUrl}/functions/v1/send-push`;
+        const token = supabase
+          ? (await supabase.auth.getSession()).data.session?.access_token
+          : undefined;
+        
+        const devotionName = selectedDevotionId === "divina-misericordia" 
+          ? "Coronilla de la Divina Misericordia" 
+          : selectedDevotionId.startsWith("rosario-") 
+            ? "Santo Rosario" 
+            : "Oración";
+        
+        await fetch(functionUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            title: `📿 Oración comunitaria: ${devotionName}`,
+            message: `Alguien ha iniciado ${devotionName}. ¡Únete a la oración!`,
+            url: window.location.origin,
+          }),
+        });
+      } catch (e) {
+        console.warn("Could not send community notification:", e);
+      }
+    }
     if (activeIntentions.length > 0) run(kind);
     else setPendingStart(kind);
   };

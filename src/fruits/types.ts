@@ -13,7 +13,13 @@ export type SpiritualEventType =
   | "reflection-finish"
   | "reflection-complete"
   | "seed-received"
-  | "water-received";
+  | "water-received"
+  | "laudes"
+  | "angelus"
+  | "vespers"
+  | "compline"
+  | "catechesis"
+  | "harvest-fruit";
 
 export interface SpiritualEvent {
   type: SpiritualEventType;

@@ -74,7 +74,13 @@ export type GardenEventType =
   | "WATER_RECEIVED"
   | "CANDLE_LIT"
   | "PRAY_FOR_OTHER"
-  | "REFLECTION_COMPLETED";
+  | "REFLECTION_COMPLETED"
+  | "LAUDES"
+  | "ANGELUS"
+  | "VESPERS"
+  | "COMPLINE"
+  | "CATECHESIS"
+  | "HARVEST_FRUIT";
 
 export interface GardenEvent {
   id: string;
@@ -95,7 +101,7 @@ export interface GardenState {
   lightLevel: number;      // 0–100
   health: number;          // 0–100
   pointsScore: number;
-  level: number;           // 1–10
+  level: number;           // sin tope superior
   maturityTier: MaturityTier;
   growthPhase: GrowthPhase;
   wateringEffectStrength: number;
@@ -122,6 +128,16 @@ export interface GardenState {
   freshWaterRatio: number;
   lastWateredAt: number | null;
   milestones: Milestone[];
+  /** Total de oraciones principales para condensación visual. */
+  totalPrayers: number;
+  /** Hojas extra aportadas por la racha (1 por día de racha). */
+  streakLeaves: number;
+  /** Frutos cosechables generados por la racha (1 cada 10 hojas). */
+  harvestableFruits: HarvestableFruit[];
+  /** Total de frutos cosechados históricamente. */
+  totalHarvestedFruits: number;
+  /** Tier de condensación visual basado en totalPrayers. */
+  condensationTier: 1 | 2 | 3 | 4;
 }
 
 export interface Milestone {
@@ -129,6 +145,15 @@ export interface Milestone {
   label: string;
   detail: string;
   at: number;
+}
+
+export interface HarvestableFruit {
+  id: string;
+  type: "pomegranate" | "fig";
+  x: number;
+  y: number;
+  scale: number;
+  ripe: boolean;
 }
 
 /* ── Firma (placa de piedra) ────────────────────────────────────────────── */

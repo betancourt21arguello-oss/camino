@@ -1,6 +1,6 @@
 import type { LevelConfig } from "./types";
 
-/** Tabla estática de bonos por nivel (1–10). Los bonos son incrementales. */
+/** Tabla base de bonos por nivel (1–10). Para niveles >10 se repite el último. */
 export const LEVEL_REGISTRY: readonly LevelConfig[] = [
   { level: 1,  title: "Tierra preparada", flowers: 2, lights: 0, plants: 3, rocks: 2, particles: 0,  butterflies: 0, lightRays: 0 },
   { level: 2,  title: "Primeros brotes",  flowers: 3, lights: 1, plants: 3, rocks: 1, particles: 2,  butterflies: 1, lightRays: 0 },

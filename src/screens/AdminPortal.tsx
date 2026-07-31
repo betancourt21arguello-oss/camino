@@ -9,7 +9,7 @@ import type { DnaTraits, GardenState } from "../garden/types";
 import { caracasDate } from "../utils/caracas";
 
 export function AdminPortal({ onClose }: { onClose: () => void }) {
-  const [tab, setTab] = useState<"garden" | "gemini" | "upload" | "telegram" | "tasks" | "images" | "oraciones">("gemini");
+  const [tab, setTab] = useState<"garden" | "gemini" | "upload" | "telegram" | "tasks" | "images" | "oraciones" | "notificaciones">("gemini");
 
   return (
     <div className="absolute inset-0 z-[70] flex flex-col bg-[#0e0e10] text-white">
@@ -20,7 +20,7 @@ export function AdminPortal({ onClose }: { onClose: () => void }) {
       </header>
 
       <nav className="flex shrink-0 gap-1 px-3 pt-3">
-        {(["gemini", "upload", "tasks", "garden", "telegram", "images", "oraciones"] as const).map((t) => (
+        {(["gemini", "upload", "tasks", "garden", "telegram", "images", "oraciones", "notificaciones"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -28,7 +28,7 @@ export function AdminPortal({ onClose }: { onClose: () => void }) {
               tab === t ? "bg-[var(--gold)] text-black" : "bg-white/[0.06] text-white/60"
             }`}
           >
-            {t === "gemini" ? "Gemini" : t === "upload" ? "Subir audio" : t === "tasks" ? "Tareas" : t === "garden" ? "Jardín" : t === "telegram" ? "Telegram" : t === "images" ? "Imágenes" : "Oraciones"}
+            {t === "gemini" ? "Gemini" : t === "upload" ? "Subir audio" : t === "tasks" ? "Tareas" : t === "garden" ? "Jardín" : t === "telegram" ? "Telegram" : t === "images" ? "Imágenes" : t === "oraciones" ? "Oraciones" : "Notifs"}
           </button>
         ))}
       </nav>
@@ -41,6 +41,7 @@ export function AdminPortal({ onClose }: { onClose: () => void }) {
         {tab === "telegram" && <TelegramPanel />}
         {tab === "images" && <ImagePanel />}
         {tab === "oraciones" && <OracionesPanel />}
+        {tab === "notificaciones" && <NotificacionesPanel />}
       </div>
     </div>
   );
@@ -1131,12 +1132,11 @@ function GardenEditor() {
                       <input
                         type="number"
                         value={gardenState.level ?? 0}
-                        onChange={(e) => handleStateChange("level", clampNumber(Number(e.target.value), 1, 10))}
+                        onChange={(e) => handleStateChange("level", clampNumber(Number(e.target.value), 1, 9999))}
                         min="1"
-                        max="10"
                         className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
                       />
-                      <span className="text-[10px] text-white/30">1-10</span>
+                      <span className="text-[10px] text-white/30">1+</span>
                     </div>
                     
                     <div className="space-y-2">
@@ -1571,6 +1571,203 @@ function ImagePanel() {
           {busy ? "Guardando…" : "Guardar imágenes"}
         </button>
       )}
+
+      {result && <p className="text-sm">{result}</p>}
+    </div>
+  );
+}
+
+function NotificacionesPanel() {
+  const [target, setTarget] = useState<"all" | "user">("all");
+  const [userId, setUserId] = useState("");
+  const [query, setQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<{ id: string; email: string; full_name?: string }[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [title, setTitle] = useState("");
+  const [message, setMessage] = useState("");
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState("");
+
+  // Search users for targeting
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      const q = query.trim().toLowerCase();
+      if (q.length < 2) {
+        setSearchResults([]);
+        setSearching(false);
+        return;
+      }
+      setSearching(true);
+      try {
+        const res = await fetch(`${WORKER_API_BASE}/admin/users/search?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        setSearchResults(data.results || []);
+      } catch {
+        setSearchResults([]);
+      }
+      setSearching(false);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const sendNotification = async () => {
+    if (!title.trim() || !message.trim()) return;
+    setBusy(true);
+    setResult("");
+
+    try {
+      // Get the Supabase Edge Function URL
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const functionUrl = `${supabaseUrl}/functions/v1/send-push`;
+
+      const body: Record<string, any> = {
+        title: title.trim(),
+        message: message.trim(),
+      };
+      if (target === "user" && userId) {
+        body.targetUserId = userId;
+      }
+      if (url.trim()) {
+        body.url = url.trim();
+      }
+
+      // Get the session token for authorization
+      const token = supabase
+        ? (await supabase.auth.getSession()).data.session?.access_token
+        : undefined;
+
+      const res = await fetch(functionUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(body),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setResult(`✅ Notificación enviada: ${data.id || "OK"}`);
+        setTitle("");
+        setMessage("");
+        setUrl("");
+      } else {
+        setResult(`❌ Error: ${data.error || res.status}`);
+      }
+    } catch (e) {
+      setResult(`❌ ${e instanceof Error ? e.message : "Error de red"}`);
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div className="space-y-4">
+      <h2 className="text-lg font-semibold">Enviar notificación push</h2>
+      <p className="text-sm text-white/60">
+        Envía una notificación a todos los usuarios suscritos o a un usuario específico.
+      </p>
+
+      <div className="space-y-2">
+        <label className="text-xs font-medium uppercase tracking-wider text-white/50">Destinatario</label>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setTarget("all")}
+            className={`flex-1 rounded-xl border py-2.5 text-sm capitalize transition ${
+              target === "all" ? "border-[var(--gold)] bg-[var(--gold)]/10 text-[var(--gold)]" : "border-white/10 text-white/70"
+            }`}
+          >
+            Todos los usuarios
+          </button>
+          <button
+            onClick={() => setTarget("user")}
+            className={`flex-1 rounded-xl border py-2.5 text-sm capitalize transition ${
+              target === "user" ? "border-[var(--gold)] bg-[var(--gold)]/10 text-[var(--gold)]" : "border-white/10 text-white/70"
+            }`}
+          >
+            Usuario específico
+          </button>
+        </div>
+
+        {target === "user" && (
+          <div className="space-y-2">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Buscar por email o nombre…"
+              className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/30"
+            />
+            {searching && <p className="text-xs text-white/40">Buscando…</p>}
+            {!searching && searchResults.length > 0 && (
+              <div className="max-h-40 space-y-1 overflow-y-auto rounded-xl border border-white/10 bg-white/[0.04]">
+                {searchResults.map((u) => (
+                  <button
+                    key={u.id}
+                    onClick={() => {
+                      setUserId(u.id);
+                      setQuery("");
+                      setSearchResults([]);
+                    }}
+                    className={`flex w-full flex-col gap-0.5 rounded-lg px-3 py-2 text-left transition ${
+                      userId === u.id ? "bg-[var(--gold)]/20" : "hover:bg-white/10"
+                    }`}
+                  >
+                    <span className="text-sm font-medium text-white">{u.full_name || u.email}</span>
+                    <span className="text-[10px] text-white/50">{u.email}</span>
+                    <span className="text-[10px] text-white/30 font-mono">{u.id}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {userId && (
+              <div className="flex items-center gap-2 rounded-xl border border-[var(--gold)]/40 bg-[var(--gold)]/10 px-3 py-2">
+                <span className="text-xs text-[var(--gold)]">Seleccionado:</span>
+                <span className="flex-1 truncate text-sm text-white">ID: {userId.slice(0, 12)}...</span>
+                <button onClick={() => setUserId("")} className="text-xs text-white/60 hover:text-white">Cambiar</button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-xs font-medium uppercase tracking-wider text-white/50">Título</label>
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Ej: ¡Coronilla de la Divina Misericordia!"
+          className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/30"
+        />
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-xs font-medium uppercase tracking-wider text-white/50">Mensaje</label>
+        <textarea
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          placeholder="Ej: Es la hora de la Misericordia (3:00 PM). Reza la Coronilla."
+          rows={3}
+          className="w-full resize-none rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-white/30"
+        />
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-xs font-medium uppercase tracking-wider text-white/50">URL (opcional — al hacer clic)</label>
+        <input
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="https://tudominio.com/coronilla"
+          className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/30"
+        />
+      </div>
+
+      <button
+        onClick={sendNotification}
+        disabled={busy || !title.trim() || !message.trim() || (target === "user" && !userId)}
+        className="h-12 w-full rounded-2xl bg-[var(--gold)] font-medium text-black disabled:opacity-50"
+      >
+        {busy ? "Enviando…" : "Enviar notificación"}
+      </button>
 
       {result && <p className="text-sm">{result}</p>}
     </div>
