@@ -1,0 +1,43 @@
+{
+  "name": "Camino — Rosario Comunitario",
+  "short_name": "Camino",
+  "start_url": "https://camino-6vx.pages.dev/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "orientation": "portrait",
+  "prefer_related_applications": true,
+  "related_applications": [
+    {
+      "platform": "webapp",
+      "url": "https://camino-6vx.pages.dev/"
+    }
+  ],
+  "categories": ["religion", "spirituality", "lifestyle"],
+  "description": "Rosario comunitario en vivo y oraciones diarias",
+  "lang": "es",
+  "dir": "ltr",
+  "display_override": ["standalone", "browser"],
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  },
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
