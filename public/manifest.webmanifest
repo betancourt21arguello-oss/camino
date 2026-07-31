@@ -2,9 +2,19 @@
   "name": "Camino — Rosario Comunitario",
   "short_name": "Camino",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#ffffff",
+  "orientation": "portrait",
+  "categories": ["religion", "spirituality", "lifestyle"],
+  "description": "Rosario comunitario en vivo y oraciones diarias",
+  "lang": "es",
+  "dir": "ltr",
+  "display_override": ["standalone", "browser"],
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  },
   "icons": [
     {
       "src": "/icons/icon-192.png",

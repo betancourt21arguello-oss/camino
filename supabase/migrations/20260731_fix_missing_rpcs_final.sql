@@ -1,7 +1,65 @@
 -- ============================================================
---  Consolidated fix: Missing RPC functions for spiritual tasks
---  Run this in Supabase SQL Editor if migrations haven't been applied
+--  Consolidated fix: Missing spiritual_tasks table & RPC functions
+--  Run this in Supabase SQL Editor: https://supabase.com/dashboard/project/asfqkirsogozshlzcfpe/editor
 -- ============================================================
+
+-- 0. Create spiritual_tasks table if it doesn't exist
+create table if not exists public.spiritual_tasks (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid not null references auth.users(id) on delete cascade,
+  title text not null,
+  category text not null,
+  cadence text not null,
+  time text,
+  task_date text not null,
+  days integer[],
+  required boolean not null default false,
+  done boolean not null default false,
+  completed_at timestamptz,
+  created_at timestamptz default now()
+);
+
+alter table public.spiritual_tasks enable row level security;
+
+-- Add unique constraint if it doesn't exist
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'spiritual_tasks_profile_id_task_date_category_key'
+  ) then
+    alter table public.spiritual_tasks
+      add constraint spiritual_tasks_profile_id_task_date_category_key
+      unique (profile_id, task_date, category);
+  end if;
+end;
+$$;
+
+-- RLS policies for spiritual_tasks
+drop policy if exists "Users can view own spiritual tasks" on public.spiritual_tasks;
+create policy "Users can view own spiritual tasks"
+  on public.spiritual_tasks for select
+  to authenticated
+  using (profile_id = auth.uid());
+
+drop policy if exists "Users can insert own spiritual tasks" on public.spiritual_tasks;
+create policy "Users can insert own spiritual tasks"
+  on public.spiritual_tasks for insert
+  to authenticated
+  with check (profile_id = auth.uid());
+
+drop policy if exists "Users can update own spiritual tasks" on public.spiritual_tasks;
+create policy "Users can update own spiritual tasks"
+  on public.spiritual_tasks for update
+  to authenticated
+  using (profile_id = auth.uid());
+
+drop policy if exists "Service role can manage spiritual tasks" on public.spiritual_tasks;
+create policy "Service role can manage spiritual tasks"
+  on public.spiritual_tasks for all
+  to service_role
+  using (true)
+  with check (true);
 
 -- 1. ensure_daily_spiritual_tasks (6-parameter version with p_is_last_day_of_month)
 create or replace function public.ensure_daily_spiritual_tasks(

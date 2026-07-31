@@ -115,7 +115,7 @@ function GeminiPanel() {
   return (
     <div className="space-y-4">
       <h2 className="text-lg font-semibold">Push manual de Gemini API</h2>
-      <p className="text-sm text-white/60">Genera o edita el contenido litúrgico para una fecha específica.</p>
+      <p className="text-sm text-white/60">Prueba.</p>
 
       <div className="flex gap-2">
         <input
@@ -548,8 +548,8 @@ function GardenEditor() {
   };
 
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<{ id: string; email: string; full_name: string | null; name: string | null }[]>([]);
-  const [selectedUser, setSelectedUser] = useState<{ id: string; email: string; full_name: string | null; name: string | null } | null>(null);
+  const [searchResults, setSearchResults] = useState<{ id: string; email: string; full_name: string | null }[]>([]);
+  const [selectedUser, setSelectedUser] = useState<{ id: string; email: string; full_name: string | null } | null>(null);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [loadingGarden, setLoadingGarden] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -560,48 +560,35 @@ function GardenEditor() {
   const [gardenState, setGardenState] = useState<Partial<GardenState> | null>(null);
   const [personalInput, setPersonalInput] = useState<PersonalInput | null>(null);
   const [personalTraits, setPersonalTraits] = useState<PersonalTraits | null>(null);
+  const [fruitsBalance, setFruitsBalance] = useState<{ vela: number; semilla: number; agua: number } | null>(null);
 
-  // Fetch all users
+  // Fetch all users via worker
   const fetchUsers = async () => {
-    if (!supabase) return;
     setLoadingUsers(true);
     try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, email, full_name, name")
-        .order("email")
-        .limit(100);
-      if (!error && data) {
-        setSearchResults(data);
-      }
+      const res = await fetch(`${WORKER_API_BASE}/admin/users/search?q=&limit=100`);
+      const data = await res.json();
+      setSearchResults(data.results || []);
     } catch (e) {
       setResult(`❌ Error al cargar usuarios: ${e instanceof Error ? e.message : "Error"}`);
     }
     setLoadingUsers(false);
   };
 
-  // Search users
+  // Search users via worker
   useEffect(() => {
     const timer = setTimeout(async () => {
-      if (searchQuery.trim().length > 0 && searchQuery.trim().length < 2) return;
-      if (!supabase) return;
-      
-      if (searchQuery.trim() === "") {
-        fetchUsers();
+      const q = searchQuery.trim();
+      if (q.length > 0 && q.length < 2) {
+        setSearchResults([]);
+        setLoadingUsers(false);
         return;
       }
-      
       setLoadingUsers(true);
       try {
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("id, email, full_name, name")
-          .or(`(email.ilike.%${searchQuery}%),(full_name.ilike.%${searchQuery}%),(name.ilike.%${searchQuery}%)`)
-          .order("email")
-          .limit(50);
-        if (!error && data) {
-          setSearchResults(data);
-        }
+        const res = await fetch(`${WORKER_API_BASE}/admin/users/search?q=${encodeURIComponent(q)}&limit=50`);
+        const data = await res.json();
+        setSearchResults(data.results || []);
       } catch (e) {
         setResult(`❌ Error al buscar: ${e instanceof Error ? e.message : "Error"}`);
       }
@@ -609,6 +596,11 @@ function GardenEditor() {
     }, 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  // Load all users on mount
+  useEffect(() => {
+    fetchUsers();
+  }, []);
 
   // Load garden data for selected user
   const loadGardenData = async () => {
@@ -648,7 +640,7 @@ function GardenEditor() {
       // Get profile data for personal input
       const { data: profile } = await supabase
         .from("profiles")
-        .select("name, registered_at, points, last_seen_at")
+        .select("full_name, registered_at, points, last_seen_at")
         .eq("id", selectedUser.id)
         .single();
 
@@ -660,17 +652,24 @@ function GardenEditor() {
         .single();
 
       if (profile) {
-        const fruitsData = fruits as { semilla?: number; vela?: number; agua?: number } | null;
         const personalInputData: PersonalInput = {
-          name: profile.name || selectedUser.full_name || selectedUser.email || "",
+          name: profile.full_name || selectedUser.full_name || selectedUser.email || "",
           registeredAt: new Date(profile.registered_at || selectedUser.id.slice(0, 10)),
-          points: fruitsData?.semilla || profile.points || 0,
+          points: profile.points || 0,
           lastSeenAt: profile.last_seen_at ? new Date(profile.last_seen_at) : new Date(),
         };
         setPersonalInput(personalInputData);
         
         const personalTraitsData = derivePersonalTraits(personalInputData);
         setPersonalTraits(personalTraitsData);
+      }
+
+      if (fruits) {
+        setFruitsBalance({
+          vela: fruits.vela || 0,
+          semilla: fruits.semilla || 0,
+          agua: fruits.agua || 0,
+        });
       }
     } catch (e) {
       setResult(`❌ Error al cargar datos del jardín: ${e instanceof Error ? e.message : "Error"}`);
@@ -702,6 +701,10 @@ function GardenEditor() {
     setPersonalInput((prev: PersonalInput | null) => prev ? { ...prev, [field]: value } : null);
   };
 
+  const handleFruitsBalanceChange = (field: string, value: number) => {
+    setFruitsBalance((prev: { vela: number; semilla: number; agua: number } | null) => prev ? { ...prev, [field]: Math.max(0, value) } : null);
+  };
+
   // Save original state when data is loaded
   useEffect(() => {
     if (gardenState) {
@@ -729,7 +732,7 @@ function GardenEditor() {
         const profileUpdates: any = {};
         
         if (personalInput.name !== originalPersonalInput.name) {
-          profileUpdates.name = personalInput.name;
+          profileUpdates.full_name = personalInput.name;
         }
         
         if (personalInput.points !== originalPersonalInput.points) {
@@ -761,17 +764,15 @@ function GardenEditor() {
         }
       }
 
-      // 2. Update fruits (vela, semilla, agua) based on personalInput.points
-      // Fruits affect the garden state calculation
-      if (personalInput && personalInput.points !== originalPersonalInput?.points) {
-        // Update fruits - assuming points come from semilla (seeds)
+      // 2. Update fruits (vela, semilla, agua) directly
+      if (fruitsBalance) {
         const { error: fruitsError } = await supabase
           .from("fruits")
           .upsert({
             profile_id: selectedUser.id,
-            semilla: personalInput.points,
-            vela: 0,
-            agua: 0,
+            semilla: fruitsBalance.semilla,
+            vela: fruitsBalance.vela,
+            agua: fruitsBalance.agua,
             updated_at: new Date().toISOString(),
           })
           .select();
@@ -783,46 +784,45 @@ function GardenEditor() {
         }
       }
 
-      // 3. Insert compensatory events for garden state changes
+      // 3. Adjust garden event counts
       if (gardenState && originalGardenState) {
-        // Insert events for changed values
-        const eventMap: Record<string, { type: string; valueField?: string }> = {
-          totalRosaries: { type: "ROSARY_COMPLETED", valueField: "value" },
-          totalNovenas: { type: "NOVENA_COMPLETED", valueField: "value" },
-          totalCoronillas: { type: "CORONILLA_COMPLETED", valueField: "value" },
-          totalWaterings: { type: "WATER_GARDEN", valueField: "value" },
-          totalCandles: { type: "CANDLE_LIT", valueField: "value" },
-          totalSilence: { type: "SILENCE_TIME", valueField: "value" },
-          streak: { type: "STREAK_MAINTAINED", valueField: "value" },
+        const eventMap: Record<string, string> = {
+          totalRosaries: "ROSARY_COMPLETED",
+          totalNovenas: "NOVENA_COMPLETED",
+          totalCoronillas: "CORONILLA_COMPLETED",
+          totalWaterings: "WATER_GARDEN",
+          totalCandles: "CANDLE_LIT",
+          totalSilence: "SILENCE_TIME",
+          streak: "STREAK_MAINTAINED",
         };
 
-        // Check each field that can be adjusted with events
-        for (const [field, config] of Object.entries(eventMap)) {
-          const currentValue = (gardenState as any)[field] || 0;
-          const originalValue = (originalGardenState as any)[field] || 0;
-          
-          if (currentValue > originalValue) {
-            const diff = currentValue - originalValue;
-            if (diff > 0) {
-              // Insert compensatory events
-              const { error: eventError } = await supabase.rpc("admin_insert_compensatory_event", {
-                p_target_user_id: selectedUser.id,
-                p_event_type: config.type,
-                p_value: diff,
-                p_intention: `Ajuste manual por admin - ${field}`,
-                p_created_at: new Date().toISOString(),
-              });
-              
-              if (eventError) {
-                results.push(`❌ Error al insertar evento ${config.type}: ${eventError.message}`);
+        for (const [field, eventType] of Object.entries(eventMap)) {
+          const currentValue = (gardenState as any)[field] ?? 0;
+          const originalValue = (originalGardenState as any)[field] ?? 0;
+
+          if (currentValue !== originalValue) {
+            const { error: adjustError } = await supabase.rpc("admin_adjust_garden_counts", {
+              p_target_user_id: selectedUser.id,
+              p_event_type: eventType,
+              p_target_count: currentValue,
+            });
+
+            if (adjustError) {
+              results.push(`❌ Error al ajustar ${field}: ${adjustError.message}`);
+            } else {
+              const diff = currentValue - originalValue;
+              if (diff > 0) {
+                results.push(`✅ +${diff} ${field}`);
+              } else if (diff < 0) {
+                results.push(`✅ ${diff} ${field}`);
               } else {
-                results.push(`✅ ${diff} eventos ${config.type} insertados`);
+                results.push(`✅ ${field} sin cambios`);
               }
             }
           }
         }
 
-        // For waterLevel and lightLevel, we can insert WATER_GARDEN events
+        // For waterLevel increases, insert WATER_GARDEN events to boost it
         if ((gardenState.waterLevel || 0) > (originalGardenState.waterLevel || 0)) {
           const waterDiff = Math.ceil(((gardenState.waterLevel || 0) - (originalGardenState.waterLevel || 0)) / 22);
           if (waterDiff > 0) {
@@ -924,7 +924,7 @@ function GardenEditor() {
                   selectedUser?.id === u.id ? "bg-[var(--gold)]/20" : "hover:bg-white/10"
                 }`}
               >
-                <span className="text-sm font-medium text-white">{u.full_name || u.name || u.email}</span>
+                <span className="text-sm font-medium text-white">{u.full_name || u.email}</span>
                 <span className="text-[10px] text-white/50">{u.email}</span>
                 <span className="text-[10px] text-white/30 font-mono">{u.id.slice(0, 24)}...</span>
               </button>
@@ -935,7 +935,7 @@ function GardenEditor() {
         {selectedUser && (
           <div className="flex items-center gap-2 rounded-xl border border-[var(--gold)]/40 bg-[var(--gold)]/10 px-3 py-2">
             <span className="text-xs text-[var(--gold)]">Seleccionado:</span>
-            <span className="flex-1 truncate text-sm text-white">{selectedUser.full_name || selectedUser.name || selectedUser.email}</span>
+            <span className="flex-1 truncate text-sm text-white">{selectedUser.full_name || selectedUser.email}</span>
             <span className="max-w-[120px] truncate text-[10px] text-white/40 font-mono">{selectedUser.id.slice(0, 8)}...</span>
             <button onClick={() => setSelectedUser(null)} className="text-xs text-white/60 hover:text-white">Cambiar</button>
           </div>
@@ -1303,6 +1303,46 @@ function GardenEditor() {
                         onChange={(e) => handleStateChange("activeCandles", clampNumber(Number(e.target.value), 0, 5))}
                         min="0"
                         max="5"
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {fruitsBalance && (
+                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 space-y-4">
+                  <h3 className="text-sm font-semibold text-white">Frutas / Recursos (Editable)</h3>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Agua</label>
+                      <input
+                        type="number"
+                        value={fruitsBalance.agua}
+                        onChange={(e) => handleFruitsBalanceChange("agua", Math.max(0, Number(e.target.value)))}
+                        min="0"
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Semillas</label>
+                      <input
+                        type="number"
+                        value={fruitsBalance.semilla}
+                        onChange={(e) => handleFruitsBalanceChange("semilla", Math.max(0, Number(e.target.value)))}
+                        min="0"
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium uppercase tracking-wider text-white/50">Velas</label>
+                      <input
+                        type="number"
+                        value={fruitsBalance.vela}
+                        onChange={(e) => handleFruitsBalanceChange("vela", Math.max(0, Number(e.target.value)))}
+                        min="0"
                         className="h-10 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white"
                       />
                     </div>

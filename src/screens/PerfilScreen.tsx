@@ -3,18 +3,19 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/auth/AuthProvider";
 import { useSpiritual } from "@/fruits/store";
 import { useGardenDna } from "@/garden/dna";
+import { useOneSignal } from "@/onesignal/OneSignalProvider";
 import { GardenSvg } from "@/garden/GardenSvg";
 import { GardenFullscreen } from "@/garden/GardenFullscreen";
 import { TERRAIN_LABEL, TREE_LABEL, MATURITY_LABEL, SEASON_LABEL, SHRINE_LABEL } from "@/garden/types";
 import type { GardenState } from "@/garden/types";
 import { TIME_LABEL, TIME_ICON } from "@/garden/time";
-import { derivePersonalTraits, SPECIES_LABEL, type PersonalInput } from "@/garden/personal";
+import { type PersonalInput } from "@/garden/personal";
 import { levelTitle } from "@/garden/levels";
 import { getAnonIdentity } from "@/auth/anonId";
 import { cn } from "@/utils/cn";
 import { caracasDateOnly } from "@/utils/caracas";
 
-type PerfilTab = "jardin" | "intenciones" | "oratorio";
+type PerfilTab = "jardin" | "intenciones" | "oratorio" | "ajustes";
 interface Props {
   onOpenAuth: () => void;
   onOpenSetPassword?: () => void;
@@ -181,8 +182,6 @@ function JardinTab({ onOpenAuth, displayName }: { onOpenAuth: () => void; displa
     points: state.pointsScore,
   }), [displayName, user?.created_at, state.pointsScore]);
 
-  const pTraits = useMemo(() => derivePersonalTraits(personalInput), [personalInput]);
-
   const PHASE_QUOTE: Record<number, string> = {
     1: "Una semilla escondida guarda el bosque entero.",
     2: "El brote se abre paso: cada oración es lluvia.",
@@ -301,28 +300,7 @@ function JardinTab({ onOpenAuth, displayName }: { onOpenAuth: () => void; displa
         <StatCard icon="🔥" value={state.streak}          label="Racha" />
         <StatCard icon="🤝" value={state.commits}         label="Comunidad" />
         <StatCard icon="🚿" value={state.totalWaterings}  label="Riegos" />
-      </div>
-
-      <div className="rounded-2xl border border-[#e8e4db] bg-white p-4">
-        <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-[#9a9a9f]">
-          Tu huella en el jardín
-        </p>
-        <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 text-xs landscape:grid-cols-3">
-          <Trait icon="🌸" label="Pétalos" value={`${pTraits.petalCount}`}
-            from={`Nombre (${displayName.replace(/\s/g, "").length} letras)`} />
-          <Trait icon="🎨" label="Matiz base" value={`${pTraits.dominantHue}°`}
-            from={`Inicial «${displayName.charAt(0).toUpperCase()}»`}
-            swatch={`hsl(${pTraits.dominantHue} 66% 62%)`} />
-          <Trait icon="🌳" label="Curva del tronco" value={`${pTraits.trunkCurve.toFixed(0)}°`}
-            from={`Día ${personalInput.registeredAt.getDate()}`} />
-          <Trait icon="🌻" label="Especie" value={SPECIES_LABEL[pTraits.flowerSpecies]}
-            from={`Mes ${personalInput.registeredAt.getMonth() + 1}`} />
-          <Trait icon="🌿" label="Ramificación" value={`${pTraits.treeDepth} niveles`}
-            from={`${state.pointsScore} pts`} />
-          <Trait icon={pTraits.nocturnal ? "🪰" : "🐝"} label="Fauna"
-            value={pTraits.nocturnal ? "Luciérnagas" : "Abejas"} from="Hora de conexión" />
-        </div>
-      </div>
+       </div>
 
       <div className="rounded-2xl border border-[#e8e4db] bg-white p-4">
         <p className="mb-2.5 text-[10px] font-semibold uppercase tracking-widest text-[#9a9a9f]">
@@ -379,27 +357,6 @@ function JardinTab({ onOpenAuth, displayName }: { onOpenAuth: () => void; displa
   );
 }
 
-function Trait({ icon, label, value, from, swatch }: {
-  icon: string; label: string; value: string; from: string; swatch?: string;
-}) {
-  return (
-    <div className="flex items-start gap-2">
-      <span className="mt-0.5 text-sm leading-none">{icon}</span>
-      <div className="min-w-0 flex-1">
-        <p className="text-[9px] uppercase tracking-wider text-[#a8a8ad]">{label}</p>
-        <p className="flex items-center gap-1.5 text-[11px] font-semibold text-[#1c1c1e]">
-          {swatch && (
-            <span className="inline-block h-2.5 w-2.5 rounded-full ring-1 ring-black/10"
-              style={{ background: swatch }} />
-          )}
-          {value}
-        </p>
-        <p className="truncate text-[9px] text-[#c0c0c5]">← {from}</p>
-      </div>
-    </div>
-  );
-}
-
 function Signal({ ok, text, hint }: { ok: boolean; text: string; hint: string }) {
   return (
     <div className="flex items-center gap-2">
@@ -443,54 +400,92 @@ function IntencionesTab() {
 }
 
 function OratorioTab() {
-  return (
-    <div className="flex flex-col items-center justify-center py-16 text-center">
-      <div className="mb-4 text-5xl">🎙️</div>
-      <p className="text-sm font-medium text-[#1c1c1e]">Tus notas de voz aparecerán aquí</p>
-      <p className="mt-1 text-xs text-[#9a9a9f]">Graba reflexiones y oraciones personales</p>
-      <motion.button whileTap={{ scale: 0.97 }}
-        className="mt-6 rounded-2xl border border-[#e6e3db] bg-white px-6 py-3 text-sm font-medium text-[#1c1c1e]">
-        Iniciar grabación
-      </motion.button>
-    </div>
-  );
-}
+   return (
+     <div className="flex flex-col items-center justify-center py-16 text-center">
+       <div className="mb-4 text-5xl">🎙️</div>
+       <p className="text-sm font-medium text-[#1c1c1e]">Tus notas de voz aparecerán aquí</p>
+       <p className="mt-1 text-xs text-[#9a9a9f]">Graba reflexiones y oraciones personales</p>
+       <motion.button whileTap={{ scale: 0.97 }}
+         className="mt-6 rounded-2xl border border-[#e6e3db] bg-white px-6 py-3 text-sm font-medium text-[#1c1c1e]">
+         Iniciar grabación
+       </motion.button>
+     </div>
+   );
+ }
 
-export function PerfilScreen({ onOpenAuth, onOpenSetPassword }: Props) {
+ function AjustesTab({ onOpenSetPassword }: { onOpenSetPassword?: () => void }) {
+   const { signOut } = useAuth();
+   const push = useOneSignal();
+
+   return (
+     <div className="space-y-3">
+       <div className="rounded-2xl border border-[#e8e4db] bg-white p-4">
+         <p className="text-[11px] font-semibold uppercase tracking-widest text-[#9a9a9f]">
+           NOTIFICACIONES
+         </p>
+         <p className="mt-1 text-sm leading-relaxed text-[#77736b]">
+           Activa las notificaciones para recibir avisos de la Coronilla, recordatorios de riego y oraciones comunitarias.
+         </p>
+         {!push.iossupported && (
+           <p className="mt-2 rounded-xl bg-[#f6efdd] px-3 py-2 text-xs leading-relaxed text-[#8a6f34]">
+             En iPhone, primero instala Camino como app (Añadir a pantalla de inicio desde Safari).
+           </p>
+         )}
+         <div className="mt-3 grid grid-cols-2 gap-2">
+           <button
+             onClick={push.subscribe}
+             disabled={push.busy || push.subscribed || !push.iossupported}
+             className="h-11 rounded-full bg-[#1c1c1e] text-sm font-medium text-white disabled:opacity-50">
+             {push.subscribed ? "✓ Push activo" : !push.iossupported ? "Instalar primero" : "Activar push"}
+           </button>
+           <button
+             onClick={push.unsubscribe}
+             disabled={push.busy || !push.subscribed}
+             className="h-11 rounded-full border border-[#ddd8cc] text-sm font-medium text-[#1c1c1e] disabled:opacity-50">
+             Desactivar
+           </button>
+         </div>
+         {push.error && <p className="mt-2 text-xs text-[#a95353]">{push.error}</p>}
+       </div>
+
+       <div className="rounded-2xl border border-[#e8e4db] bg-white p-4">
+         <p className="text-[11px] font-semibold uppercase tracking-widest text-[#9a9a9f]">
+           CUENTA
+         </p>
+         <div className="mt-3 space-y-2">
+           {onOpenSetPassword && (
+             <button
+               onClick={onOpenSetPassword}
+               className="w-full h-11 rounded-full border border-[#e6e3db] bg-white text-sm font-medium text-[#1c1c1e] hover:bg-[#f7f6f3]">
+               Cambiar contraseña
+             </button>
+           )}
+           <button
+             onClick={signOut}
+             className="w-full h-11 rounded-full border border-[#e6e3db] bg-white text-sm font-medium text-[#1c1c1e] hover:bg-[#f7f6f3]">
+             Cerrar sesión
+           </button>
+         </div>
+       </div>
+     </div>
+   );
+ }
+
+ export function PerfilScreen({ onOpenAuth, onOpenSetPassword }: Props) {
   const { user, signOut } = useAuth();
   const [tab, setTab] = useState<PerfilTab>("jardin");
 
   const displayName =
     (user?.name as string) ?? user?.email?.split("@")[0] ?? "Usuario";
 
-  const TABS: { id: PerfilTab; label: string; icon: string }[] = [
-    { id: "jardin", label: "Mi Jardín", icon: "🌿" },
-    { id: "intenciones", label: "Intenciones", icon: "🕯️" },
-    { id: "oratorio", label: "Oratorio", icon: "🎙️" },
-    { id: "ajustes", label: "Ajustes", icon: "⚙️" },
-  ];
+   const TABS: { id: PerfilTab; label: string; icon: string }[] = [
+     { id: "jardin", label: "Mi Jardín", icon: "🌿" },
+     { id: "intenciones", label: "Intenciones", icon: "🕯️" },
+     { id: "oratorio", label: "Oratorio", icon: "🎙️" },
+     { id: "ajustes", label: "Ajustes", icon: "⚙️" },
+   ];
 
-  const SettingsTab = () => (
-    <div className="space-y-4 p-4">
-      <button onClick={onOpenSetPassword} className="w-full rounded-lg bg-[#1c1c1e] py-3 text-white text-center">
-        Establecer o cambiar contraseña
-      </button>
-      <button className="w-full rounded-lg bg-[#1c1c1e] py-3 text-white text-center">
-        Cambiar nombre de usuario
-      </button>
-      <button className="w-full rounded-lg bg-[#1c1c1e] py-3 text-white text-center">
-        Cambiar avatar
-      </button>
-      <button className="w-full rounded-lg bg-[#1c1c1e] py-3 text-white text-center">
-        Cambiar correo electrónico
-      </button>
-      <button onClick={signOut} className="w-full rounded-lg bg-[#1c1c1e] py-3 text-white text-center">
-        Cerrar sesión
-      </button>
-    </div>
-  );
-
-  return (
+   return (
     <div className="no-scrollbar relative min-h-full landscape:pb-0" style={{ background: "#f7f6f3" }}>
       <div className="sticky top-0 z-20 bg-[#f7f6f3] px-4 pb-4 pt-12">
         <div className="mb-5 flex items-center gap-3">
@@ -531,6 +526,7 @@ export function PerfilScreen({ onOpenAuth, onOpenSetPassword }: Props) {
             {tab === "jardin" && <JardinTab onOpenAuth={onOpenAuth} displayName={displayName} />}
             {tab === "intenciones" && <IntencionesTab />}
             {tab === "oratorio" && <OratorioTab />}
+            {tab === "ajustes" && <AjustesTab onOpenSetPassword={onOpenSetPassword} />}
           </motion.div>
         </AnimatePresence>
       </div>

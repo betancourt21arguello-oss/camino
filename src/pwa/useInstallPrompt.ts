@@ -97,12 +97,18 @@ export function useInstallPrompt(): InstallController {
 
   const promptInstall = useCallback(async () => {
     if (!deferred) return;
-    await deferred.prompt();
-    const choice = await deferred.userChoice;
-    setDeferred(null);
-    if (choice.outcome === "accepted") {
-      setStandalone(true);
-    } else {
+    try {
+      await deferred.prompt();
+      const choice = await deferred.userChoice;
+      setDeferred(null);
+      if (choice.outcome === "accepted") {
+        setStandalone(true);
+      } else {
+        dismiss();
+      }
+    } catch (error) {
+      // If prompt() fails, dismiss to avoid browser warnings
+      console.warn('[Camino] Install prompt failed:', error);
       dismiss();
     }
   }, [deferred, dismiss]);

@@ -437,6 +437,13 @@ function buildFlowers(t: DnaTraits, s: GardenState, pt: PersonalTraits, bloomOpe
   for (let i = 0; i < ambient; i++)
     add(dom, (pt.dominantHue + i * 34) % 360, "simple");
 
+  /* ── Flor de la huella: siempre visible, con los pétalos derivados del nombre ──
+     Si la actividad devocional no ha generado flores, al menos la flor central
+     (especie dominante · pétalos = longitud del nombre) se muestra. */
+  if (placed.length === 0) {
+    add(dom, pt.dominantHue, "simple", "Tu huella en el jardín");
+  }
+
   /* Santuario mariano */
   const arch =
     s.totalRosaries >= 24 || (t.flowerSpeciesBias === "rose" && s.totalRosaries >= 12)

@@ -1,4 +1,3 @@
-
 import {
   createContext, useContext, useEffect, useState, useCallback, useRef, useMemo,
 } from "react";
@@ -93,7 +92,10 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
     if (!user || !supabase) { setLoading(false); return; }
     try {
       try {
-        await supabase.rpc("ensure_fruits");
+        const { error } = await supabase.rpc("ensure_fruits");
+        if (error) {
+          console.warn("[camino] ensure_fruits:", error.message);
+        }
       } catch (e) {
         console.warn("[camino] ensure_fruits:", e instanceof Error ? e.message : String(e));
       }
@@ -315,6 +317,7 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
   /* ── Riego ─────────────────────────────────────────────────────────── */
   const waterGarden = useCallback(async (intention: string) => {
     if (balance.agua < 1) return;
+    // Optimistic update: decrement locally immediately
     setBalance((p) => ({ ...p, agua: p.agua - 1 }));
     pushLocalEvent("WATER_GARDEN", 1, intention);
     flagWatered();
@@ -323,25 +326,22 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
         const { data, error } = await supabase.rpc("water_garden", { p_intention: intention });
         if (error) {
           console.warn("[camino] water_garden error:", error.message, "code:", error.code);
-          if (error.code === "23505") {
-            console.warn("[camino] water_garden: duplicate entry detected");
-          }
+          // RPC failed → restore optimistic agua decrement
           setBalance((p) => ({ ...p, agua: p.agua + 1 }));
-          void reload();
+          await reload();
+        } else if (typeof data === "number") {
+          // data is the new agua balance returned by the RPC function
+          setBalance((p) => ({ ...p, agua: data }));
+          await reload();
         } else {
-          console.log("[camino] water_garden success, data:", data);
-          if (data === null) {
-            console.warn("[camino] water_garden returned null data");
-          }
-          void reload();
+          // data is null or unexpected type → fall back to reload
+          console.warn("[camino] water_garden returned null/unexpected data, reloading");
+          await reload();
         }
       } catch (e) {
         console.warn("[camino] water_garden exception:", e instanceof Error ? e.message : String(e));
-        if (e instanceof Error && e.message.includes("timeout")) {
-          console.warn("[camino] water_garden: timeout detected");
-        }
         setBalance((p) => ({ ...p, agua: p.agua + 1 }));
-        void reload();
+        await reload();
       }
     }
   }, [balance.agua, user, pushLocalEvent, flagWatered, reload]);
@@ -353,16 +353,22 @@ export function SpiritualProvider({ children }: { children: React.ReactNode }) {
     pushLocalEvent("WATER_GARDEN", amount, intention);
     flagWatered();
     if (user && supabase) {
-      const { error } = await supabase.rpc("bulk_water_garden", {
+      const { data, error } = await supabase.rpc("bulk_water_garden", {
         p_user_id: user.id, p_intention: intention,
       });
       if (error) {
         console.warn("[camino] bulk_water_garden:", error.message);
-        if (error.code === "23505") {
-          console.warn("[camino] bulk_water_garden: duplicate entry detected");
-        }
         setBalance((p) => ({ ...p, agua: amount }));
-        void reload();
+        await reload();
+      } else if (data && Array.isArray(data) && data.length > 0) {
+        // Use the authoritative new_water_level from the database
+        const result = data[0];
+        if (result.watered) {
+          setBalance((p) => ({ ...p, agua: 0 }));
+        }
+        await reload();
+      } else {
+        await reload();
       }
     }
   }, [balance.agua, user, pushLocalEvent, flagWatered, reload]);

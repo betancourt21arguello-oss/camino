@@ -72,9 +72,19 @@ export function usePushNotifications() {
     setBusy(true);
     setError(null);
     try {
-      const perm = "granted";
-      setPermission(perm);
-
+      // ── Android 13+ / modern privacy: request permission explicitly ──
+      // Without this, push notifications will fail silently on Android 13+
+      if (typeof Notification !== "undefined" && Notification.permission !== "granted") {
+        const userPermission = await Notification.requestPermission();
+        setPermission(userPermission);
+        if (userPermission !== "granted") {
+          throw new Error(
+            "Permiso de notificaciones denegado. Activa las notificaciones desde la configuración de tu dispositivo."
+          );
+        }
+      } else {
+        setPermission("granted");
+      }
 
       let reg: ServiceWorkerRegistration;
       try {

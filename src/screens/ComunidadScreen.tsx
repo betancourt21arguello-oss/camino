@@ -1,10 +1,8 @@
 import { useState, useEffect } from "react";
 import { useSpiritual } from "../fruits/store";
 import { useAuth } from "../auth/AuthProvider";
-import { WORKER_API_BASE } from "../config";
 import { supabase } from "../lib/supabase";
 import type { Candle } from "../fruits/types";
-import type { GardenEvent } from "../garden/types";
 
 interface JornadaReflection {
   id: string;
@@ -66,25 +64,6 @@ function CandleGlyph({
           border: "1px solid rgba(0,0,0,0.05)",
         }}
       />
-    </div>
-  );
-}
-
-function ReflectionCard({ event }: { event: GardenEvent }) {
-  const date = new Date(event.created_at);
-  const label = event.type === "REFLECTION_COMPLETED" ? "Reflexión completada" : "Silencio";
-  return (
-    <div className="flex items-start gap-3 rounded-2xl border border-[#e8e4db] bg-white p-4">
-      <span className="text-xl">🕯️</span>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm text-[#1c1c1e]">{label}</p>
-        {event.intention && (
-          <p className="mt-1 text-xs text-[#9a9a9f]">“{event.intention}”</p>
-        )}
-        <p className="mt-1 text-[11px] text-[#9a9a9f]">
-          {date.toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
-        </p>
-      </div>
     </div>
   );
 }

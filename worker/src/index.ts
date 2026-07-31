@@ -1732,11 +1732,40 @@ async function generateImage(env: any, prompt: string): Promise<string> {
 async function handleAdminUsersSearch(request: Request, env: any): Promise<Response> {
   try {
     const q = new URL(request.url).searchParams.get("q")?.trim().toLowerCase();
-    if (!q || q.length < 2) {
+    const limit = parseInt(new URL(request.url).searchParams.get("limit") || "20", 10);
+
+    if (!q) {
+      const profiles = await supabaseSelect(env, "profiles", { select: "id,email,full_name", limit: String(limit), order: "email.asc" });
+      if (profiles && profiles.length > 0) {
+        return jsonResponse({ results: profiles });
+      }
+      const authUrl = `${env.SUPABASE_URL}/auth/v1/admin/users?limit=${limit}`;
+      const authRes = await fetch(authUrl, {
+        headers: {
+          apikey: env.SUPABASE_SERVICE_ROLE,
+          Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE}`,
+        },
+      });
+      if (!authRes.ok) {
+        const text = await authRes.text();
+        return jsonResponse({ error: `Supabase auth users failed: ${authRes.status} ${text}` }, 500);
+      }
+      const authData = await authRes.json();
+      const users = Array.isArray(authData?.users) ? authData.users : [];
+      const results = users.slice(0, limit).map((u: any) => ({
+        id: u.id,
+        email: u.email,
+        full_name: u.user_metadata?.full_name || u.email,
+      }));
+      return jsonResponse({ results });
+    }
+
+    if (q.length < 2) {
       return jsonResponse({ results: [] });
     }
 
-    const profilesUrl = `${env.SUPABASE_URL}/rest/v1/profiles?select=id,email,full_name&or=ilike.email.*${encodeURIComponent(q)}*,ilike.full_name.*${encodeURIComponent(q)}*&limit=20`;
+    const encodedQ = encodeURIComponent(q);
+    const profilesUrl = `${env.SUPABASE_URL}/rest/v1/profiles?select=id,email,full_name&or=(email.ilike.*${encodedQ}*,full_name.ilike.*${encodedQ}*)&order=email.asc&limit=${limit}`;
     const profilesRes = await fetch(profilesUrl, {
       headers: {
         apikey: env.SUPABASE_SERVICE_ROLE,
@@ -1749,7 +1778,7 @@ async function handleAdminUsersSearch(request: Request, env: any): Promise<Respo
       return jsonResponse({ results: data });
     }
 
-    const authUrl = `${env.SUPABASE_URL}/auth/v1/admin/users?limit=20`;
+    const authUrl = `${env.SUPABASE_URL}/auth/v1/admin/users?limit=${limit}`;
     const authRes = await fetch(authUrl, {
       headers: {
         apikey: env.SUPABASE_SERVICE_ROLE,
@@ -1770,7 +1799,7 @@ async function handleAdminUsersSearch(request: Request, env: any): Promise<Respo
         const name = (u?.user_metadata?.full_name || u?.email || "").toLowerCase();
         return email.includes(q) || name.includes(q);
       })
-      .slice(0, 20)
+      .slice(0, limit)
       .map((u: any) => ({
         id: u.id,
         email: u.email,
@@ -1845,12 +1874,11 @@ async function handleAdminAssignTasks(request: Request, env: any): Promise<Respo
     }
 
     // Delete existing tasks for the same profile_id, category, and task_date to avoid unique constraint violations
-    const deleteParams = new URLSearchParams();
-    deleteParams.set("profile_id", `in.(${userIds.join(",")})`);
+    // Construct URL manually — URLSearchParams would URL-encode parentheses/commas which breaks PostgREST `in` operator
     const categories = tasks.map((t: any) => typeof t.category === "string" ? t.category : "custom");
-    deleteParams.set("category", `in.(${categories.map((c: string) => `'${c}'`).join(",")})`);
-    deleteParams.set("task_date", `eq.${taskDate}`);
-    const deleteUrl = `${env.SUPABASE_URL}/rest/v1/spiritual_tasks?${deleteParams.toString()}`;
+    const userIdsList = userIds.join(",");
+    const categoriesList = categories.map((c: string) => `'${c}'`).join(",");
+    const deleteUrl = `${env.SUPABASE_URL}/rest/v1/spiritual_tasks?profile_id=in.(${userIdsList})&category=in.(${categoriesList})&task_date=eq.${encodeURIComponent(taskDate)}`;
     const deleteRes = await fetch(deleteUrl, {
       method: "DELETE",
       headers: {
@@ -2252,7 +2280,7 @@ export default {
          if (userIds.length > 0) {
            const profileIds = userIds.map((uid: string) => `id.eq.${encodeURIComponent(uid)}`).join(",");
            try {
-             const profilesUrl = `${env.SUPABASE_URL}/rest/v1/profiles?or=(${profileIds})&select=id,full_name,email,name`;
+             const profilesUrl = `${env.SUPABASE_URL}/rest/v1/profiles?or=(${profileIds})&select=id,full_name,email`;
              const profilesRes = await fetch(profilesUrl, {
                headers: {
                  apikey: env.SUPABASE_SERVICE_ROLE,
@@ -2262,7 +2290,7 @@ export default {
              if (profilesRes.ok) {
                const profiles = await profilesRes.json();
                for (const p of profiles) {
-                 profilesMap[p.id] = { full_name: p.full_name || p.name || "Anónimo", email: p.email };
+                 profilesMap[p.id] = { full_name: p.full_name || "Anónimo", email: p.email };
                }
              }
            } catch {

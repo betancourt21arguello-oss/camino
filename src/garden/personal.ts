@@ -13,7 +13,7 @@
  * └───────────────────────────┴──────────────────┴──────────────────────────┘
  * ==========================================================================*/
 import { clamp } from "./prng";
-import { caracasNow, caracasDateOnly } from "../utils/caracas";
+import { caracasNow } from "../utils/caracas";
 import type { FlowerSpecies } from "./flowers";
 
 export interface PersonalInput {

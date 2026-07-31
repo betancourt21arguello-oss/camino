@@ -71,7 +71,9 @@ export function useSpiritualTasks(liturgy: DailyLiturgy | null) {
       const isSunday = dayOfWeek === 0;
       const isFastingDay = dayOfWeek === 3 || dayOfWeek === 5;
       const dayOfMonth = dateObj.getDate();
-      const isLastDayOfMonth = dayOfMonth === new Date(dateObj.getFullYear(), dateObj.getMonth() + 1, 0).getDate();
+      const isLastDayOfMonth =
+        dayOfMonth ===
+        new Date(dateObj.getFullYear(), dateObj.getMonth() + 1, 0).getDate();
       let tasksError: unknown = null;
       const sixParamPayload = {
         p_date: today,
@@ -81,31 +83,24 @@ export function useSpiritualTasks(liturgy: DailyLiturgy | null) {
         p_day_of_month: dayOfMonth,
         p_is_last_day_of_month: isLastDayOfMonth,
       };
-      const fiveParamPayload = {
-        p_date: today,
-        p_is_sunday: isSunday,
-        p_is_solemnity: Boolean(liturgy?.isSolemnity),
-        p_is_fasting_day: isFastingDay,
-        p_day_of_month: dayOfMonth,
-      };
       try {
         await client.rpc("ensure_daily_spiritual_tasks", sixParamPayload);
       } catch (err) {
         tasksError = err;
-        try {
-          await client.rpc("ensure_daily_spiritual_tasks", fiveParamPayload);
-          tasksError = null;
-        } catch (retryErr) {
-          tasksError = retryErr;
-        }
       }
       if (tasksError) {
-        console.warn("[camino] ensure_daily_spiritual_tasks:", tasksError instanceof Error ? tasksError.message : String(tasksError));
+        console.warn(
+          "[camino] ensure_daily_spiritual_tasks:",
+          tasksError instanceof Error ? tasksError.message : String(tasksError),
+        );
       }
       try {
         await client.rpc("ensure_recurring_custom_tasks", { p_date: today });
       } catch (error) {
-        console.warn("[camino] ensure_recurring_custom_tasks:", error instanceof Error ? error.message : String(error));
+        console.warn(
+          "[camino] ensure_recurring_custom_tasks:",
+          error instanceof Error ? error.message : String(error),
+        );
       }
       const { data } = await client
         .from("spiritual_tasks")
@@ -124,7 +119,12 @@ export function useSpiritualTasks(liturgy: DailyLiturgy | null) {
       .channel(`spiritual-tasks-${user.id}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "spiritual_tasks", filter: `profile_id=eq.${user.id}` },
+        {
+          event: "*",
+          schema: "public",
+          table: "spiritual_tasks",
+          filter: `profile_id=eq.${user.id}`,
+        },
         load,
       )
       .subscribe();
@@ -134,42 +134,66 @@ export function useSpiritualTasks(liturgy: DailyLiturgy | null) {
     };
   }, [user, liturgy?.isSolemnity]);
 
-  const toggle = useCallback(async (id: string, done: boolean) => {
-    if (!supabase || !user) return false;
-    const { error } = await supabase
-      .from("spiritual_tasks")
-      .update({ done, completed_at: done ? new Date().toISOString() : null })
-      .eq("id", id)
-      .eq("profile_id", user.id);
-    return !error;
-  }, [user]);
+  const toggle = useCallback(
+    async (id: string, done: boolean) => {
+      if (!supabase || !user) return false;
+      const { error } = await supabase
+        .from("spiritual_tasks")
+        .update({ done, completed_at: done ? new Date().toISOString() : null })
+        .eq("id", id)
+        .eq("profile_id", user.id);
+      return !error;
+    },
+    [user],
+  );
 
-  const add = useCallback(async (title: string, time?: string, taskDate?: string, cadence?: "daily" | "weekly" | "monthly" | "once") => {
-    if (!supabase || !user || !title.trim()) return false;
-    const date = taskDate || caracasDate();
-    const finalCadence = cadence || "once";
-    const { error } = await supabase.from("spiritual_tasks").insert({
-      profile_id: user.id,
-      title: title.trim(),
-      category: "custom",
-      cadence: finalCadence,
-      time: time || null,
-      task_date: date,
-      days: null,
-      required: false,
-      done: false,
-    });
-    if (error) {
-      console.warn("[camino] Failed to insert custom task:", error.message);
-      return false;
-    }
-    if (finalCadence === "weekly" || finalCadence === "monthly") {
-      await generateRecurringInstances(user.id, title.trim(), time, date, finalCadence);
-    }
-    return true;
-  }, [user]);
+  const add = useCallback(
+    async (
+      title: string,
+      time?: string,
+      taskDate?: string,
+      cadence?: "daily" | "weekly" | "monthly" | "once",
+    ) => {
+      if (!supabase || !user || !title.trim()) return false;
+      const date = taskDate || caracasDate();
+      const finalCadence = cadence || "once";
+      const { error } = await supabase.from("spiritual_tasks").insert({
+        profile_id: user.id,
+        title: title.trim(),
+        category: "custom",
+        cadence: finalCadence,
+        time: time || null,
+        task_date: date,
+        days: null,
+        required: false,
+        done: false,
+      });
+      if (error) {
+        console.warn("[camino] Failed to insert custom task:", error.message);
+        return false;
+      }
+      if (finalCadence === "weekly" || finalCadence === "monthly") {
+        await generateRecurringInstances(
+          user.id,
+          title.trim(),
+          time,
+          date,
+          finalCadence,
+        );
+      }
+      return true;
+    },
+    [user],
+  );
 
-  return { tasks, loading, authenticated: !!user, toggle, add, templates: defaultTasks };
+  return {
+    tasks,
+    loading,
+    authenticated: !!user,
+    toggle,
+    add,
+    templates: defaultTasks,
+  };
 }
 
 function generateRecurringInstances(
@@ -231,7 +255,10 @@ function generateRecurringInstances(
     Promise.resolve(supabase.rpc("insert_spiritual_task", instance))
       .then(() => {})
       .catch((err: unknown) => {
-        console.warn("[camino] Failed to insert recurring instance:", err instanceof Error ? err.message : String(err));
+        console.warn(
+          "[camino] Failed to insert recurring instance:",
+          err instanceof Error ? err.message : String(err),
+        );
       });
   }
 }
