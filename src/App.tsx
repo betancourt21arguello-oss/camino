@@ -118,6 +118,7 @@ function Shell() {
 
   const settlePortal = (kind: PrayerKind) => {
     emit({ type: "task-complete" });
+    emit({ type: kind });
     void markCategoriesDone(user?.id, categoriesForTarget(kind));
     setPrayerPortal(null);
   };
