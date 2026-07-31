@@ -40,7 +40,7 @@ export function ReaderScreen({
         <div className="w-11" />
       </div>
 
-      <div className="no-scrollbar flex-1 overflow-y-auto px-7 pt-2">
+      <div className="no-scrollbar flex-1 overflow-y-auto px-7 pt-2 landscape:overflow-auto">
         {isGospel && gospel?.threeCrosses !== false && <ThreeCrossesRite />}
 
 {isGospel && gospel?.evangelist && (

@@ -126,7 +126,7 @@ export const CaminoScreen: React.FC<Props> = ({
   const install = useInstallPrompt();
 
   return (
-    <div className="min-h-full bg-[#f7f6f3] pb-28 text-[#1c1c1e]">
+    <div className="min-h-full bg-[#f7f6f3] pb-28 text-[#1c1c1e] landscape:pb-0">
       {showPopup && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
           <div className="bg-white p-6 rounded-lg shadow-lg text-center max-w-sm mx-4">
@@ -364,7 +364,7 @@ export const CaminoScreen: React.FC<Props> = ({
         <div className="text-[11px] font-semibold tracking-[0.18em] text-[#9a9a9f]">
           RECURSOS
         </div>
-        <div className="mt-3 grid grid-cols-2 gap-3">
+        <div className="mt-3 grid grid-cols-2 gap-3 landscape:grid-cols-3">
           <button
             onClick={() => setBibliaOpen(true)}
             className="flex flex-col items-center gap-2 rounded-2xl border border-[#e6e3db] bg-white p-4 text-center transition active:scale-[0.98]"
@@ -396,7 +396,7 @@ export const CaminoScreen: React.FC<Props> = ({
           Entra cuando tu corazón esté listo.
         </p>
 
-        <div className="mt-4 grid grid-cols-2 gap-3">
+        <div className="mt-4 grid grid-cols-2 gap-3 landscape:grid-cols-4">
           <ActionCard
             icon="📖"
             title="Evangelio del día"

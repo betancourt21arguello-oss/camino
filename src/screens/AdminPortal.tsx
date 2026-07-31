@@ -12,14 +12,14 @@ export function AdminPortal({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState<"garden" | "gemini" | "upload" | "telegram" | "tasks" | "images" | "oraciones" | "notificaciones">("gemini");
 
   return (
-    <div className="absolute inset-0 z-[70] flex flex-col bg-[#0e0e10] text-white">
+    <div className="absolute inset-0 z-[70] flex flex-col bg-[#0e0e10] text-white landscape:overflow-auto">
       <header className="flex h-12 shrink-0 items-center justify-between border-b border-white/10 px-4">
         <button onClick={onClose} className="text-sm text-white/50">← Cerrar</button>
         <span className="text-[10px] font-semibold tracking-[0.25em] text-[var(--gold)]">ADMIN</span>
         <span className="w-14" />
       </header>
 
-      <nav className="flex shrink-0 gap-1 px-3 pt-3">
+      <nav className="flex shrink-0 gap-1 px-3 pt-3 landscape:flex-wrap">
         {(["gemini", "upload", "tasks", "garden", "telegram", "images", "oraciones", "notificaciones"] as const).map((t) => (
           <button
             key={t}
@@ -33,7 +33,7 @@ export function AdminPortal({ onClose }: { onClose: () => void }) {
         ))}
       </nav>
 
-      <div className="no-scrollbar flex-1 overflow-y-auto p-4">
+      <div className="no-scrollbar flex-1 overflow-y-auto p-4 landscape:overflow-auto">
         {tab === "gemini" && <GeminiPanel />}
         {tab === "upload" && <UploadPanel />}
         {tab === "tasks" && <TasksPanel />}

@@ -19,7 +19,7 @@ export function AudioAssetScreen({ asset, onClose }: { asset: WhatsAppAsset; onC
         </div>
         <div className="w-11" />
       </div>
-      <div className="no-scrollbar flex-1 overflow-y-auto px-7 py-8">
+      <div className="no-scrollbar flex-1 overflow-y-auto px-7 py-8 landscape:overflow-auto">
         <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#9a9a9f]">
           {asset.tag}
         </div>

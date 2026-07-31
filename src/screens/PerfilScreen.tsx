@@ -74,7 +74,7 @@ function WaterModal({ mode, water, onClose, onConfirm }: {
     <motion.div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/45 backdrop-blur-sm"
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <motion.div className="w-full max-w-[430px] rounded-t-3xl bg-white p-6 pb-8"
+      <motion.div className="w-full max-w-[430px] rounded-t-3xl bg-white p-6 pb-8 landscape:max-w-none"
         initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
         transition={{ type: "spring", damping: 28, stiffness: 280 }}>
         <div className="mx-auto mb-5 h-1 w-12 rounded-full bg-[#e6e3db]" />
@@ -291,7 +291,7 @@ function JardinTab({ onOpenAuth, displayName }: { onOpenAuth: () => void; displa
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-3 gap-2 landscape:grid-cols-4">
         <StatCard icon="📿" value={state.totalRosaries}   label="Rosarios" />
         <StatCard icon="🩷" value={state.totalCoronillas} label="Coronillas" />
         <StatCard icon="🕊️" value={state.totalNovenas}    label="Novenas" />
@@ -307,7 +307,7 @@ function JardinTab({ onOpenAuth, displayName }: { onOpenAuth: () => void; displa
         <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-[#9a9a9f]">
           Tu huella en el jardín
         </p>
-        <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 text-xs">
+        <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 text-xs landscape:grid-cols-3">
           <Trait icon="🌸" label="Pétalos" value={`${pTraits.petalCount}`}
             from={`Nombre (${displayName.replace(/\s/g, "").length} letras)`} />
           <Trait icon="🎨" label="Matiz base" value={`${pTraits.dominantHue}°`}
@@ -491,7 +491,7 @@ export function PerfilScreen({ onOpenAuth, onOpenSetPassword }: Props) {
   );
 
   return (
-    <div className="no-scrollbar relative min-h-full" style={{ background: "#f7f6f3" }}>
+    <div className="no-scrollbar relative min-h-full landscape:pb-0" style={{ background: "#f7f6f3" }}>
       <div className="sticky top-0 z-20 bg-[#f7f6f3] px-4 pb-4 pt-12">
         <div className="mb-5 flex items-center gap-3">
           <Avatar name={displayName} />

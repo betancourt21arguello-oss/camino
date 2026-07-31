@@ -55,7 +55,7 @@ export function Lobby({
     : `Rezar ${dev.subtitle} en solitario`;
 
   return (
-    <div className="relative flex h-[100dvh] flex-col overflow-hidden bg-[#0a0a0b] text-white">
+    <div className="relative flex h-[100dvh] flex-col overflow-hidden bg-[#0a0a0b] text-white landscape:h-auto landscape:min-h-0 landscape:flex-row">
       {/* ambiente */}
       <div
         className="pointer-events-none absolute inset-0"
@@ -77,7 +77,7 @@ export function Lobby({
       ))}
 
       {/* HEADER */}
-      <header className="relative z-10 shrink-0 px-6 pt-10 text-center">
+      <header className="relative z-10 shrink-0 px-6 pt-10 text-center landscape:w-64 landscape:h-full landscape:overflow-y-auto landscape:text-left landscape:pt-[env(safe-area-inset-top)]">
         <div className="text-[11px] font-medium tracking-[0.28em] text-[var(--gold)]">ORACIÓN PERPETUA</div>
         <button
           onClick={() => setMenuOpen(true)}
@@ -123,7 +123,7 @@ export function Lobby({
       </header>
 
       {/* CONTADOR */}
-      <div className="relative z-10 shrink-0 py-3">
+      <div className="relative z-10 shrink-0 py-3 landscape:w-64 landscape:flex-col landscape:items-center">
         <RosaryRing
           topLabel={ringLabel}
           centerMain="0"
@@ -151,7 +151,7 @@ export function Lobby({
       </div>
 
       {/* BOTONES */}
-      <div className="relative z-10 shrink-0 space-y-2.5 px-6">
+      <div className="relative z-10 shrink-0 space-y-2.5 px-6 landscape:w-64 landscape:px-4">
         <motion.button
           whileTap={{ scale: 0.98 }}
           onClick={onStartCommunity}

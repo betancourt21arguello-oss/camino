@@ -72,9 +72,9 @@ export function LiveSession({
   const remaining = Math.max(0, (step.duration ?? 0) - state.stepElapsed);
 
   return (
-    <div className="flex h-[100dvh] flex-col overflow-hidden bg-[#0a0a0b] text-white">
+    <div className="flex h-[100dvh] flex-col overflow-hidden bg-[#0a0a0b] text-white landscape:h-auto landscape:flex-row landscape:overflow-auto">
       {/* TOP BAR */}
-      <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-white/10 px-3">
+      <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-white/10 px-3 pt-[env(safe-area-inset-top)] landscape:w-48 landscape:h-full landscape:flex-col landscape:border-b-0 landscape:border-r">
         <div className="flex items-center gap-1.5 rounded-full bg-white/[0.06] px-2.5 py-1">
           <span className="flex -space-x-1.5">
             {membersSample.slice(0, 2).map((m) => (
@@ -112,7 +112,7 @@ export function LiveSession({
       </header>
 
       {/* STAGE: obra viva de fondo + contador / contexto de primer plano */}
-      <div className="relative flex shrink-0 items-center justify-center px-4 py-2" style={{ height: 232 }}>
+      <div className="relative flex shrink-0 items-center justify-center px-4 py-2 h-[232px] landscape:h-auto landscape:min-h-0 landscape:w-64">
         {/* aura viva: la obra comunitaria latiendo detrás */}
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden">
           <motion.div

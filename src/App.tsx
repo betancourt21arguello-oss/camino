@@ -149,14 +149,14 @@ function Shell() {
 
   return (
     <div
-      className="flex min-h-screen items-center justify-center p-0 sm:p-6"
+      className="flex min-h-screen items-center justify-center p-0 sm:p-6 landscape:min-h-0 landscape:items-stretch"
       style={{ background: "radial-gradient(140% 120% at 50% 0%, #e8e4dc, #d8d4cb)" }}
     >
-      <div className="relative w-full max-w-[430px] sm:rounded-[3rem] sm:border-[10px] sm:border-black sm:shadow-2xl">
-        <div className="relative h-[100dvh] overflow-hidden bg-black sm:h-[900px] sm:rounded-[2.4rem]">
+      <div className="relative w-full max-w-[430px] sm:rounded-[3rem] sm:border-[10px] sm:border-black sm:shadow-2xl landscape:sm:max-w-[900px]">
+        <div className="relative h-[100dvh] overflow-hidden bg-black sm:h-[900px] sm:rounded-[2.4rem] landscape:h-[100dvh] landscape:overflow-auto">
           <div className="pointer-events-none absolute left-1/2 top-0 z-50 hidden h-7 w-36 -translate-x-1/2 rounded-b-2xl bg-black sm:block" />
 
-          <div className={prayerActive ? "h-full overflow-hidden" : "no-scrollbar h-full overflow-y-auto"}>
+          <div className={prayerActive ? "h-full overflow-hidden" : "no-scrollbar h-full overflow-y-auto landscape:overflow-auto landscape:pl-20"}>
             {tab === "camino" && (
               <CaminoScreen
                 onStartJornada={() => setJornadaOpen(true)}
@@ -195,7 +195,7 @@ function Shell() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 20 }}
                   transition={{ duration: 0.3, ease: "easeOut" }}
-                  className="absolute bottom-20 left-3 right-3 z-30 cursor-pointer"
+                   className="absolute bottom-20 left-3 right-3 z-30 cursor-pointer landscape:bottom-4 landscape:left-4 landscape:right-auto landscape:top-4"
                   onClick={() => setAuthOpen(true)}
                   role="button"
                   tabIndex={0}

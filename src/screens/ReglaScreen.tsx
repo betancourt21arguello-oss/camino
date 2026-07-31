@@ -60,7 +60,7 @@ export function ReglaScreen({ onOpenReader, onStartRosary, liturgy }: Props) {
   };
 
   return (
-    <div className="min-h-full bg-[#f7f6f3] pb-28 text-[#1c1c1e]">
+    <div className="min-h-full bg-[#f7f6f3] pb-28 text-[#1c1c1e] landscape:pb-0">
       <div className="px-6 pt-10">
         <h1 className="text-center text-2xl font-semibold">Regla de Vida</h1>
         <p className="mt-1 text-center text-sm text-[#8a8a90]">

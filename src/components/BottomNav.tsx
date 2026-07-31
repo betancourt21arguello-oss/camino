@@ -64,18 +64,18 @@ export function BottomNav({
 }) {
   return (
     <nav
-      className={`absolute inset-x-0 bottom-0 z-20 border-t backdrop-blur-xl ${
+      className={`absolute inset-x-0 bottom-0 z-20 border-t backdrop-blur-xl landscape:left-0 landscape:right-auto landscape:top-0 landscape:bottom-0 landscape:w-auto landscape:h-full landscape:border-r landscape:border-t-0 ${
         dark ? "border-white/10 bg-[#0a0a0b]/85" : "border-[#e6e3db] bg-[#f7f6f3]/90"
       }`}
     >
-      <div className="mx-auto flex max-w-md items-center justify-around px-1 pb-5 pt-2">
+      <div className="mx-auto flex max-w-md items-center justify-around px-1 pb-5 pt-2 pb-[env(safe-area-inset-bottom)] landscape:max-w-none landscape:flex-col landscape:justify-center landscape:px-2 landscape:py-4 landscape:pl-[env(safe-area-inset-top)]">
         {items.map((it) => {
           const on = active === it.id;
           return (
             <button
               key={it.id}
               onClick={() => onChange(it.id)}
-              className="flex min-h-[44px] min-w-[44px] flex-col items-center justify-center gap-1"
+              className="flex min-h-[44px] min-w-[44px] flex-col items-center justify-center gap-1 landscape:flex-row landscape:gap-1.5 landscape:w-full"
             >
               <span
                 className={

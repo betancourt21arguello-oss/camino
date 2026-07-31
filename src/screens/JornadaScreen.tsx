@@ -82,7 +82,7 @@ export function JornadaScreen({ liturgy, onClose, onComplete }: Props) {
   const progressPct = ((index + 1) / total) * 100;
 
   return (
-    <div className="absolute inset-0 z-40 flex flex-col bg-[#f6f3ec] text-[#1c1c1e]">
+    <div className="absolute inset-0 z-40 flex flex-col bg-[#f6f3ec] text-[#1c1c1e] landscape:overflow-auto">
       {/* halo ambiental sutil que cambia con el paso */}
       <div
         className="pointer-events-none absolute inset-x-0 top-0 h-56 transition-colors duration-700"
@@ -119,7 +119,7 @@ export function JornadaScreen({ liturgy, onClose, onComplete }: Props) {
         />
       </div>
 
-      <div ref={scrollRef} className="no-scrollbar relative min-h-0 flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="no-scrollbar relative min-h-0 flex-1 overflow-y-auto landscape:overflow-auto">
         <AnimatePresence mode="wait">
           <motion.div
             key={step.id}

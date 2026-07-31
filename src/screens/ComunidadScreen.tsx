@@ -165,13 +165,56 @@ function ReflexionesTab() {
 
 export function ComunidadScreen() {
   const { user } = useAuth();
-  const { candles, lightCandle, prayForCandle, balance, syncError } = useSpiritual();
+  const { lightCandle, prayForCandle, balance, syncError } = useSpiritual();
   const [tab, setTab] = useState<"intenciones" | "reflexiones">("intenciones");
   const [selected, setSelected] = useState<Candle | null>(null);
   const [composing, setComposing] = useState(false);
   const [draft, setDraft] = useState("");
+  const [allCandles, setAllCandles] = useState<Candle[]>([]);
 
-  const active = candles.filter((c) => new Date(c.expires_at).getTime() > Date.now());
+  useEffect(() => {
+    const loadAllCandles = async () => {
+      if (!supabase) return;
+      try {
+        const { data, error } = await supabase
+          .from("candles")
+          .select("*")
+          .order("lit_at", { ascending: false })
+          .limit(100);
+        if (error) {
+          console.warn("[camino] Error loading all candles:", error.message);
+        } else if (data) {
+          setAllCandles(data as Candle[]);
+        }
+      } catch (err) {
+        console.warn("[camino] Error loading all candles:", err);
+      }
+    };
+    loadAllCandles();
+  }, []);
+
+  useEffect(() => {
+    if (!supabase) return;
+    const ch = supabase
+      .channel("community-candles")
+      .on("postgres_changes", { event: "*", schema: "public", table: "candles" }, async () => {
+        if (!supabase) return;
+        try {
+          const { data } = await supabase
+            .from("candles")
+            .select("*")
+            .order("lit_at", { ascending: false })
+            .limit(100);
+          if (data) setAllCandles(data as Candle[]);
+        } catch {
+          // ignore
+        }
+      })
+      .subscribe();
+    return () => { if (supabase) supabase.removeChannel(ch); };
+  }, []);
+
+  const active = allCandles.filter((c) => new Date(c.expires_at).getTime() > Date.now());
   const shown = active.slice(0, 40);
   const extra = Math.max(0, active.length - shown.length);
 
@@ -183,7 +226,7 @@ export function ComunidadScreen() {
   }));
 
   return (
-    <div className="min-h-full bg-[#f7f6f3] pb-28 text-[#1c1c1e]">
+    <div className="min-h-full bg-[#f7f6f3] pb-28 text-[#1c1c1e] landscape:pb-0">
       <h1 className="pt-10 text-center text-2xl font-semibold">Comunidad</h1>
 
       {syncError && (
@@ -224,7 +267,7 @@ export function ComunidadScreen() {
             Las velas encendidas no se apagan. Puedes rezar por cualquiera.
           </p>
 
-          <div className="mx-auto mt-6 grid max-w-sm grid-cols-4 gap-x-3 gap-y-6">
+           <div className="mx-auto mt-6 grid max-w-sm grid-cols-4 gap-x-3 gap-y-6 landscape:max-w-none">
             {enriched.map((c) => (
               <button
                 key={c.id}
@@ -291,6 +334,13 @@ export function ComunidadScreen() {
                     ...selected,
                     prayedBy: [...(selected.prayedBy ?? []), "me"],
                   });
+                  setAllCandles((prev) =>
+                    prev.map((c) =>
+                      c.id === selected.id
+                        ? { ...c, prayedBy: [...(c.prayedBy ?? []), "me"] }
+                        : c,
+                    ),
+                  );
                 }}
                 disabled={balance.vela <= 0}
                 className={`mt-5 h-12 w-full rounded-full font-medium text-white ${

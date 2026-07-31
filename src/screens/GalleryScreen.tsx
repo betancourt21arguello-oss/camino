@@ -42,10 +42,9 @@ export function GalleryScreen({ onClose }: { onClose: () => void }) {
         <div className="w-11" />
       </div>
 
-      <div className="no-scrollbar flex-1 overflow-y-auto px-5 pb-10">
-        <p className="mx-auto max-w-sm text-center text-sm leading-relaxed text-[#8a8a90]">
-          Cada Rosario Comunitario deja una obra irrepetible. No se guarda el SVG:
-          solo su semilla. El navegador la reconstruye cada vez.
+          <div className="no-scrollbar flex-1 overflow-y-auto px-5 pb-10 landscape:overflow-auto">
+        <p className="mx-auto max-w-sm text-center text-sm leading-relaxed text-[#8a8a90] landscape:max-w-lg">
+          Cada Rosario Comunitario deja una obra irrepetible.
         </p>
 
         {works.length === 0 ? (
@@ -53,7 +52,7 @@ export function GalleryScreen({ onClose }: { onClose: () => void }) {
             Aún no hay obras. Completa un Rosario Comunitario para nacer la primera.
           </div>
         ) : (
-          <div className="mt-6 grid grid-cols-2 gap-3">
+          <div className="mt-6 grid grid-cols-2 gap-3 landscape:grid-cols-3">
             {works.map((work) => (
               <button
                 key={work.id}
@@ -92,8 +91,8 @@ export function GalleryScreen({ onClose }: { onClose: () => void }) {
             </div>
             <div className="w-14" />
           </div>
-          <div className="no-scrollbar flex-1 overflow-y-auto px-5 pb-10">
-            <div className="mx-auto mt-4 max-w-sm overflow-hidden rounded-[2rem] border border-white/10">
+          <div className="no-scrollbar flex-1 overflow-y-auto px-5 pb-10 landscape:overflow-auto">
+            <div className="mx-auto mt-4 max-w-sm overflow-hidden rounded-[2rem] border border-white/10 landscape:max-w-lg">
               <CommunityWorkSvg
                 communitySeed={selected.communitySeed}
                 composition={selected.composition}
@@ -105,11 +104,11 @@ export function GalleryScreen({ onClose }: { onClose: () => void }) {
             <h2 className="mt-6 text-center font-serif-holy text-3xl text-[var(--gold)]">
               {selected.title}
             </h2>
-            <p className="mx-auto mt-3 max-w-sm text-center text-sm leading-relaxed text-white/65">
+            <p className="mx-auto mt-3 max-w-sm text-center text-sm leading-relaxed text-white/65 landscape:max-w-lg">
               Reconstruida desde {selected.signatures.length} firmas espirituales y la
               semilla comunitaria {selected.communitySeed.slice(0, 10)}…
             </p>
-            <div className="mx-auto mt-6 grid max-w-sm grid-cols-2 gap-3 text-center text-sm">
+            <div className="mx-auto mt-6 grid max-w-sm grid-cols-2 gap-3 text-center text-sm landscape:max-w-none">
               <div className="rounded-2xl border border-white/10 py-3">🙏 {selected.participants}</div>
               <div className="rounded-2xl border border-white/10 py-3">🕯️ {selected.intentions}</div>
               <div className="rounded-2xl border border-white/10 py-3">

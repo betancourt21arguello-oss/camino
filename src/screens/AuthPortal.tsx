@@ -103,7 +103,7 @@ export function AuthPortal({ onClose, initialMode }: { onClose: () => void; init
         <div className="w-11" />
       </div>
 
-      <div className="flex flex-1 flex-col justify-center px-7 pb-12">
+      <div className="flex flex-1 flex-col justify-center px-7 pb-12 landscape:px-10">
         <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full border border-[#ddd5c5] bg-white">
           <svg viewBox="0 0 40 40" className="h-10 w-10 text-[#7a8a5c]" fill="none" stroke="currentColor" strokeWidth="1.6">
             <path d="M20 5v30M14 12h12" strokeLinecap="round" />

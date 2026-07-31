@@ -217,7 +217,7 @@ export function DailyPrayerPortal({ kind, liturgy, assets, onClose, onComplete }
   const palette = { dawn: dawnColors, noon: noonColors, dusk: duskColors, night: nightColors }[mood] ?? dawnColors;
 
   return (
-    <div className="absolute inset-0 z-40 flex flex-col overflow-hidden bg-gradient-to-b from-[#fef3e2] via-[#fde4c8] to-[#f5d5a0] text-[#2a1f0e]">
+    <div className="absolute inset-0 z-40 flex flex-col overflow-hidden bg-gradient-to-b from-[#fef3e2] via-[#fde4c8] to-[#f5d5a0] text-[#2a1f0e] landscape:overflow-auto">
       <header className="relative z-10 flex shrink-0 items-center justify-between px-5 pb-2 pt-12">
         <button onClick={onClose} className="flex h-11 w-11 items-center justify-center rounded-full transition hover:bg-black/5" aria-label="Cerrar">
           <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -264,7 +264,7 @@ export function DailyPrayerPortal({ kind, liturgy, assets, onClose, onComplete }
         />
       </div>
 
-      <div className="relative z-10 flex-1 overflow-y-auto px-5 py-6">
+      <div className="relative z-10 flex-1 overflow-y-auto px-5 py-6 landscape:overflow-auto">
         {isAngelus ? (
           <AngelusView
             setVerseIndex={setVerseIndex}
