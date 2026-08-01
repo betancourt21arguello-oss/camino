@@ -34,6 +34,7 @@
 
     <!-- Android / Chrome -->
     <meta name="mobile-web-app-capable" content="yes" />
+    <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" />
     <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
     <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png" />
     <link rel="shortcut icon" href="/icons/icon-192.png" />
@@ -43,10 +44,14 @@
     <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
     <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png" />
 
-    <!-- Manifest: el preview ?embed=true no sirve archivos estáticos y
-         generaba un 404. En producción se inserta temprano y conserva PWA. -->
+    <!-- Manifest fallback: el preview ?embed=true no sirve archivos estáticos y
+         generaba un 404. Si por alguna razón el link de arriba no aplica,
+         lo insertamos dinámicamente. -->
     <script>
-      if (!new URLSearchParams(location.search).has("embed")) {
+      if (
+        !new URLSearchParams(location.search).has("embed") &&
+        !document.querySelector('link[rel="manifest"][href="/manifest.webmanifest"]')
+      ) {
         const manifest = document.createElement("link");
         manifest.rel = "manifest";
         manifest.href = "/manifest.webmanifest";

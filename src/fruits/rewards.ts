@@ -30,6 +30,7 @@ export const REWARD_TABLE: Record<SpiritualEventType, RewardEntry> = {
   "compline":           { vela: 1, semilla: 0, agua: 1, note: "Completas rezada" },
   "catechesis":         { vela: 0, semilla: 3, agua: 0, note: "Catequesis del día" },
   "harvest-fruit":      { vela: 0, semilla: 5, agua: 3, note: "Fruto cosechado" },
+  "jornada-complete":   { vela: 0, semilla: 0, agua: 2, note: "Jornada completada" },
 };
 
 export function rewardFor(type: SpiritualEventType): RewardEntry {

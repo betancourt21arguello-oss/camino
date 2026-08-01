@@ -98,6 +98,23 @@ export function OneSignalProvider({ children }: { children: ReactNode }) {
             setSubscribed(event.current.optedIn);
           });
 
+          // Manejar clics en notificaciones de OneSignal (deep linking)
+          OneSignal.Notifications.addEventListener("click", (event: any) => {
+            try {
+              const data = event?.data || event?.notification?.data || {};
+              if (data.devotion === "divina-misericordia") {
+                const url = new URL(window.location.href);
+                url.searchParams.set("devotion", "divina-misericordia");
+                window.history.replaceState({}, "", url.toString());
+                window.dispatchEvent(new Event("onesignal-notification-click"));
+              } else if (data.url) {
+                window.location.href = data.url;
+              }
+            } catch (clickErr) {
+              console.warn("[camino] OneSignal click handler error:", clickErr);
+            }
+          });
+
           const { data: { session } } = await supabase?.auth.getSession() || { data: { session: null } };
           if (session?.user) {
             OneSignal.User.addAlias("supabase_id", session.user.id);

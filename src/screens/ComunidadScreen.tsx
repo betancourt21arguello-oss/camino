@@ -255,7 +255,7 @@ export function ComunidadScreen() {
               >
                 <CandleGlyph
                   tint={c.ownerHue}
-                  praying={c.mine || (c.prayedBy ?? []).includes("me")}
+                  praying={c.mine || (c.prayedBy ?? []).includes(user?.id ?? "")}
                 />
                 {(c.prayedBy?.length ?? 0) > 0 && (
                   <span className="mt-1 text-[9px] text-[#9a9a9f]">
@@ -286,7 +286,7 @@ export function ComunidadScreen() {
               <CandleGlyph
                 tint={ownerHue(selected.owner_id)}
                 big
-                praying={selected.owner_id === user?.id || (selected.prayedBy ?? []).includes("me")}
+                praying={selected.owner_id === user?.id || (selected.prayedBy ?? []).includes(user?.id ?? "")}
               />
             </div>
             <div className="mt-4 text-center text-[10px] tracking-[0.2em] text-[#9a9a9f]">
@@ -299,7 +299,7 @@ export function ComunidadScreen() {
               Encendida · quedan {hoursLeft(selected)} h · 🙏 {selected.prayedBy?.length ?? 0} rezando
             </p>
 
-            {selected.owner_id === user?.id || (selected.prayedBy ?? []).includes("me") ? (
+            {selected.owner_id === user?.id || (selected.prayedBy ?? []).includes(user?.id ?? "") ? (
               <div className="mt-5 rounded-full bg-[#eef2e6] py-3 text-center text-sm font-medium text-[#5c6b3f]">
                 {selected.owner_id === user?.id
                   ? "Es tu intención · presente todo el día"
@@ -311,12 +311,12 @@ export function ComunidadScreen() {
                   prayForCandle(selected.id);
                   setSelected({
                     ...selected,
-                    prayedBy: [...(selected.prayedBy ?? []), "me"],
+                    prayedBy: [...(selected.prayedBy ?? []), user?.id ?? ""],
                   });
                   setAllCandles((prev) =>
                     prev.map((c) =>
                       c.id === selected.id
-                        ? { ...c, prayedBy: [...(c.prayedBy ?? []), "me"] }
+                        ? { ...c, prayedBy: [...(c.prayedBy ?? []), user?.id ?? ""] }
                         : c,
                     ),
                   );

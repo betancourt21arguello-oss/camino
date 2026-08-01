@@ -88,6 +88,7 @@ function Shell() {
   const [prayerActive, setPrayerActive] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [initialDevotionId, setInitialDevotionId] = useState<string | undefined>(undefined);
   const { emit } = useSpiritual();
   const { user } = useAuth();
   const assets = useWhatsAppAssets();
@@ -125,6 +126,7 @@ function Shell() {
 
   const settleJornada = () => {
     emit({ type: "task-complete" });
+    emit({ type: "jornada-complete" });
     void markCategoriesDone(user?.id, JORNADA_CATEGORIES);
     setJornadaOpen(false);
     setTab("camino");
@@ -145,6 +147,46 @@ function Shell() {
     if (typeof window !== "undefined" && window.location.pathname === "/admin") {
       setAdminOpen(true);
     }
+  }, []);
+
+  // Deep linking: ?devotion=divina-misericordia abre la Coronilla directamente
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const devotion = params.get("devotion");
+    if (devotion === "divina-misericordia") {
+      setInitialDevotionId("divina-misericordia");
+      setTab("rosario");
+      params.delete("devotion");
+      const newSearch = params.toString();
+      window.history.replaceState(
+        {},
+        "",
+        window.location.pathname + (newSearch ? `?${newSearch}` : "")
+      );
+    }
+  }, []);
+
+  // Escuchar clics en notificaciones de OneSignal (deep linking en caliente)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleNotificationClick = () => {
+      const params = new URLSearchParams(window.location.search);
+      const devotion = params.get("devotion");
+      if (devotion === "divina-misericordia") {
+        setInitialDevotionId("divina-misericordia");
+        setTab("rosario");
+        params.delete("devotion");
+        const newSearch = params.toString();
+        window.history.replaceState(
+          {},
+          "",
+          window.location.pathname + (newSearch ? `?${newSearch}` : "")
+        );
+      }
+    };
+    window.addEventListener("onesignal-notification-click", handleNotificationClick);
+    return () => window.removeEventListener("onesignal-notification-click", handleNotificationClick);
   }, []);
 
   return (
@@ -181,6 +223,7 @@ function Shell() {
                 onOpenGallery={() => setGalleryOpen(true)}
                 onActiveChange={setPrayerActive}
                 onOpenHour={(kind) => setPrayerPortal(kind)}
+                initialDevotionId={initialDevotionId}
               />
             )}
             {tab === "comunidad" && <ComunidadScreen />}

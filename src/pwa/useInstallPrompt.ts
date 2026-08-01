@@ -6,7 +6,7 @@ interface BeforeInstallPromptEvent extends Event {
 }
 
 const DISMISS_KEY = "camino_install_dismissed_at";
-const DISMISS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const DISMISS_TTL_MS = 1 * 24 * 60 * 60 * 1000;
 
 /**
  * iOS / iPadOS no exponen `beforeinstallprompt`, por lo que la forma de
@@ -56,15 +56,18 @@ export function useInstallPrompt(): InstallController {
     if (saved && Date.now() - Number(saved) < DISMISS_TTL_MS) setDismissed(true);
 
     const onBeforeInstall = (e: Event) => {
+      console.log("[Camino] beforeinstallprompt fired");
       const evt = e as BeforeInstallPromptEvent;
       const isStandalone = detectStandalone();
       const savedDismiss = window.localStorage.getItem(DISMISS_KEY);
       const wasDismissed = Boolean(savedDismiss && Date.now() - Number(savedDismiss) < DISMISS_TTL_MS);
+      console.log("[Camino] install check:", { isStandalone, wasDismissed });
       if (isStandalone || wasDismissed) return;
       evt.preventDefault();
       setDeferred(evt);
     };
     const onInstalled = () => {
+      console.log("[Camino] appinstalled fired");
       setStandalone(true);
       setDeferred(null);
     };
@@ -89,6 +92,10 @@ export function useInstallPrompt(): InstallController {
       : ios
         ? "ios-guide"
         : "none";
+
+  useEffect(() => {
+    console.log("[Camino] install mode changed:", mode);
+  }, [mode]);
 
   const dismiss = useCallback(() => {
     setDismissed(true);

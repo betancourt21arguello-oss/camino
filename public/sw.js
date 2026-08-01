@@ -93,6 +93,19 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const target = event.notification.data || "/";
+  let target = "/";
+  const data = event.notification.data;
+  if (data) {
+    // OneSignal envía data como objeto; puede contener url o devotion
+    if (typeof data === "string") {
+      target = data;
+    } else if (typeof data === "object") {
+      if (data.url) {
+        target = data.url;
+      } else if (data.devotion) {
+        target = "/?devotion=" + encodeURIComponent(data.devotion);
+      }
+    }
+  }
   event.waitUntil(clients.openWindow(target));
 });

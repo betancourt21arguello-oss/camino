@@ -19,7 +19,8 @@ export type SpiritualEventType =
   | "vespers"
   | "compline"
   | "catechesis"
-  | "harvest-fruit";
+  | "harvest-fruit"
+  | "jornada-complete";
 
 export interface SpiritualEvent {
   type: SpiritualEventType;

@@ -80,7 +80,8 @@ export type GardenEventType =
   | "VESPERS"
   | "COMPLINE"
   | "CATECHESIS"
-  | "HARVEST_FRUIT";
+  | "HARVEST_FRUIT"
+  | "JOURNEY_COMPLETED";
 
 export interface GardenEvent {
   id: string;

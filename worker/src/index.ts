@@ -1422,6 +1422,95 @@ async function sendPushNotification(env: any, subscription: any, payload: { titl
   await webpush.sendNotification(subscription, notificationPayload);
 }
 
+/**
+ * Envía una notificación a todos los usuarios suscritos vía OneSignal Create Message API.
+ * Endpoint: POST https://api.onesignal.com/notifications
+ */
+async function sendOneSignalNotification(
+  env: any,
+  payload: {
+    headings?: Record<string, string>;
+    contents?: Record<string, string>;
+    data?: Record<string, any>;
+    url?: string;
+    included_segments?: string[];
+  }
+): Promise<{ ok: boolean; id?: string; error?: string }> {
+  const appId = env.ONESIGNAL_APP_ID;
+  const restApiKey = env.ONESIGNAL_REST_API_KEY;
+
+  if (!appId || !restApiKey) {
+    console.warn("[OneSignal] No configurado: falta ONESIGNAL_APP_ID o ONESIGNAL_REST_API_KEY");
+    return { ok: false, error: "OneSignal no configurado en el worker" };
+  }
+
+  const body: Record<string, any> = {
+    app_id: appId,
+    included_segments: payload.included_segments || ["Subscribed Users"],
+    headings: payload.headings || { es: "Camino", en: "Camino" },
+    contents: payload.contents || { es: "Tienes una oración pendiente.", en: "You have a prayer pending." },
+  };
+
+  if (payload.url) {
+    body.url = payload.url;
+  }
+
+  if (payload.data) {
+    body.data = payload.data;
+  }
+
+  try {
+    const res = await fetch("https://api.onesignal.com/notifications", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Key ${restApiKey}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    const data = await res.json() as any;
+
+    if (!res.ok) {
+      const errMsg = data?.errors?.[0] || data?.error || `HTTP ${res.status}`;
+      console.error("[OneSignal] Error enviando notificación:", errMsg);
+      return { ok: false, error: errMsg };
+    }
+
+    console.log("[OneSignal] Notificación enviada:", data.id);
+    return { ok: true, id: data.id };
+  } catch (e: any) {
+    console.error("[OneSignal] Excepción:", e.message);
+    return { ok: false, error: e.message };
+  }
+}
+
+/**
+ * Envía la notificación diaria de la Coronilla de la Divina Misericordia (3:00 PM)
+ * usando OneSignal Create Message API.
+ */
+async function sendDivinaMisericordiaNotification(env: any): Promise<{ ok: boolean; id?: string; error?: string }> {
+  const frontendUrl = env.FRONTEND_URL || "https://camino.bypsolutionsbpo.com";
+  const targetUrl = `${frontendUrl}/?devotion=divina-misericordia`;
+
+  return sendOneSignalNotification(env, {
+    headings: {
+      es: "La Hora de la Misericordia 🙏",
+      en: "La Hora de la Misericordia 🙏",
+    },
+    contents: {
+      es: "Son las 3:00 PM. Entra a la app y acompáñanos a rezar la Coronilla de la Divina Misericordia. Jesús, en Ti confío.",
+      en: "Son las 3:00 PM. Entra a la app y acompáñanos a rezar la Coronilla de la Divina Misericordia. Jesús, en Ti confío.",
+    },
+    url: targetUrl,
+    data: {
+      devotion: "divina-misericordia",
+      module: "rosario",
+    },
+    included_segments: ["Total Subscriptions"],
+  });
+}
+
 async function handleEmailReminders(request: Request, env: any): Promise<Response> {
   try {
     const { enabled } = await request.json();
@@ -1562,6 +1651,15 @@ async function processReminders(env: any): Promise<void> {
 
   // 3. 3 PM (15:00 local = 19:00 UTC) Divina Misericordia prayer reminder
   if (localHour === 15 && utcMinute === 0) {
+    // OneSignal: enviar a todos los usuarios suscritos (Create Message API)
+    const onesignalKey = `notified:divina-misericordia:onesignal:${today}`;
+    const onesignalAlreadySent = await env.DAILY_CACHE.get(onesignalKey);
+    if (!onesignalAlreadySent) {
+      await sendDivinaMisericordiaNotification(env);
+      await env.DAILY_CACHE.put(onesignalKey, "1", { expirationTtl: 3600 });
+    }
+
+    // Web Push (VAPID): enviar a usuarios con suscripción directa
     const allSubs = await supabaseSelect(env, "push_subscriptions", {});
 
     for (const sub of (allSubs || [])) {
@@ -1577,7 +1675,7 @@ async function processReminders(env: any): Promise<void> {
           await sendPushNotification(env, subscription, {
             title: "Camino · Oración",
             body: "Es hora de rezar la Coronilla de la Divina Misericordia",
-            url: "/#/divina-misericordia",
+            url: "/?devotion=divina-misericordia",
           });
         }
       } catch (e) {
@@ -2072,6 +2170,80 @@ export default {
 
     if (url.pathname === "/notifications/email/reminders" && request.method === "POST") {
       return handleEmailReminders(request, env);
+    }
+
+    if (url.pathname === "/notifications/onesignal/send" && request.method === "POST") {
+      try {
+        const body: any = await request.json().catch(() => ({}));
+        const result = await sendOneSignalNotification(env, {
+          headings: body.headings,
+          contents: body.contents,
+          url: body.url,
+          data: body.data,
+          included_segments: body.included_segments,
+        });
+        return jsonResponse(result, result.ok ? 200 : 500);
+      } catch (e: any) {
+        return jsonResponse({ error: e.message }, 500);
+      }
+    }
+
+    if (url.pathname === "/notifications/onesignal/divina-misericordia" && request.method === "POST") {
+      try {
+        const result = await sendDivinaMisericordiaNotification(env);
+        return jsonResponse(result, result.ok ? 200 : 500);
+      } catch (e: any) {
+        return jsonResponse({ error: e.message }, 500);
+      }
+    }
+
+    if (url.pathname === "/notifications/send-to-user" && request.method === "POST") {
+      try {
+        const body: any = await request.json().catch(() => ({}));
+        const targetUserId = body?.userId;
+        const title = typeof body?.title === "string" ? body.title.trim() : "";
+        const message = typeof body?.message === "string" ? body.message.trim() : "";
+        const targetUrl = typeof body?.url === "string" ? body.url.trim() : "/";
+
+        if (!targetUserId || !title || !message) {
+          return jsonResponse({ error: "Missing userId, title or message" }, 400);
+        }
+
+        // Get user's push subscriptions
+        const subs = await supabaseSelect(env, "push_subscriptions", {
+          profile_id: `eq.${targetUserId}`,
+        });
+
+        const results: { endpoint?: string; ok: boolean; error?: string }[] = [];
+
+        for (const sub of (subs || [])) {
+          try {
+            const subscription = JSON.parse(sub.subscription || "{}");
+            if (subscription?.endpoint) {
+              await sendPushNotification(env, subscription, {
+                title,
+                body: message,
+                url: targetUrl,
+              });
+              results.push({ endpoint: subscription.endpoint, ok: true });
+            }
+          } catch (e: any) {
+            results.push({ endpoint: sub.endpoint, ok: false, error: e.message });
+          }
+        }
+
+        const sent = results.filter((r) => r.ok).length;
+        const failed = results.filter((r) => !r.ok).length;
+
+        return jsonResponse({
+          ok: sent > 0,
+          sent,
+          failed,
+          results,
+        });
+      } catch (e: any) {
+        return jsonResponse({ error: e.message }, 500);
+      }
     }
 
     if (url.pathname === "/admin/users/search" && request.method === "GET") {

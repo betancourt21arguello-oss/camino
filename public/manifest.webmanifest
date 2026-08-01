@@ -7,6 +7,8 @@
   "background_color": "#ffffff",
   "theme_color": "#ffffff",
   "orientation": "portrait",
+  "prefer_related_applications": false,
+  "related_applications": [],
   "categories": ["religion", "spirituality", "lifestyle"],
   "description": "Rosario comunitario en vivo y oraciones diarias",
   "lang": "es",

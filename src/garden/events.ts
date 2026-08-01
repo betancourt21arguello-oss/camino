@@ -33,9 +33,10 @@ const EVENT_MAP: Record<string, GardenEventType> = {
   "angelus": "ANGELUS",
   "vespers": "VESPERS",
   "compline": "COMPLINE",
-  "catechesis": "CATECHESIS",
-  "harvest-fruit": "HARVEST_FRUIT",
-};
+   "catechesis": "CATECHESIS",
+   "harvest-fruit": "HARVEST_FRUIT",
+   "jornada-complete": "JOURNEY_COMPLETED",
+ };
 
 /** Reverse map: GardenEventType → spiritual event type */
 export const GARDEN_TO_SPIRITUAL_MAP: Record<GardenEventType, string> = {
@@ -57,9 +58,10 @@ export const GARDEN_TO_SPIRITUAL_MAP: Record<GardenEventType, string> = {
   ANGELUS: "angelus",
   VESPERS: "vespers",
   COMPLINE: "compline",
-  CATECHESIS: "catechesis",
-  HARVEST_FRUIT: "harvest-fruit",
-};
+   CATECHESIS: "catechesis",
+   HARVEST_FRUIT: "harvest-fruit",
+   JOURNEY_COMPLETED: "jornada-complete",
+ };
 
 export function gardenEventType(spiritualEventType: string): GardenEventType | null {
   return EVENT_MAP[spiritualEventType] ?? null;
@@ -85,9 +87,10 @@ const WEIGHTS: Record<GardenEventType, { pts: number; water: number; light: numb
   ANGELUS:              { pts: 4,  water: 1,  light: 5  },
   VESPERS:              { pts: 6,  water: 2,  light: 8  },
   COMPLINE:             { pts: 5,  water: 2,  light: 2  },
-  CATECHESIS:           { pts: 8,  water: 2,  light: 4  },
-  HARVEST_FRUIT:        { pts: 0,  water: 0,  light: 0  },
-};
+   CATECHESIS:           { pts: 8,  water: 2, light: 4  },
+   HARVEST_FRUIT:        { pts: 0,  water: 0, light: 0  },
+   JOURNEY_COMPLETED:    { pts: 5,  water: 2, light: 3  },
+ };
 
 const DAY = 86_400_000;
 const DECAY_GRACE_MS = 48 * 3_600_000; // 48 h sin actividad → empieza el decaimiento

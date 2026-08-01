@@ -77,22 +77,82 @@ async function wikimediaSearch(query: string): Promise<string | null> {
       `https://commons.wikimedia.org/w/api.php` +
       `?action=query&generator=search` +
       `&gsrsearch=${encodeURIComponent(normalized)}` +
-      `&gsrnamespace=6&gsrlimit=8&prop=imageinfo` +
+      `&gsrnamespace=6&gsrlimit=10&prop=imageinfo` +
       `&iiprop=url|mime|extmetadata&iiurlwidth=720` +
       `&format=json&origin=*`;
     const data = await fetchJson(url);
     const pages = Object.values(data?.query?.pages ?? {}) as any[];
+    
     for (const page of pages) {
       const info = page?.imageinfo?.[0];
       const image = info?.thumburl ?? info?.url;
-      const mime = String(info?.mime ?? "");
+      const mime = String(info?.mime ?? "").toLowerCase();
+
+      // 1. Validar que sea una URL HTTP válida
+      if (!isHttpUrl(image)) continue;
+
+      // 2. Bloquear explícitamente PDFs, documentos y extensiones no deseadas
       if (
-        isHttpUrl(image) &&
-        (mime.startsWith("image/") || /\.(jpe?g|png|webp)(\?|$)/i.test(image))
+        mime.includes("pdf") ||
+        mime.includes("djvu") ||
+        mime.includes("application") ||
+        /\.pdf(\?|$)/i.test(image) ||
+        /\.djvu(\?|$)/i.test(image)
+      ) {
+        continue;
+      }
+
+      // 3. Exigir que sea estrictamente una imagen rasterizada válida
+      if (
+        mime.startsWith("image/") &&
+        /\.(jpe?g|png|webp)(\?|$)/i.test(image)
       ) {
         return image;
       }
     }
+    return null;
+  });
+}
+
+/**
+ * The Metropolitan Museum of Art API
+ * Devuelve pinturas clásicas y arte de dominio público (sin API Key).
+ */
+async function metMuseumSearch(query: string): Promise<string | null> {
+  const normalized = query.trim();
+  if (normalized.length < 3) return null;
+
+  const key = `metmuseum:${normalized}`;
+  return cached(key, async () => {
+    const searchUrl =
+      `https://collectionapi.metmuseum.org/public/collection/v1/search` +
+      `?hasImages=true&medium=Paintings|Drawings&q=${encodeURIComponent(normalized)}`;
+
+    try {
+      const searchData = await fetchJson(searchUrl);
+
+      if (!searchData || !searchData.objectIDs || searchData.objectIDs.length === 0) {
+        return null;
+      }
+
+      const topIds = searchData.objectIDs.slice(0, 3);
+
+      for (const id of topIds) {
+        const objectUrl = `https://collectionapi.metmuseum.org/public/collection/v1/objects/${id}`;
+        const objectData = await fetchJson(objectUrl);
+
+        if (
+          objectData &&
+          objectData.isPublicDomain &&
+          objectData.primaryImageSmall
+        ) {
+          return objectData.primaryImageSmall;
+        }
+      }
+    } catch (error) {
+      console.error("Error en Met API:", error);
+    }
+
     return null;
   });
 }
@@ -142,7 +202,11 @@ export async function resolveSaintImage(
     if (es) return { url: es, isPlaceholder: false };
     const en = await wikipediaSearchThumbnail(candidate, "en");
     if (en) return { url: en, isPlaceholder: false };
+
+    const met = await metMuseumSearch(`Saint ${candidate}`);
+    if (met) return { url: met, isPlaceholder: false };
   }
+
   for (const query of [`${saintName} santo`, `${saintName} Catholic saint painting`]) {
     const image = await wikimediaSearch(query);
     if (image) return { url: image, isPlaceholder: false };
@@ -150,12 +214,18 @@ export async function resolveSaintImage(
   return { url: null, isPlaceholder: true };
 }
 
-/** Prioriza arte sacro católico de dominio público en Commons. */
+/** Prioriza arte sacro de alta calidad en El Met, y luego en Commons. */
 export async function resolveCatholicImage(
   subject: string | undefined,
   gospelRef: string | undefined,
 ): Promise<string | null> {
   const base = (subject || gospelRef || "Jesus Christ").trim();
+
+  // 1. Intentar primero en The Met (Alta calidad, pinturas reales garantizadas)
+  const metImage = await metMuseumSearch(base);
+  if (metImage) return metImage;
+
+  // 2. Si el museo no tiene nada (ej. un santo muy local), usar Wikimedia (reparado)
   for (const query of [
     `${base} Catholic religious painting`,
     `${base} sacred art Jesus Christ`,

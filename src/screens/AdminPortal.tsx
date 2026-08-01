@@ -9,7 +9,7 @@ import type { DnaTraits, GardenState } from "../garden/types";
 import { caracasDate } from "../utils/caracas";
 
 export function AdminPortal({ onClose }: { onClose: () => void }) {
-  const [tab, setTab] = useState<"garden" | "gemini" | "upload" | "telegram" | "tasks" | "images" | "oraciones" | "notificaciones">("gemini");
+  const [tab, setTab] = useState<"contenido" | "tasks" | "garden" | "notificaciones">("contenido");
 
   return (
     <div className="absolute inset-0 z-[70] flex flex-col bg-[#0e0e10] text-white landscape:overflow-auto">
@@ -20,7 +20,7 @@ export function AdminPortal({ onClose }: { onClose: () => void }) {
       </header>
 
       <nav className="flex shrink-0 gap-1 px-3 pt-3 landscape:flex-wrap">
-        {(["gemini", "upload", "tasks", "garden", "telegram", "images", "oraciones", "notificaciones"] as const).map((t) => (
+        {(["contenido", "tasks", "garden", "notificaciones"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -28,19 +28,15 @@ export function AdminPortal({ onClose }: { onClose: () => void }) {
               tab === t ? "bg-[var(--gold)] text-black" : "bg-white/[0.06] text-white/60"
             }`}
           >
-            {t === "gemini" ? "Gemini" : t === "upload" ? "Subir audio" : t === "tasks" ? "Tareas" : t === "garden" ? "Jardín" : t === "telegram" ? "Telegram" : t === "images" ? "Imágenes" : t === "oraciones" ? "Oraciones" : "Notifs"}
+            {t === "contenido" ? "Contenido" : t === "tasks" ? "Tareas" : t === "garden" ? "Jardín" : "Notifs"}
           </button>
         ))}
       </nav>
 
       <div className="no-scrollbar flex-1 overflow-y-auto p-4 landscape:overflow-auto">
-        {tab === "gemini" && <GeminiPanel />}
-        {tab === "upload" && <UploadPanel />}
+        {tab === "contenido" && <ContenidoPanel />}
         {tab === "tasks" && <TasksPanel />}
         {tab === "garden" && <GardenEditor />}
-        {tab === "telegram" && <TelegramPanel />}
-        {tab === "images" && <ImagePanel />}
-        {tab === "oraciones" && <OracionesPanel />}
         {tab === "notificaciones" && <NotificacionesPanel />}
       </div>
     </div>
@@ -1498,8 +1494,8 @@ function TelegramPanel() {
          El endpoint <code>/telegram</code> usa la misma lógica que <code>/whatsapp</code>. Ver whatsapp.md.
        </p>
      </div>
-   );
- }
+  );
+}
 
 // Image management panel — override saint and daily images
 function ImagePanel() {
@@ -1657,43 +1653,60 @@ function NotificacionesPanel() {
     setResult("");
 
     try {
-      // Get the Supabase Edge Function URL
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const functionUrl = `${supabaseUrl}/functions/v1/send-push`;
-
       const body: Record<string, any> = {
-        title: title.trim(),
-        message: message.trim(),
+        headings: { es: title.trim() },
+        contents: { es: message.trim() },
       };
-      if (target === "user" && userId) {
-        body.targetUserId = userId;
-      }
       if (url.trim()) {
         body.url = url.trim();
       }
+      if (target === "user" && userId) {
+        // Send to a specific user via VAPID push (from push_subscriptions table)
+        const token = supabase
+          ? (await supabase.auth.getSession()).data.session?.access_token
+          : undefined;
 
-      // Get the session token for authorization
-      const token = supabase
-        ? (await supabase.auth.getSession()).data.session?.access_token
-        : undefined;
+        const res = await fetch(`${WORKER_API_BASE}/notifications/send-to-user`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            userId,
+            title: title.trim(),
+            message: message.trim(),
+            url: url.trim() || "/",
+          }),
+        });
 
-      const res = await fetch(functionUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(body),
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        setResult(`✅ Notificación enviada: ${data.id || "OK"}`);
-        setTitle("");
-        setMessage("");
-        setUrl("");
+        const data = await res.json();
+        if (res.ok) {
+          setResult(`✅ Notificación enviada al usuario`);
+          setTitle("");
+          setMessage("");
+          setUrl("");
+        } else {
+          setResult(`❌ Error: ${data.error || res.status}`);
+        }
       } else {
-        setResult(`❌ Error: ${data.error || res.status}`);
+        // Send to all users via OneSignal
+        body.included_segments = ["Total Subscriptions"];
+        const res = await fetch(`${WORKER_API_BASE}/notifications/onesignal/send`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+
+        const data = await res.json();
+        if (res.ok && data.ok) {
+          setResult(`✅ Notificación enviada a todos (ID: ${data.id || "OK"})`);
+          setTitle("");
+          setMessage("");
+          setUrl("");
+        } else {
+          setResult(`❌ Error: ${data.error || res.status}`);
+        }
       }
     } catch (e) {
       setResult(`❌ ${e instanceof Error ? e.message : "Error de red"}`);
@@ -1938,6 +1951,35 @@ function OracionesPanel() {
       </button>
 
       {result && <p className="text-sm">{result}</p>}
+    </div>
+  );
+}
+
+function ContenidoPanel() {
+  const [subTab, setSubTab] = useState<"gemini" | "upload" | "telegram" | "images" | "oraciones">("gemini");
+
+  return (
+    <div className="space-y-4">
+      <nav className="flex shrink-0 gap-1 flex-wrap">
+        {(["gemini", "upload", "telegram", "images", "oraciones"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setSubTab(t)}
+            className={`flex-1 rounded-full px-2 py-1.5 text-[11px] font-medium capitalize transition ${
+              subTab === t ? "bg-[var(--gold)] text-black" : "bg-white/[0.06] text-white/60"
+            }`}
+          >
+            {t === "gemini" ? "Gemini" : t === "upload" ? "Subir audio" : t === "telegram" ? "Telegram" : t === "images" ? "Imágenes" : "Oraciones"}
+          </button>
+        ))}
+      </nav>
+      <div>
+        {subTab === "gemini" && <GeminiPanel />}
+        {subTab === "upload" && <UploadPanel />}
+        {subTab === "telegram" && <TelegramPanel />}
+        {subTab === "images" && <ImagePanel />}
+        {subTab === "oraciones" && <OracionesPanel />}
+      </div>
     </div>
   );
 }
