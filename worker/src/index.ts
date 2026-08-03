@@ -707,6 +707,49 @@ async function getTranscriptFromProxy(videoUrl: string, env: any): Promise<Trans
   }
 }
 
+async function getTranscriptFromLiturgy(date: string, part: "laudes" | "visperas" | "completas", env: any): Promise<TranscriptLine[] | null> {
+  const baseUrl = env.LITURGY_SERVICE_URL;
+  if (!baseUrl) return null;
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    const url = `${baseUrl}/api/liturgy?date=${encodeURIComponent(date)}&part=${encodeURIComponent(part)}`;
+
+    const res = await fetch(url, {
+      method: "GET",
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      console.warn(`[Transcript] Liturgy service responded with ${res.status}`);
+      return null;
+    }
+
+    const data = await res.json();
+    const text = data?.text;
+    if (!text || typeof text !== "string") return null;
+
+    const lines = text
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .map((line, index) => ({
+        text: line,
+        offset: index * 5000,
+        duration: 5000,
+      }));
+
+    console.log(`[Transcript] Liturgy fallback for ${part} ${date}: ${lines.length} lines`);
+    return lines.length > 0 ? lines : null;
+  } catch (e: any) {
+    console.warn(`[Transcript] Liturgy service failed for ${part} ${date}:`, e?.message || e);
+    return null;
+  }
+}
+
 async function getTranscript(videoUrl: string, env?: any): Promise<TranscriptLine[] | null> {
   if (env?.TRANSCRIPT_PROXY_URL) {
     const proxyResult = await getTranscriptFromProxy(videoUrl, env);
@@ -730,7 +773,7 @@ async function getTranscript(videoUrl: string, env?: any): Promise<TranscriptLin
   }
 }
 
-async function fetchYouTubePrayerVideos(env: any): Promise<PrayerVideos> {
+async function fetchYouTubePrayerVideos(env: any, date: string): Promise<PrayerVideos> {
   const response = await fetch(YOUTUBE_RSS_URL, {
     headers: {
       "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -759,14 +802,29 @@ async function fetchYouTubePrayerVideos(env: any): Promise<PrayerVideos> {
       if (titulo.includes("laudes") && !oraciones.laudes) {
         oraciones.laudes = url;
         oraciones.laudesTranscript = await getTranscript(url, env);
+        console.log(`[Transcript] Laudes youtube transcript: ${oraciones.laudesTranscript?.length ?? 0}`);
+        if (!oraciones.laudesTranscript && env?.LITURGY_SERVICE_URL) {
+          oraciones.laudesTranscript = await getTranscriptFromLiturgy(date, "laudes", env);
+          console.log(`[Transcript] Laudes liturgy fallback: ${oraciones.laudesTranscript?.length ?? 0}`);
+        }
       }
       if ((titulo.includes("vísperas") || titulo.includes("visperas")) && !oraciones.visperas) {
         oraciones.visperas = url;
         oraciones.visperasTranscript = await getTranscript(url, env);
+        console.log(`[Transcript] Vespers youtube transcript: ${oraciones.visperasTranscript?.length ?? 0}`);
+        if (!oraciones.visperasTranscript && env?.LITURGY_SERVICE_URL) {
+          oraciones.visperasTranscript = await getTranscriptFromLiturgy(date, "visperas", env);
+          console.log(`[Transcript] Vespers liturgy fallback: ${oraciones.visperasTranscript?.length ?? 0}`);
+        }
       }
       if (titulo.includes("completas") && !oraciones.completas) {
         oraciones.completas = url;
         oraciones.completasTranscript = await getTranscript(url, env);
+        console.log(`[Transcript] Compline youtube transcript: ${oraciones.completasTranscript?.length ?? 0}`);
+        if (!oraciones.completasTranscript && env?.LITURGY_SERVICE_URL) {
+          oraciones.completasTranscript = await getTranscriptFromLiturgy(date, "completas", env);
+          console.log(`[Transcript] Compline liturgy fallback: ${oraciones.completasTranscript?.length ?? 0}`);
+        }
       }
     }
 
@@ -864,8 +922,8 @@ async function injectPrayerVideos(liturgy: any, oraciones: PrayerVideos): any {
 
 async function updatePrayerVideos(env: any): Promise<void> {
   try {
-          const oraciones = await fetchYouTubePrayerVideos(env);
     const today = getTodayKey();
+    const oraciones = await fetchYouTubePrayerVideos(env, today);
     await supabaseUpsertOraciones(env, today, oraciones);
     console.log("[PrayerVideos] Updated for", today, oraciones);
   } catch (e: any) {
@@ -2344,8 +2402,8 @@ export default {
 
       if (url.pathname === "/youtube/prayer-videos" && request.method === "GET") {
         try {
-    const oraciones = await fetchYouTubePrayerVideos(env);
           const today = getTodayKey();
+          const oraciones = await fetchYouTubePrayerVideos(env, today);
           await supabaseUpsertOraciones(env, today, oraciones);
           return jsonResponse({ date: today, ...oraciones });
         } catch (e: any) {
