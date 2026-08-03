@@ -5,6 +5,7 @@ import type { DailyLiturgy } from "../liturgy/types";
 import { useSpiritual } from "../fruits/store";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../auth/AuthProvider";
+import { PsalmBody } from "./ReaderScreen";
 
 type Props = {
   liturgy: DailyLiturgy | null;
@@ -336,18 +337,25 @@ function QuoteView({ step, accent }: { step: JornadaStep; accent: string }) {
 }
 
 function ReadingView({ step, accent }: { step: JornadaStep; accent: string }) {
+  const isPsalm = step.id === "psalm";
   return (
     <div className="mx-auto max-w-2xl">
       <Eyebrow accent={accent}>{step.eyebrow ?? "Lectura"}</Eyebrow>
       <h2 className="font-serif-holy text-[26px] leading-tight">{step.heading}</h2>
       {step.citation && <p className="mt-1 text-[13px] font-medium tracking-wide" style={{ color: accent }}>{step.citation}</p>}
       <div className="my-5 h-px w-12 rounded-full" style={{ background: accent }} />
-      {step.body && <p className="whitespace-pre-line font-serif-holy text-[18px] leading-[1.75] text-[#2a2a2e]">{step.body}</p>}
-      {step.responseLabel && (
-        <div className="mt-7 flex flex-col gap-1 text-[15px]">
-          <span className="text-[#77736b]">{step.response ?? step.responseLabel}</span>
-          <span className="font-serif-holy font-semibold" style={{ color: accent }}>R. {step.responseLabel}</span>
-        </div>
+      {isPsalm && step.response ? (
+        <PsalmBody body={step.body ?? ""} response={step.response} />
+      ) : (
+        <>
+          {step.body && <p className="whitespace-pre-line font-serif-holy text-[18px] leading-[1.75] text-[#2a2a2e]">{step.body}</p>}
+          {step.responseLabel && (
+            <div className="mt-7 flex flex-col gap-1 text-[15px]">
+              <span className="text-[#77736b]">{step.response ?? step.responseLabel}</span>
+              <span className="font-serif-holy font-semibold" style={{ color: accent }}>R. {step.responseLabel}</span>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

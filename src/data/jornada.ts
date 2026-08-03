@@ -113,6 +113,7 @@ export function buildJornadaSteps(liturgy: DailyLiturgy | null): JornadaStep[] {
       heading: L.psalm.title || "Salmo del día",
       citation: L.psalm.ref,
       body: L.psalm.body,
+      response: L.psalm.response,
     });
   }
 

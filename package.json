@@ -3,6 +3,12 @@
   "private": true,
   "version": "2.0.3",
   "type": "module",
+  "engines": {
+    "node": "20.x"
+  },
+  "engines": {
+    "node": "20.x"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -16,6 +22,7 @@
     "framer-motion": "^12.42.2",
     "react": "19.2.6",
     "react-dom": "19.2.6",
+    "react-youtube": "^10.1.0",
     "tailwind-merge": "3.4.0"
   },
   "devDependencies": {
@@ -34,4 +41,3 @@
     "vitest": "^4.1.10"
   }
 }
-

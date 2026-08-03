@@ -37,6 +37,7 @@ interface ReaderPayload {
     responseLabel?: string;
     response?: string;
   };
+  psalmResponse?: string;
 }
 
 function readerContent(target: ReaderTarget, L: DailyLiturgy | null): ReaderPayload {
@@ -64,7 +65,7 @@ function readerContent(target: ReaderTarget, L: DailyLiturgy | null): ReaderPayl
         },
       };
     case "psalm":
-      return { eyebrow: "SALMO", title: L.psalm.title, ref: L.psalm.ref, body: L.psalm.body, complete: "He rezado el Salmo" };
+      return { eyebrow: "SALMO", title: L.psalm.title, ref: L.psalm.ref, body: L.psalm.body, complete: "He rezado el Salmo", psalmResponse: L.psalm.response };
     case "first":
       return { eyebrow: "PRIMERA LECTURA", title: L.firstReading.title, ref: L.firstReading.ref, body: L.firstReading.body, complete: "He leído la Primera lectura" };
     case "second":
@@ -284,6 +285,7 @@ function Shell() {
               ref={rc.ref}
               body={rc.body}
               gospel={rc.gospel}
+              psalmResponse={rc.psalmResponse}
               completeLabel={rc.complete}
               onClose={() => setReader(null)}
               onComplete={() => settleReader(reader)}

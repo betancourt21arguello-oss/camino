@@ -23,7 +23,7 @@ export function NotificationsPanel() {
       <div className="mt-3 grid grid-cols-2 gap-2">
         <button
           onClick={push.subscribe}
-          disabled={push.busy || push.subscribed || !push.iossupported}
+          disabled={push.busy || push.subscribed}
           className="h-11 rounded-full bg-[#1c1c1e] text-sm font-medium text-white disabled:opacity-50"
         >
           {push.subscribed ? "✓ Push activo" : !push.iossupported ? "Instalar primero" : "Activar push"}

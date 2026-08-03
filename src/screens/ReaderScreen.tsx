@@ -15,6 +15,7 @@ type Props = {
     responseLabel?: string;
     response?: string;
   };
+  psalmResponse?: string;
 };
 
 export function ReaderScreen({
@@ -26,6 +27,7 @@ export function ReaderScreen({
   onComplete,
   completeLabel = "Marcar como rezado",
   gospel,
+  psalmResponse,
 }: Props) {
   const isGospel = Boolean(gospel);
   return (
@@ -58,7 +60,11 @@ export function ReaderScreen({
         <h1 className="mt-3 font-serif-holy text-3xl font-bold leading-tight">{title}</h1>
         {reference && <p className="mt-2 text-sm font-medium tracking-wide text-[#a07a3c]">{reference}</p>}
         <div className="my-5 h-px w-12 rounded-full bg-[#a07a3c]" />
-        <p className="whitespace-pre-line font-serif-holy text-[19px] leading-[1.75] text-[#2a2a2e]">{body}</p>
+        {isGospel ? (
+          <p className="whitespace-pre-line font-serif-holy text-[19px] leading-[1.75] text-[#2a2a2e]">{body}</p>
+        ) : (
+          <PsalmBody body={body} response={psalmResponse} />
+        )}
 
         {isGospel && (
           <motion.div
@@ -87,6 +93,30 @@ export function ReaderScreen({
           </motion.button>
         </div>
       )}
+    </div>
+  );
+}
+
+export function PsalmBody({ body, response }: { body: string; response?: string }) {
+  if (!response) {
+    return <p className="whitespace-pre-line font-serif-holy text-[19px] leading-[1.75] text-[#2a2a2e]">{body}</p>;
+  }
+
+  const segments = body.split(/(\.\n)/g);
+
+  return (
+    <div className="font-serif-holy text-[19px] leading-[1.75] text-[#2a2a2e]">
+      {segments.map((seg, i) => {
+        if (seg === ".\n") {
+          return (
+            <p key={i} className="mt-3 mb-1 font-semibold text-[#a07a3c]">
+              R. {response}
+            </p>
+          );
+        }
+        if (!seg) return null;
+        return <p key={i} className="whitespace-pre-line my-0">{seg}</p>;
+      })}
     </div>
   );
 }

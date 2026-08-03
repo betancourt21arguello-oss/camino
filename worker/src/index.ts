@@ -1,4 +1,5 @@
 import webpush from "web-push";
+import { YoutubeTranscript } from "youtube-transcript";
 
 // ==========================================
 // Camino API Worker - Resilient AI Fallback + JSON Repair
@@ -620,7 +621,7 @@ async function supabaseUpsertDaily(env: any, date: string, liturgy: any): Promis
     catechism: liturgy.catechism ?? null,
     reflection: liturgy.reflection,
     image_url: liturgy.imageUrl ?? liturgy.image_url ?? null,
-    messages: liturgy.messages && liturgy.messages.length > 0 ? liturgy.messages : (liturgy.marian ? [liturgy.marian] : null),
+    messages: liturgy.messages && liturgy.messages.length > 0 ? liturgy.messages : (liturgy.dailySpiritualPearl ? [liturgy.dailySpiritualPearl] : (liturgy.marian ? [liturgy.marian] : null)),
     generated_at: new Date().toISOString(),
   };
   const res = await fetch(url, {
@@ -641,6 +642,21 @@ async function supabaseUpsertDaily(env: any, date: string, liturgy: any): Promis
 
 const YOUTUBE_RSS_URL = "https://www.youtube.com/feeds/videos.xml?channel_id=UCSgJ9Ppudkzs9cD259tjMQw";
 
+interface TranscriptLine {
+  text: string;
+  offset: number;
+  duration: number;
+}
+
+interface PrayerVideos {
+  laudes?: string;
+  visperas?: string;
+  completas?: string;
+  laudesTranscript?: TranscriptLine[] | null;
+  visperasTranscript?: TranscriptLine[] | null;
+  completasTranscript?: TranscriptLine[] | null;
+}
+
 function isValidYouTubeUrl(url: string): boolean {
   try {
     const u = new URL(url);
@@ -655,7 +671,66 @@ function isValidYouTubeUrl(url: string): boolean {
   }
 }
 
-async function fetchYouTubePrayerVideos(): Promise<{ laudes?: string; visperas?: string; completas?: string }> {
+async function getTranscriptFromProxy(videoUrl: string, env: any): Promise<TranscriptLine[] | null> {
+  const proxyUrl = env.TRANSCRIPT_PROXY_URL;
+  if (!proxyUrl) return null;
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+    const res = await fetch(proxyUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ videoUrl }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      console.warn(`[Transcript] Proxy responded with ${res.status}`);
+      return null;
+    }
+
+    const data = await res.json();
+    const transcript = data?.transcript;
+    if (!Array.isArray(transcript) || transcript.length === 0) return null;
+    return transcript.map((line: any) => ({
+      text: line.text,
+      offset: line.offset,
+      duration: line.duration,
+    }));
+  } catch (e: any) {
+    console.warn(`[Transcript] Proxy failed for ${videoUrl}:`, e?.message || e);
+    return null;
+  }
+}
+
+async function getTranscript(videoUrl: string, env?: any): Promise<TranscriptLine[] | null> {
+  if (env?.TRANSCRIPT_PROXY_URL) {
+    const proxyResult = await getTranscriptFromProxy(videoUrl, env);
+    if (proxyResult) return proxyResult;
+  }
+
+  try {
+    const transcript = await YoutubeTranscript.fetchTranscript(videoUrl, {
+      fetch,
+      lang: "es",
+    });
+    if (!transcript || transcript.length === 0) return null;
+    return transcript.map((line) => ({
+      text: line.text,
+      offset: line.offset,
+      duration: line.duration,
+    }));
+  } catch (e: any) {
+    console.warn(`[Transcript] No se pudo obtener transcript para ${videoUrl}:`, e?.message || e);
+    return null;
+  }
+}
+
+async function fetchYouTubePrayerVideos(env: any): Promise<PrayerVideos> {
   const response = await fetch(YOUTUBE_RSS_URL, {
     headers: {
       "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -669,7 +744,7 @@ async function fetchYouTubePrayerVideos(): Promise<{ laudes?: string; visperas?:
   const xml = await response.text();
   const entradas = xml.split("<entry>").slice(1);
 
-  const oraciones: { laudes?: string; visperas?: string; completas?: string } = {};
+  const oraciones: PrayerVideos = {};
 
   for (const entry of entradas) {
     const tituloMatch = entry.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
@@ -681,9 +756,18 @@ async function fetchYouTubePrayerVideos(): Promise<{ laudes?: string; visperas?:
 
       if (!isValidYouTubeUrl(url)) continue;
 
-      if (titulo.includes("laudes") && !oraciones.laudes) oraciones.laudes = url;
-      if ((titulo.includes("vísperas") || titulo.includes("visperas")) && !oraciones.visperas) oraciones.visperas = url;
-      if (titulo.includes("completas") && !oraciones.completas) oraciones.completas = url;
+      if (titulo.includes("laudes") && !oraciones.laudes) {
+        oraciones.laudes = url;
+        oraciones.laudesTranscript = await getTranscript(url, env);
+      }
+      if ((titulo.includes("vísperas") || titulo.includes("visperas")) && !oraciones.visperas) {
+        oraciones.visperas = url;
+        oraciones.visperasTranscript = await getTranscript(url, env);
+      }
+      if (titulo.includes("completas") && !oraciones.completas) {
+        oraciones.completas = url;
+        oraciones.completasTranscript = await getTranscript(url, env);
+      }
     }
 
     if (oraciones.laudes && oraciones.visperas && oraciones.completas) break;
@@ -692,7 +776,7 @@ async function fetchYouTubePrayerVideos(): Promise<{ laudes?: string; visperas?:
   return oraciones;
 }
 
-async function supabaseFetchOraciones(env: any, date: string): Promise<{ laudes?: string; visperas?: string; completas?: string } | null> {
+async function supabaseFetchOraciones(env: any, date: string): Promise<PrayerVideos | null> {
   const url = `${env.SUPABASE_URL}/rest/v1/oraciones_diarias?fecha=eq.${encodeURIComponent(date)}`;
   const res = await fetch(url, {
     headers: {
@@ -710,16 +794,28 @@ async function supabaseFetchOraciones(env: any, date: string): Promise<{ laudes?
     throw new Error(`Supabase oraciones_diarias fetch failed: ${res.status} ${text}`);
   }
   const data = await res.json();
-  return data?.[0] || null;
+  const row = data?.[0] || null;
+  if (!row) return null;
+  return {
+    laudes: row.laudes ?? undefined,
+    visperas: row.visperas ?? undefined,
+    completas: row.completas ?? undefined,
+    laudesTranscript: row.laudes_transcript ?? null,
+    visperasTranscript: row.visperas_transcript ?? null,
+    completasTranscript: row.completas_transcript ?? null,
+  };
 }
 
-async function supabaseUpsertOraciones(env: any, date: string, oraciones: { laudes?: string; visperas?: string; completas?: string }): Promise<void> {
+async function supabaseUpsertOraciones(env: any, date: string, oraciones: PrayerVideos): Promise<void> {
   const url = `${env.SUPABASE_URL}/rest/v1/oraciones_diarias`;
   const body: Record<string, any> = {
     fecha: date,
     laudes: oraciones.laudes ?? null,
     visperas: oraciones.visperas ?? null,
     completas: oraciones.completas ?? null,
+    laudes_transcript: oraciones.laudesTranscript ?? null,
+    visperas_transcript: oraciones.visperasTranscript ?? null,
+    completas_transcript: oraciones.completasTranscript ?? null,
     updated_at: new Date().toISOString(),
   };
   const res = await fetch(url, {
@@ -738,28 +834,29 @@ async function supabaseUpsertOraciones(env: any, date: string, oraciones: { laud
   }
 }
 
-async function injectPrayerVideos(liturgy: any, oraciones: { laudes?: string; visperas?: string; completas?: string }): any {
-  const videoPart = (url: string) => ({
+async function injectPrayerVideos(liturgy: any, oraciones: PrayerVideos): any {
+  const videoPart = (url: string, transcript?: TranscriptLine[] | null) => ({
     kind: "video",
     label: "Video",
     text: "",
     content: url,
     type: "video",
+    transcript: transcript ?? null,
   });
 
   if (!liturgy.laudes) liturgy.laudes = { title: "Laudes", hour: "07:00", mood: "dawn", parts: [] };
   if (oraciones.laudes && !liturgy.laudes.parts?.some((p: any) => p.kind === "video")) {
-    liturgy.laudes.parts = [videoPart(oraciones.laudes), ...(liturgy.laudes.parts || [])];
+    liturgy.laudes.parts = [videoPart(oraciones.laudes, oraciones.laudesTranscript), ...(liturgy.laudes.parts || [])];
   }
 
   if (!liturgy.vespers) liturgy.vespers = { title: "Vísperas", hour: "18:00", mood: "dusk", parts: [] };
   if (oraciones.visperas && !liturgy.vespers.parts?.some((p: any) => p.kind === "video")) {
-    liturgy.vespers.parts = [videoPart(oraciones.visperas), ...(liturgy.vespers.parts || [])];
+    liturgy.vespers.parts = [videoPart(oraciones.visperas, oraciones.visperasTranscript), ...(liturgy.vespers.parts || [])];
   }
 
   if (!liturgy.compline) liturgy.compline = { title: "Completas", hour: "21:00", mood: "night", parts: [] };
   if (oraciones.completas && !liturgy.compline.parts?.some((p: any) => p.kind === "video")) {
-    liturgy.compline.parts = [videoPart(oraciones.completas), ...(liturgy.compline.parts || [])];
+    liturgy.compline.parts = [videoPart(oraciones.completas, oraciones.completasTranscript), ...(liturgy.compline.parts || [])];
   }
 
   return liturgy;
@@ -767,7 +864,7 @@ async function injectPrayerVideos(liturgy: any, oraciones: { laudes?: string; vi
 
 async function updatePrayerVideos(env: any): Promise<void> {
   try {
-    const oraciones = await fetchYouTubePrayerVideos();
+          const oraciones = await fetchYouTubePrayerVideos(env);
     const today = getTodayKey();
     await supabaseUpsertOraciones(env, today, oraciones);
     console.log("[PrayerVideos] Updated for", today, oraciones);
@@ -783,7 +880,9 @@ async function generateLiturgy(env: any, targetDate?: string): Promise<any> {
   try {
     const yesterday = caracasDate(new Date(Date.now() - 86400000));
     const prevLiturgy = await supabaseFetchDaily(env, yesterday);
-    if (prevLiturgy?.marian?.source) {
+    if (prevLiturgy?.dailySpiritualPearl?.source) {
+      previousSource = prevLiturgy.dailySpiritualPearl.source;
+    } else if (prevLiturgy?.marian?.source) {
       previousSource = prevLiturgy.marian.source;
     }
   } catch (e) {
@@ -798,62 +897,138 @@ REGLAS ESTRICTAS DE GENERACIÓN (¡IMPORTANTE!):
 1. EL SANTO DEL DÍA ES OBLIGATORIO: Incluso si el rango litúrgico es "feria", debes buscar el santo de memoria libre o del martirologio romano correspondiente a esta fecha. El objeto "saint" NO PUEDE SER NULL bajo ninguna circunstancia.
 2. TEXTOS BÍBLICOS COMPLETOS: No dejes los campos "body" del Evangelio, Salmo o Primera Lectura vacíos (""). Escribe el texto bíblico completo correspondiente a la fecha.
 3. LONGITUD: Mantén la historia del santo ("story") concisa, máximo 150 palabras para garantizar la correcta formación del JSON.
+4. SAN JOSÉ GREGORIO HERNÁNDEZ: Siempre usar el prefijo "San". PROHIBIDO usar "beato" u otra forma. Nombre correcto: "San José Gregorio Hernández".
 
-CONTEXTO DE FUENTES MARIANAS Y SANTO DEL DÍA:
-Fuentes permitidas para el mensaje diario:
-1. Virgen de Betania (Venezuela)
-2. Mensajes de Medjugorje (selección pastoral)
-3. Apariciones de Fátima
-4. Mensajes de Lourdes
-5. Virgen de Coromoto (Venezuela)
-6. San José Gregorio Hernández
-7. Santa Madre Carmen Rendiles
-8. Beata María de San José
-9. Magisterio: Papa Francisco, Benedicto XVI, San Juan Pablo II o Vaticano.
+CONTEXTO DE FUENTES ESPIRITUALES (PERLA DEL DÍA):
+Elige SOLO UNA fuente de las siguientes categorías para la sección "dailySpiritualPearl":
+
+APARICIONES:
+
+Virgen de Betania (Venezuela)
+
+Fátima
+
+Lourdes
+
+Coromoto (Venezuela)
+
+VIDENTES:
+
+María Esperanza
+
+Santa Bernardita
+
+Sor Lucía
+
+Jacinta Marto
+
+Francisco Marto
+
+SANTOS:
+
+San José Gregorio Hernández
+
+Santa Madre Carmen Rendiles
+
+Beata María de San José
+
+MAGISTERIO:
+
+Papa Francisco
+
+Benedicto XVI
+
+San Juan Pablo II
+
+Vaticano
 
 REGLA DE FUENTE ANTERIOR: La fuente utilizada ayer fue "${previousSource || 'Ninguna'}". NO repitas esta misma fuente hoy a menos que sea estrictamente necesario por solemnidad.
 
+REGLA DE AUTENTICIDAD HISTÓRICA PARA "dailySpiritualPearl" (¡CRÍTICO Y OBLIGATORIO!):
+El campo "text" DEBE SER UN REGISTRO HISTÓRICO VERIFICABLE E INMUTABLE. Es decir, una cita EXACTA y VERIFICABLE, dicha o escrita por la fuente elegida. NUNCA adaptes, parasites ni modifiques las palabras de la cita para ajustarlas a la fecha de hoy (${target}), al Evangelio del día ni a la situación de Venezuela. La cita es un documento histórico: tus palabras NO deben hablar por la fuente. La labor de conectar la cita con el Evangelio de hoy recae EXCLUSIVAMENTE en los campos "reason" y "reflection".
+
+EJEMPLOS DE LO QUE ESTÁ PROHIBIDO ("text" NO DEBE TOCARSE):
+
+🔴 INCORRECTO (INVENTADO / FABRICADO): "Dios te invita hoy ${target} a vivir el evangelio con entrega como lo hizo San José Gregorio Hernández." — Aquí el modelo FABICA una cita y forzaría la fecha de hoy dentro del texto. PROHIBIDO.
+
+🔴 INCORRECTO (PARAFRASEADO / ADAPTADO): "Basado en palabras de San Juan Pablo II, debemos amar al prójimo como Cristo nos ama hoy en Venezuela." — Aquí el modelo PARAFRASA y menciona a Venezuela en el texto de la cita. PROHIBIDO.
+
+🔴 INCORRECTO (ALTERACIÓN DE PALABRAS): La Virgen María respondió: "Dios es amor y hoy os lo anuncio a todos los venezolanos." — El modelo MODIFICÓ la cita original ("Dios es amor") agregando contenido. PROHIBIDO.
+
+🔴 INCORRECTO (MENCION DE LA FECHA): "Como dijo la Virgen en Fátima el ${target}: 'Convertidos, Rogad y Rezad.'" — Forzar la fecha de hoy dentro de la cita. PROHIBIDO.
+
+EJEMPLOS DE LO QUE ESTÁ PERMITIDO ("text" ES CITA PURA, CONEXIÓN EN "reason" Y "reflection"):
+
+🟢 CORRECTO (REGISTRO HISTÓRICO VERIFICABLE / CITA PURA): "No tengan miedo. ¡Abran de par en par las puertas a Cristo!" — Cita real, exacta y verificable de la aparición de Fátima (1917). El "text" no menciona ${target} ni Venezuela; la conexión con el Evangelio y la reflexión se explican en "reason" y "reflection".
+
+🟢 CORRECTO (REGISTRO HISTÓRICO VERIFICABLE / CITA PURA): "Dios no mira lo que el hombre ve, el hombre ve lo que está delante de sus ojos, pero Dios ve el corazón." — Cita bíblica exacta (1 Samuel 16:7). Es una cita textual auténtica. La conexión con el Evangelio del día se hace en "reason" y "reflection".
+
+PROHIBIDO forzar que la cita mencione la fecha de hoy (${target}) o que encaje a la fuerza con el Evangelio alterando sus palabras. El campo "text" DEBE SER SOLO la cita textual exacta como fue dicha o escrita históricamente. La conexión con el Evangelio se explica ÚNICAMENTE en los campos "reason" y "reflection".
+
+Si no recuerdas una cita exacta que encaje con el Evangelio, prefiere poner una cita textual auténtica genérica de esa fuente sobre la fe o la esperanza, antes que inventar una. Recuerda: una cita inventada o adaptada es PEOR que una cita genérica pero auténtica.
+
 PROCESO DE GENERACIÓN E INTEGRACIÓN:
-1. Identifica el Evangelio y Santo correspondiente a la fecha ${target}.
-2. Evalúa cuál de las Fuentes Permitidas guarda la mayor relación temática, litúrgica o espiritual con el Evangelio de hoy.
-3. REFLEXIÓN GENERAL (EL CORAZÓN DEL MENSAJE): Escribe el campo "reflection" asumiendo la voz viva, amorosa y cercana del mismísimo Jesucristo hablándole directamente al corazón del creyente venezolano. Actúa como un escritor humano, empático y cercano. Escribe con calidez, alma y corazón, usando un tono conversacional, honesto y reflexivo. Conecta de forma natural: El mensaje de mi Evangelio de hoy + La realidad de lucha, esperanza y fe en Venezuela + La enseñanza de la fuente seleccionada. PROHIBIDO usar frases cliché de inteligencia artificial, listas, o formalidades exageradas. Haz que el lector sienta mi abrazo consolador, mi paz y mi presencia a su lado.
-4. Genera Lecturas completas y Catecismo (CEC real directamente relacionado con el Evangelio del día).
-5. Nota: Laudes, Vísperas, Completas y Ángelus NO se generan aquí, han sido excluidos del modelo.
+
+Identifica el Evangelio y Santo correspondiente a la fecha ${target}.
+
+Evalúa cuál de las Fuentes Permitidas guarda relación temática con el Evangelio para la "dailySpiritualPearl" y extrae de tu memoria una CITA TEXTUAL EXACTA de esa fuente.
+
+REFLEXIÓN GENERAL (EL CORAZÓN DEL MENSAJE): Escribe el campo "reflection" como una reflexión cálida, cercana y humana sobre el Evangelio del día. Habla en tercera persona o de forma pastoral/narrativa. Conecta de forma natural: El mensaje del Evangelio de hoy + La realidad de lucha y fe en Venezuela + La enseñanza de la perla espiritual. NUNCA escribas en primera persona como si fueras Jesucristo (PROHIBIDO: "Yo les digo", "Mi Evangelio"). PROHIBIDO usar frases cliché de inteligencia artificial.
+
+Genera Lecturas completas.
+
+CATECISMO: Elige una enseñanza real del Catecismo de la Iglesia Católica (CEC) para el aprendizaje diario. Prioriza doctrina católica clara y formativa.
+
+Nota: Laudes, Vísperas, Completas y Ángelus NO se generan aquí.
+
+ESTRUCTURA OBLIGATORIA DEL SALMO:
+
+Incluye siempre un estribillo/respuesta (responsorial).
+
+Agrupa el texto del salmo en estrofas de 2 a 4 versos cada una.
+
+Después de CADA estrofa, repite el estribillo.
+
+Formato del campo "body": texto corrido con saltos de línea claros: Estribillo \n Estrofa \n Estribillo \n Estrofa...
 
 Estructura JSON requerida:
 {
-  "date": "${target}",
-  "weekday": "día de la semana",
-  "season": "tiempo liturgico",
-  "liturgicalColor": "color litúrgico",
-  "liturgicalRank": "solemnidad|fiesta|memoria|feria",
-  "isSolemnity": false,
-  "saint": {
-    "name": "nombre del santo",
-    "title": "título",
-    "initial": "inicial",
-    "story": "historia resumida (100-150 palabras)",
-    "highlights": ["hito1", "hito2"],
-    "lessons": ["lección1", "lección2"],
-    "exampleToday": "ejemplo práctico para hoy",
-    "gospelConnection": "relación directa con el evangelio de hoy",
-    "venezuelaRelevance": "relevancia espiritual para Venezuela",
-    "prayer": "oración de intercesión"
-  },
-  "quote": { "text": "cita bíblica o de un padre de la iglesia", "ref": "referencia" },
-  "gospel": { "ref": "referencia", "title": "título", "body": "texto completo del evangelio", "evangelist": "nombre del evangelista" },
-  "psalm": { "ref": "referencia", "title": "título", "body": "texto completo del salmo con respuestas" },
-  "firstReading": { "ref": "referencia", "title": "título", "body": "texto completo" },
-  "secondReading": null,
-  "marian": {
-    "source": "Nombre exacto de la fuente elegida de la lista",
-    "reason": "Explicación breve de por qué se conectó con el evangelio de hoy",
-    "text": "Mensaje o reflexión mariana/vocacional (max 100 palabras)",
-    "relevant": true
-  },
-  "reflection": "Mensaje escrito en primera persona por Jesús, lleno de amor, hablando directo al corazón del venezolano.",
-  "catechism": { "number": "Número CEC temáticamente ligado al Evangelio", "title": "Título", "text": "Texto doctrinal", "applyToday": "Aplicación" },
-  "imagePrompt": "Descripción artística en inglés para generar una imagen sacra de alta calidad"
+"date": "${target}",
+"weekday": "día de la semana",
+"season": "tiempo liturgico",
+"liturgicalColor": "color litúrgico",
+"liturgicalRank": "solemnidad|fiesta|memoria|feria",
+"isSolemnity": false,
+"saint": {
+"name": "nombre del santo",
+"title": "título",
+"initial": "inicial",
+"story": "historia resumida (100-150 palabras)",
+"highlights": ["hito1", "hito2"],
+"lessons": ["lección1", "lección2"],
+"exampleToday": "ejemplo práctico para hoy",
+"gospelConnection": "relación directa con el evangelio de hoy",
+"venezuelaRelevance": "relevancia espiritual para Venezuela",
+"prayer": "oración de intercesión"
+},
+"quote": { "text": "cita bíblica o de un padre de la iglesia", "ref": "referencia" },
+"gospel": { "ref": "referencia", "title": "título", "body": "texto completo del evangelio", "evangelist": "nombre del evangelista" },
+"psalm": { "ref": "referencia", "title": "título", "body": "texto completo con estribillo repetido después de cada estrofa", "response": "estribillo del salmo" },
+"firstReading": { "ref": "referencia", "title": "título", "body": "texto completo" },
+"secondReading": null,
+"dailySpiritualPearl": {
+"source": "Nombre exacto de la fuente de la lista",
+"type": "quote | testimony | apparition | homily | message",
+"speaker": "Quién pronunció realmente el texto (ej. La Virgen María, Papa Francisco)",
+"context": "Contexto histórico o situación real de la cita",
+"date": "Fecha exacta o aproximada de cuando se dijo la cita",
+"text": "CITA TEXTUAL HISTÓRICA Y VERIFICABLE (Prohibido adaptar a la fecha de hoy)",
+"reason": "Explicación de cómo esta cita histórica ilumina el evangelio de hoy",
+"theme": "Tema central de la cita"
+},
+"reflection": "Reflexión cálida y cercana sobre el Evangelio del día, conectada con Venezuela y la perla del día (sin hablar como Jesús).",
+"catechism": { "number": "Número CEC", "title": "Título", "text": "Texto doctrinal del Catecismo", "applyToday": "Aplicación práctica para la vida diaria" },
+"imagePrompt": "Descripción artística en inglés para generar una imagen sacra de alta calidad"
 }`;
 
 const liturgySchema = {
@@ -936,6 +1111,20 @@ const liturgySchema = {
       },
       required: ["source", "text", "relevant", "reason"],
     },
+    dailySpiritualPearl: {
+      type: "OBJECT",
+      properties: {
+        source: { type: "STRING" },
+        type: { type: "STRING" },
+        speaker: { type: "STRING" },
+        context: { type: "STRING" },
+        date: { type: "STRING" },
+        text: { type: "STRING" },
+        reason: { type: "STRING" },
+        theme: { type: "STRING" },
+      },
+      required: ["source", "type", "speaker", "context", "date", "text", "reason", "theme"],
+    },
     reflection: { type: "STRING" },
     catechism: {
       type: "OBJECT",
@@ -962,6 +1151,7 @@ const liturgySchema = {
     "psalm",
     "firstReading",
     "marian",
+    "dailySpiritualPearl",
     "reflection",
     "catechism",
     "imagePrompt",
@@ -1027,9 +1217,6 @@ const liturgySchema = {
       },
     ];
   }
-  if (!parsed.marian || !parsed.marian.text) {
-    parsed.marian = parsed.messages[0];
-  }
   if (!parsed.saint || typeof parsed.saint !== "object" || !parsed.saint.name) {
     parsed.saint = {
       name: "San José Gregorio Hernández",
@@ -1042,7 +1229,28 @@ const liturgySchema = {
       prayer: "Intercede por nosotros.",
     };
   }
+  if (!parsed.dailySpiritualPearl || !parsed.dailySpiritualPearl.text) {
+    parsed.dailySpiritualPearl = {
+      source: "San José Gregorio Hernández",
+      type: "message",
+      speaker: "San José Gregorio Hernández",
+      context: "Patrono de los pobres en Venezuela",
+      date: "29 de octubre",
+      text: "Dios te invita hoy a vivir el evangelio con mayor entrega. Confía en la Providencia como lo hizo el Padre de los Pobres.",
+      reason: "Fuente por defecto cuando no hay otra disponible",
+      theme: "Confianza y entrega",
+    };
+  }
+  if (!parsed.marian || !parsed.marian.text) {
+    parsed.marian = parsed.dailySpiritualPearl;
+  }
 
+  if (
+    parsed.dailySpiritualPearl?.source === "San Jose Gregorio Hernandez" ||
+    parsed.dailySpiritualPearl?.source === "San Jose Gregorio"
+  ) {
+    parsed.dailySpiritualPearl.source = "San José Gregorio Hernández";
+  }
   if (
     parsed.marian?.source === "San Jose Gregorio Hernandez" ||
     parsed.marian?.source === "San Jose Gregorio"
@@ -1146,6 +1354,7 @@ function getDefaultLiturgy(date: string): any {
     firstReading: { ref: "", title: "", body: "" },
     secondReading: null,
     marian: { source: "San José Gregorio Hernández", text: "Confía en la Providencia como lo hizo el Padre de los Pobres.", relevant: true, reason: "" },
+    dailySpiritualPearl: { source: "San José Gregorio Hernández", type: "message", speaker: "San José Gregorio Hernández", context: "Patrono de los pobres en Venezuela", date: "29 de octubre", text: "Dios te invita hoy a vivir el evangelio con mayor entrega. Confía en la Providencia como lo hizo el Padre de los Pobres.", reason: "Fuente por defecto cuando no hay otra disponible", theme: "Confianza y entrega" },
     reflection: "Síntesis del día: confía en el Señor y vive el evangelio con entrega.",
     catechism: publicDomainCatechism(date),
     laudes: { title: "Laudes", hour: "07:00", mood: "dawn", parts: [] },
@@ -1204,8 +1413,8 @@ async function generateBibleDaily(env: any, userId: string, targetDate?: string)
 
   const gospelRef = todayLiturgy?.gospel?.ref || "Evangelio del día";
   const gospelText = todayLiturgy?.gospel?.body || "";
-  const marianSource = todayLiturgy?.marian?.source || "";
-  const marianText = todayLiturgy?.marian?.text || "";
+  const pearlSource = todayLiturgy?.dailySpiritualPearl?.source || todayLiturgy?.marian?.source || "";
+  const pearlText = todayLiturgy?.dailySpiritualPearl?.text || todayLiturgy?.marian?.text || "";
 
   const prompt = `Eres un guía espiritual católico y acompañante pastoral en la aplicación "Camino".
 Genera un mensaje bíblico DIARIO Y PERSONALIZADO para hoy (${target}) para el usuario.
@@ -1219,7 +1428,7 @@ DATOS DEL USUARIO:
 
 CONTEXTO LITÚRGICO DEL DÍA (Mismo mensaje que la comunidad lee hoy):
 - Evangelio: ${gospelRef} - "${gospelText.slice(0, 300)}..."
-- Inspiración Mariana/Santo del día (${marianSource}): "${marianText}"
+- Inspiración del día (${pearlSource}): "${pearlText}"
 
 INSTRUCCIONES:
 1. Saluda a ${userName} de forma cálida y fraterna.
@@ -2135,7 +2344,7 @@ export default {
 
       if (url.pathname === "/youtube/prayer-videos" && request.method === "GET") {
         try {
-          const oraciones = await fetchYouTubePrayerVideos();
+    const oraciones = await fetchYouTubePrayerVideos(env);
           const today = getTodayKey();
           await supabaseUpsertOraciones(env, today, oraciones);
           return jsonResponse({ date: today, ...oraciones });

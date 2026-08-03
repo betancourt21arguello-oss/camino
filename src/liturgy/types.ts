@@ -9,6 +9,7 @@ export interface Reading {
   ref: string;
   title: string;
   body: string;
+  response?: string;
 }
 
 export interface GospelReading extends Reading {
@@ -33,6 +34,15 @@ export interface RelevantMessage {
   sourceUrl?: string;
 }
 
+/** Una línea del transcript de un video de YouTube. */
+export interface TranscriptLine {
+  text: string;
+  /** Tiempo de inicio en milisegundos. */
+  offset: number;
+  /** Duración en milisegundos. */
+  duration: number;
+}
+
 /** Una parte de una Hora de la Liturgia de las Horas. */
 export interface HourPart {
   kind: "invitatory" | "hymn" | "psalmody" | "reading" | "gospelCanticle" | "intercessions" | "ourFather" | "concludingPrayer" | "marianAntiphon" | "examination" | "commendation" | "response" | "video";
@@ -42,6 +52,8 @@ export interface HourPart {
   response?: string;
   content?: string;
   type?: string;
+  /** Transcript sincronizado del video (solo para partes kind: "video"). */
+  transcript?: TranscriptLine[] | null;
 }
 
 export interface HourLiturgy {

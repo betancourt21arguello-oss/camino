@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { assetsByTag } from "../media/registry";
 import type { WhatsAppAsset } from "../media/types";
 import type { AngelusLiturgy, DailyLiturgy, HourLiturgy, HourPart } from "../liturgy/types";
+import { ElegantPrayerVideo } from "../components/ElegantPrayerVideo";
 
 type HourKind = "laudes" | "angelus" | "vespers" | "compline";
 
@@ -27,13 +28,24 @@ function getYouTubeEmbedUrl(url: string): string | null {
   const trimmed = url.trim();
   if (!/^https?:\/\//i.test(trimmed)) return null;
   let m = trimmed.match(/[?&]v=([^&]+)/);
-  if (m) return `https://www.youtube-nocookie.com/embed/${m[1]}?rel=0&modestbranding=1`;
+  if (m) return `https://www.youtube.com/embed/${m[1]}?rel=0&modestbranding=1&cc_load_policy=0&controls=1`;
   m = trimmed.match(/youtu\.be\/([^?&#]+)/);
-  if (m) return `https://www.youtube-nocookie.com/embed/${m[1]}?rel=0&modestbranding=1`;
+  if (m) return `https://www.youtube.com/embed/${m[1]}?rel=0&modestbranding=1&cc_load_policy=0&controls=1`;
   m = trimmed.match(/youtube\.com\/embed\/([^?&#]+)/);
-  if (m) return `https://www.youtube-nocookie.com/embed/${m[1]}?rel=0&modestbranding=1`;
+  if (m) return `https://www.youtube.com/embed/${m[1]}?rel=0&modestbranding=1&cc_load_policy=0&controls=1`;
   m = trimmed.match(/youtube\.com\/embed\?listType=search&list=([^&]+)/);
   if (m) return `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(m[1])}`;
+  return null;
+}
+
+function getYouTubeVideoId(url: string): string | null {
+  const trimmed = url.trim();
+  let m = trimmed.match(/[?&]v=([^&]+)/);
+  if (m) return m[1];
+  m = trimmed.match(/youtu\.be\/([^?&#]+)/);
+  if (m) return m[1];
+  m = trimmed.match(/youtube\.com\/embed\/([^?&#]+)/);
+  if (m) return m[1];
   return null;
 }
 
@@ -436,29 +448,35 @@ function LaudesView({
         {isVideo && (
           <div className="mt-2">
             {videoContent ? (() => {
-              const ytEmbed = getYouTubeEmbedUrl(videoContent);
-              if (ytEmbed) {
-                return (
-                  <iframe
-                    src={ytEmbed}
-                    title="Video"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                    className="w-full rounded-xl aspect-video"
-                    style={{ background: "#000", border: "none" }}
-                  />
-                );
-              }
-              if (/^https?:\/\//i.test(videoContent.trim())) {
-                return (
-                  <video controls src={videoContent} className="w-full rounded-xl" style={{ background: "#000" }} />
-                );
-              }
-              return (
-                <p className="font-serif-holy text-[20px] leading-relaxed" style={{ color: palette.text }}>
-                  El video de esta sección estará disponible pronto.
-                </p>
-              );
+               const transcript = (part as any)?.transcript;
+               const videoId = getYouTubeVideoId(videoContent);
+               const hasTranscriptData = Boolean(videoId && Array.isArray(transcript) && transcript.length > 0);
+               if (hasTranscriptData) {
+                 return <ElegantPrayerVideo videoId={videoId} transcript={transcript} />;
+               }
+               const ytEmbed = getYouTubeEmbedUrl(videoContent);
+               if (ytEmbed) {
+                 return (
+                   <iframe
+                     src={ytEmbed}
+                     title="Video"
+                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                     allowFullScreen
+                     className="w-full rounded-xl aspect-video"
+                     style={{ background: "#000", border: "none" }}
+                   />
+                 );
+               }
+               if (/^https?:\/\//i.test(videoContent.trim())) {
+                 return (
+                   <video controls src={videoContent} className="w-full rounded-xl" style={{ background: "#000" }} />
+                 );
+               }
+               return (
+                 <p className="font-serif-holy text-[20px] leading-relaxed" style={{ color: palette.text }}>
+                   El video de esta sección estará disponible pronto.
+                 </p>
+               );
             })() : (
               <p className="font-serif-holy text-[20px] leading-relaxed" style={{ color: palette.text }}>
                 El video de esta sección estará disponible pronto.
