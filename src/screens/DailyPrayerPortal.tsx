@@ -448,12 +448,11 @@ function LaudesView({
         {isVideo && (
           <div className="mt-2">
             {videoContent ? (() => {
-               const transcript = (part as any)?.transcript;
-               const videoId = getYouTubeVideoId(videoContent);
-               const hasTranscriptData = Boolean(videoId && Array.isArray(transcript) && transcript.length > 0);
-               if (hasTranscriptData) {
-                 return <ElegantPrayerVideo videoId={videoId} transcript={transcript} />;
-               }
+                const transcript = (part as any)?.transcript;
+                const videoId = getYouTubeVideoId(videoContent);
+                if (videoId && Array.isArray(transcript) && transcript.length > 0) {
+                  return <ElegantPrayerVideo videoId={videoId} transcript={transcript} />;
+                }
                const ytEmbed = getYouTubeEmbedUrl(videoContent);
                if (ytEmbed) {
                  return (

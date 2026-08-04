@@ -1,4 +1,5 @@
-import webpush from "web-push";
+
+import * as webpush from "web-push";
 import { YoutubeTranscript } from "youtube-transcript";
 
 // ==========================================
@@ -528,6 +529,275 @@ function getTodayKey(): string {
   return caracasDate();
 }
 
+function escapeXml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function decodeHTMLEntities(text: string): string {
+  return text
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&rsquo;/g, "'")
+    .replace(/&lsquo;/g, "'")
+    .replace(/&rdquo;/g, '"')
+    .replace(/&ldquo;/g, '"')
+    .replace(/&hellip;/g, "...")
+    .replace(/&mdash;/g, "—")
+    .replace(/&ndash;/g, "–");
+}
+
+const FALLBACK_DAILY_QUOTES: Array<{ source: string; text: string }> = [
+  { source: "San José Gregorio Hernández", text: "Dios se sirve de los humildes para hacer grandes obras." },
+  { source: "San José Gregorio Hernández", text: "La caridad es el amor de Dios derramado en nuestros corazones." },
+  { source: "San José Gregorio Hernández", text: "Donde no hay caridad, no hay virtud." },
+  { source: "San José Gregorio Hernández", text: "Haz el bien y no mires a quién." },
+  { source: "San José Gregorio Hernández", text: "La oración es el aliento del alma." },
+  { source: "San José Gregorio Hernández", text: "En la cruz está la salvación del mundo." },
+  { source: "San José Gregorio Hernández", text: "Ama a Dios sobre todas las cosas y al prójimo como a ti mismo." },
+  { source: "San José Gregorio Hernández", text: "La humildad es la base de todas las virtudes." },
+  { source: "San José Gregorio Hernández", text: "No hay amor más grande que dar la vida por los amigos." },
+  { source: "San José Gregorio Hernández", text: "El Señor siempre está con nosotros, aunque no lo sintamos." },
+  { source: "San José Gregorio Hernández", text: "Confía en la Providencia y todo saldrá bien." },
+  { source: "San José Gregorio Hernández", text: "La paciencia es la virtud que nos hace santos." },
+  { source: "San José Gregorio Hernández", text: "El que sirve a los pobres, sirve a Cristo." },
+  { source: "San José Gregorio Hernández", text: "Dios premia la intención." },
+  { source: "San José Gregorio Hernández", text: "Vive cada día como si fuera el último." },
+  { source: "San José Gregorio Hernández", text: "La fe es la luz que ilumina nuestro camino." },
+  { source: "San José Gregorio Hernández", text: "En la humildad encontramos la verdadera grandeza." },
+  { source: "San José Gregorio Hernández", text: "El cielo se gana con obras de caridad." },
+  { source: "Salmo 23", text: "El Señor es mi pastor, nada me falta." },
+  { source: "1 Juan 4:8", text: "Dios es amor." },
+  { source: "Mateo 5:3", text: "Bienaventurados los pobres de espíritu, porque de ellos es el Reino de los Cielos." },
+  { source: "Juan 14:6", text: "Yo soy el camino, la verdad y la vida." },
+  { source: "Marcos 12:31", text: "Ama a tu prójimo como a ti mismo." },
+  { source: "Salmo 27:1", text: "El Señor es mi luz y mi salvación, ¿a quién temeré?" },
+  { source: "Mateo 6:33", text: "Buscad primero el Reino de Dios y su justicia." },
+  { source: "Isaías 41:10", text: "No temas, porque yo estoy contigo." },
+  { source: "Salmo 34:9", text: "Gustad y ved qué bueno es el Señor." },
+  { source: "San Juan Pablo II", text: "No tengan miedo. ¡Abran de par en par las puertas a Cristo!" },
+  { source: "Papa Francisco", text: "La Iglesia es un hospital de campo después de la batalla." },
+  { source: "Virgen de Coromoto", text: "Vayan a mi hijo, que él os dará el remedio." },
+];
+
+function getDeterministicDailyMessage(date: string): { source: string; text: string } {
+  if (!date) return FALLBACK_DAILY_QUOTES[0];
+  const clean = date.replace(/-/g, "");
+  const dayOfYear = Math.floor(
+    (new Date(+clean.slice(0, 4), +clean.slice(4, 6) - 1, +clean.slice(6, 8)).getTime() -
+      new Date(+clean.slice(0, 4), 0, 0).getTime()) /
+      86400000
+  );
+  return FALLBACK_DAILY_QUOTES[dayOfYear % FALLBACK_DAILY_QUOTES.length];
+}
+
+async function fetchDailyQuote(env: any, date: string): Promise<{ cita: string; speaker: string; contexto: string; source: string } | null> {
+  const url = `${env.SUPABASE_URL}/rest/v1/daily_quotes?fecha=eq.${encodeURIComponent(date)}`;
+  const res = await fetch(url, {
+    headers: {
+      Accept: "application/json",
+      apikey: env.SUPABASE_SERVICE_ROLE,
+      Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE}`,
+    },
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  const row = data?.[0] || null;
+  if (!row) return null;
+  return {
+    cita: row.cita || "",
+    speaker: row.speaker || "",
+    contexto: row.contexto || "",
+    source: "supabase",
+  };
+}
+
+async function fetchLiturgyCache(env: any, dateKey: string, locale: string = "es"): Promise<{
+  gospel: string;
+  firstReading: string;
+  psalm: string;
+  saint: string;
+} | null> {
+  const url = `${env.SUPABASE_URL}/rest/v1/liturgy_cache?date_key=eq.${encodeURIComponent(dateKey)}&locale=eq.${encodeURIComponent(locale)}`;
+  const res = await fetch(url, {
+    headers: {
+      Accept: "application/json",
+      apikey: env.SUPABASE_SERVICE_ROLE,
+      Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE}`,
+    },
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  const row = data?.[0] || null;
+  if (!row) return null;
+  return {
+    gospel: row.gospel || "",
+    firstReading: row.first_reading || "",
+    psalm: row.psalm || "",
+    saint: row.saint || "",
+  };
+}
+
+async function supabaseUpsertLiturgyCache(env: any, payload: any): Promise<void> {
+  try {
+    const url = `${env.SUPABASE_URL}/rest/v1/liturgy_cache`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: env.SUPABASE_SERVICE_ROLE,
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE}`,
+        Prefer: "resolution=merge-duplicates,return=representation",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      console.error(`[Cache] Upsert failed: ${res.status} ${text}`);
+    }
+  } catch (err) {
+    console.error("[Cache] Upsert exception:", err);
+  }
+}
+
+async function fetchNearbyCache(env: any, dateKey: string, locale: string = "es"): Promise<{
+  gospel: string;
+  firstReading: string;
+  psalm: string;
+  saint: string;
+} | null> {
+  const date = new Date(
+    Number(dateKey.slice(0, 4)),
+    Number(dateKey.slice(4, 6)) - 1,
+    Number(dateKey.slice(6, 8))
+  );
+
+  const candidates = [
+    new Date(date.getTime() - 86400000),
+    new Date(date.getTime() + 86400000),
+  ];
+
+  for (const d of candidates) {
+    const yyyy = String(d.getFullYear());
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const key = `${yyyy}${mm}${dd}`;
+    const row = await fetchLiturgyCache(env, key, locale);
+    if (row) return row;
+  }
+  return null;
+}
+
+async function fetchEvangelizoWithTimeout(env: any, targetDate: string, locale: string = "es"): Promise<{
+  gospel: string;
+  firstReading: string;
+  psalm: string;
+  saint: string;
+  raw: any;
+}> {
+  const baseUrl = `http://feed.evangelizo.org/v2/reader.php?date=${targetDate}&lang=AM`;
+
+  const fetchWithTimeout = (url: string, timeout = 8000) => {
+    return Promise.race([
+      fetch(url),
+      new Promise((_, reject) => new Error("Evangelizo timeout")),
+    ]);
+  };
+
+  const results = await Promise.allSettled([
+    fetchWithTimeout(`${baseUrl}&type=reading&content=GSP`),
+    fetchWithTimeout(`${baseUrl}&type=reading&content=FR`),
+    fetchWithTimeout(`${baseUrl}&type=reading&content=PS`),
+    fetchWithTimeout(`${baseUrl}&type=saint`),
+  ]);
+
+  const cleanHTML = (text: string) =>
+    text.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim();
+
+  const gospel = results[0].status === "fulfilled" ? cleanHTML(await (results[0] as PromiseFulfilledResult<Response>).value.text()) : "";
+  const firstReading = results[1].status === "fulfilled" ? cleanHTML(await (results[1] as PromiseFulfilledResult<Response>).value.text()) : "";
+  const psalm = results[2].status === "fulfilled" ? cleanHTML(await (results[2] as PromiseFulfilledResult<Response>).value.text()) : "";
+  const saint = results[3].status === "fulfilled" ? cleanHTML(await (results[3] as PromiseFulfilledResult<Response>).value.text()) : "";
+
+  const raw = { gospel, firstReading, psalm, saint };
+
+  if (gospel.length < 50 || firstReading.length < 50) {
+    console.warn("⚠️ Textos incompletos desde evangelizo.org para fecha:", targetDate);
+  }
+
+  return { gospel, firstReading, psalm, saint, raw };
+}
+
+async function getAuthoritativeLiturgy(env: any, targetDate: string, locale: string = "es"): Promise<{
+  gospel: string;
+  firstReading: string;
+  psalm: string;
+  saint: string;
+  raw: any;
+  source: string;
+  confidence: number;
+}> {
+  const dateKey = targetDate.replace(/-/g, "");
+
+  let cacheData = await fetchLiturgyCache(env, dateKey, locale);
+  if (cacheData) return { ...cacheData, raw: cacheData, source: "cache", confidence: 95 };
+
+  let evangelizoData: { gospel: string; firstReading: string; psalm: string; saint: string; raw: any };
+  try {
+    evangelizoData = await fetchEvangelizoWithTimeout(env, targetDate, locale);
+
+    await supabaseUpsertLiturgyCache(env, {
+      date_key: dateKey,
+      locale,
+      gospel: evangelizoData.gospel,
+      first_reading: evangelizoData.firstReading,
+      psalm: evangelizoData.psalm,
+      saint: evangelizoData.saint,
+      raw_source: evangelizoData.raw,
+      source: "evangelizo",
+      confidence: 85,
+    });
+
+    return { ...evangelizoData, source: "evangelizo", confidence: 85 };
+  } catch (err) {
+    console.error(`[Liturgy] Evangelizo failed for ${targetDate}:`, err);
+
+    const nearby = await fetchNearbyCache(env, dateKey, locale);
+    if (nearby) {
+      console.warn(`[Liturgy] Usando cache cercano para ${targetDate}`);
+      return { ...nearby, raw: nearby, source: "fallback", confidence: 40 };
+    }
+
+    throw new Error(`No se pudo obtener liturgia para ${targetDate}`);
+  }
+}
+
+function validateTextSimilarity(official: string, generated: string): boolean {
+  if (!official || official.length < 30) return true;
+
+  const normalize = (s: string) =>
+    s.toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[.,;:«»"']/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const officialNorm = normalize(official);
+  const generatedNorm = normalize(generated || "");
+
+  const substring = officialNorm.substring(0, 60);
+  return generatedNorm.includes(substring);
+}
+
 function handleVapidKey(_request: Request, env: any): Response {
   return jsonResponse({ vapidPublicKey: env.VAPID_PUBLIC_KEY || "" });
 }
@@ -892,7 +1162,7 @@ async function supabaseUpsertOraciones(env: any, date: string, oraciones: Prayer
   }
 }
 
-async function injectPrayerVideos(liturgy: any, oraciones: PrayerVideos): any {
+async function injectPrayerVideos(liturgy: any, oraciones: PrayerVideos): Promise<any> {
   const videoPart = (url: string, transcript?: TranscriptLine[] | null) => ({
     kind: "video",
     label: "Video",
@@ -934,22 +1204,96 @@ async function updatePrayerVideos(env: any): Promise<void> {
 async function generateLiturgy(env: any, targetDate?: string): Promise<any> {
   const target = targetDate || getTodayKey();
 
-  let previousSource = "";
+  let liturgyData: any;
   try {
-    const yesterday = caracasDate(new Date(Date.now() - 86400000));
-    const prevLiturgy = await supabaseFetchDaily(env, yesterday);
-    if (prevLiturgy?.dailySpiritualPearl?.source) {
-      previousSource = prevLiturgy.dailySpiritualPearl.source;
-    } else if (prevLiturgy?.marian?.source) {
-      previousSource = prevLiturgy.marian.source;
-    }
+    liturgyData = await getAuthoritativeLiturgy(env, target);
   } catch (e) {
-    console.warn("No se pudo obtener la liturgia anterior para el filtro de variedad:", e);
+    console.error("[Liturgy] No authoritative data available:", e);
+    return getDefaultLiturgy(target);
   }
 
-const prompt = `Eres un asistente litúrgico, teólogo y catequista católico experto para la aplicación "Camino" en Venezuela.
-Genera el contenido litúrgico completo y coherente para la fecha: ${target}.
-Devuelve ÚNICAMENTE un objeto JSON válido (sin markdown, sin bloques \`\`\`json).
+  const liturgyStructure = `
+{
+  "date": "${target}",
+  "weekday": "",
+  "season": "",
+  "liturgicalColor": "",
+  "liturgicalRank": "",
+  "isSolemnity": false,
+  "saint": {
+    "name": "",
+    "title": "",
+    "initial": "",
+    "story": "",
+    "highlights": [],
+    "lessons": [],
+    "exampleToday": "",
+    "gospelConnection": "",
+    "venezuelaRelevance": "",
+    "prayer": ""
+  },
+  "quote": { "text": "", "ref": "" },
+  "gospel": { "ref": "", "title": "", "body": "", "evangelist": "" },
+  "psalm": { "ref": "", "title": "", "body": "", "response": "" },
+  "firstReading": { "ref": "", "title": "", "body": "" },
+  "secondReading": null,
+  "reflection": "",
+  "catechism": { "number": "", "title": "", "text": "", "applyToday": "" },
+  "imagePrompt": ""
+}`;
+
+  const isFallback = liturgyData.source === "fallback";
+
+  let datosOficialesXML = "";
+
+  if (!isFallback) {
+    datosOficialesXML = `
+<DATOS_OFICIALES>
+<EVANGELIO_OFICIAL_EXACTO>${escapeXml(liturgyData.gospel)}</EVANGELIO_OFICIAL_EXACTO>
+<PRIMERA_LECTURA_OFICIAL_EXACTA>${escapeXml(liturgyData.firstReading)}</PRIMERA_LECTURA_OFICIAL_EXACTA>
+<SALMO_OFICIAL_EXACTO>${escapeXml(liturgyData.psalm)}</SALMO_OFICIAL_EXACTO>
+</DATOS_OFICIALES>
+
+INSTRUCCIÓN: Copia estos textos EXACTOS en el JSON.
+`;
+  } else {
+    datosOficialesXML = `
+<ALERTA_DE_SISTEMA>
+No tenemos acceso a la base de datos litúrgica de hoy.
+Sin embargo, aquí tienes la liturgia que se celebró en una FECHA CERCANA (Ayer o Mañana):
+</ALERTA_DE_SISTEMA>
+
+<CONTEXTO_REFERENCIAL_FECHA_CERCANA>
+- Evangelio cercano: ${liturgyData.gospel ? liturgyData.gospel.substring(0, 150) + "..." : "Desconocido"}
+- Primera Lectura cercana: ${liturgyData.firstReading ? liturgyData.firstReading.substring(0, 150) + "..." : "Desconocido"}
+- Santo cercano: ${liturgyData.saint || "Desconocido"}
+</CONTEXTO_REFERENCIAL_FECHA_CERCANA>
+
+INSTRUCCIÓN CRÍTICA DE DEDUCCIÓN:
+1. NO copies los textos de arriba, corresponden a otro día.
+2. Usa ese contexto referencial para calcular matemáticamente qué semana del Tiempo Litúrgico es HOY (${target}).
+3. Siguiendo la "Lectio Continua" del Leccionario Católico, deduce cuál es el Evangelio y la Primera Lectura exacta que corresponde al día de HOY.
+4. Busca en tu memoria los textos completos de HOY y genera el JSON.
+`;
+  }
+
+  const prompt = `Eres un liturgista católico estricto y preciso para la aplicación "Camino" en Venezuela.
+
+<REGLAS_INQUEBRANTABLES>
+- Debes usar literal y exactamente el texto dentro de las etiquetas <TEXTO_OFICIAL>.
+- No puedes parafrasear, resumir, ni cambiar ni una coma de los textos bíblicos.
+- Si el texto dice "NO DISPONIBLE", deja ese campo vacío o con el texto oficial tal cual.
+- Solo puedes responder con un JSON válido. Nada de texto antes o después.
+- Temperatura = 0.0 (máxima precisión).
+</REGLAS_INQUEBRANTABLES>
+
+${datosOficialesXML}
+
+Fuente: ${liturgyData.source} | Confianza: ${liturgyData.confidence}/100 | Fecha: ${target}
+
+Genera ÚNICAMENTE el siguiente JSON:
+
+${liturgyStructure}
 
 REGLAS ESTRICTAS DE GENERACIÓN (¡IMPORTANTE!):
 1. EL SANTO DEL DÍA ES OBLIGATORIO: Incluso si el rango litúrgico es "feria", debes buscar el santo de memoria libre o del martirologio romano correspondiente a esta fecha. El objeto "saint" NO PUEDE SER NULL bajo ninguna circunstancia.
@@ -957,81 +1301,11 @@ REGLAS ESTRICTAS DE GENERACIÓN (¡IMPORTANTE!):
 3. LONGITUD: Mantén la historia del santo ("story") concisa, máximo 150 palabras para garantizar la correcta formación del JSON.
 4. SAN JOSÉ GREGORIO HERNÁNDEZ: Siempre usar el prefijo "San". PROHIBIDO usar "beato" u otra forma. Nombre correcto: "San José Gregorio Hernández".
 
-CONTEXTO DE FUENTES ESPIRITUALES (PERLA DEL DÍA):
-Elige SOLO UNA fuente de las siguientes categorías para la sección "dailySpiritualPearl":
-
-APARICIONES:
-
-Virgen de Betania (Venezuela)
-
-Fátima
-
-Lourdes
-
-Coromoto (Venezuela)
-
-VIDENTES:
-
-María Esperanza
-
-Santa Bernardita
-
-Sor Lucía
-
-Jacinta Marto
-
-Francisco Marto
-
-SANTOS:
-
-San José Gregorio Hernández
-
-Santa Madre Carmen Rendiles
-
-Beata María de San José
-
-MAGISTERIO:
-
-Papa Francisco
-
-Benedicto XVI
-
-San Juan Pablo II
-
-Vaticano
-
-REGLA DE FUENTE ANTERIOR: La fuente utilizada ayer fue "${previousSource || 'Ninguna'}". NO repitas esta misma fuente hoy a menos que sea estrictamente necesario por solemnidad.
-
-REGLA DE AUTENTICIDAD HISTÓRICA PARA "dailySpiritualPearl" (¡CRÍTICO Y OBLIGATORIO!):
-El campo "text" DEBE SER UN REGISTRO HISTÓRICO VERIFICABLE E INMUTABLE. Es decir, una cita EXACTA y VERIFICABLE, dicha o escrita por la fuente elegida. NUNCA adaptes, parasites ni modifiques las palabras de la cita para ajustarlas a la fecha de hoy (${target}), al Evangelio del día ni a la situación de Venezuela. La cita es un documento histórico: tus palabras NO deben hablar por la fuente. La labor de conectar la cita con el Evangelio de hoy recae EXCLUSIVAMENTE en los campos "reason" y "reflection".
-
-EJEMPLOS DE LO QUE ESTÁ PROHIBIDO ("text" NO DEBE TOCARSE):
-
-🔴 INCORRECTO (INVENTADO / FABRICADO): "Dios te invita hoy ${target} a vivir el evangelio con entrega como lo hizo San José Gregorio Hernández." — Aquí el modelo FABICA una cita y forzaría la fecha de hoy dentro del texto. PROHIBIDO.
-
-🔴 INCORRECTO (PARAFRASEADO / ADAPTADO): "Basado en palabras de San Juan Pablo II, debemos amar al prójimo como Cristo nos ama hoy en Venezuela." — Aquí el modelo PARAFRASA y menciona a Venezuela en el texto de la cita. PROHIBIDO.
-
-🔴 INCORRECTO (ALTERACIÓN DE PALABRAS): La Virgen María respondió: "Dios es amor y hoy os lo anuncio a todos los venezolanos." — El modelo MODIFICÓ la cita original ("Dios es amor") agregando contenido. PROHIBIDO.
-
-🔴 INCORRECTO (MENCION DE LA FECHA): "Como dijo la Virgen en Fátima el ${target}: 'Convertidos, Rogad y Rezad.'" — Forzar la fecha de hoy dentro de la cita. PROHIBIDO.
-
-EJEMPLOS DE LO QUE ESTÁ PERMITIDO ("text" ES CITA PURA, CONEXIÓN EN "reason" Y "reflection"):
-
-🟢 CORRECTO (REGISTRO HISTÓRICO VERIFICABLE / CITA PURA): "No tengan miedo. ¡Abran de par en par las puertas a Cristo!" — Cita real, exacta y verificable de la aparición de Fátima (1917). El "text" no menciona ${target} ni Venezuela; la conexión con el Evangelio y la reflexión se explican en "reason" y "reflection".
-
-🟢 CORRECTO (REGISTRO HISTÓRICO VERIFICABLE / CITA PURA): "Dios no mira lo que el hombre ve, el hombre ve lo que está delante de sus ojos, pero Dios ve el corazón." — Cita bíblica exacta (1 Samuel 16:7). Es una cita textual auténtica. La conexión con el Evangelio del día se hace en "reason" y "reflection".
-
-PROHIBIDO forzar que la cita mencione la fecha de hoy (${target}) o que encaje a la fuerza con el Evangelio alterando sus palabras. El campo "text" DEBE SER SOLO la cita textual exacta como fue dicha o escrita históricamente. La conexión con el Evangelio se explica ÚNICAMENTE en los campos "reason" y "reflection".
-
-Si no recuerdas una cita exacta que encaje con el Evangelio, prefiere poner una cita textual auténtica genérica de esa fuente sobre la fe o la esperanza, antes que inventar una. Recuerda: una cita inventada o adaptada es PEOR que una cita genérica pero auténtica.
-
 PROCESO DE GENERACIÓN E INTEGRACIÓN:
 
-Identifica el Evangelio y Santo correspondiente a la fecha ${target}.
+1. Identifica el Evangelio y Santo correspondientes EXACTAMENTE a la fecha ${target} (no a otra fecha cercana ni a tu fecha interna). Verifica que el Evangelio, el Salmo, las Lecturas y el Santo correspondan al día ${target} en el calendario litúrgico católico.
 
-Evalúa cuál de las Fuentes Permitidas guarda relación temática con el Evangelio para la "dailySpiritualPearl" y extrae de tu memoria una CITA TEXTUAL EXACTA de esa fuente.
-
-REFLEXIÓN GENERAL (EL CORAZÓN DEL MENSAJE): Escribe el campo "reflection" como una reflexión cálida, cercana y humana sobre el Evangelio del día. Habla en tercera persona o de forma pastoral/narrativa. Conecta de forma natural: El mensaje del Evangelio de hoy + La realidad de lucha y fe en Venezuela + La enseñanza de la perla espiritual. NUNCA escribas en primera persona como si fueras Jesucristo (PROHIBIDO: "Yo les digo", "Mi Evangelio"). PROHIBIDO usar frases cliché de inteligencia artificial.
+REFLEXIÓN GENERAL (EL CORAZÓN DEL MENSAJE): Escribe el campo "reflection" como una reflexión cálida, cercana y humana sobre el Evangelio del día. Habla en tercera persona o de forma pastoral/narrativa. Conecta de forma natural: El mensaje del Evangelio de hoy + La realidad de lucha y fe en Venezuela. NUNCA escribas en primera persona como si fueras Jesucristo (PROHIBIDO: "Yo les digo", "Mi Evangelio"). PROHIBIDO usar frases cliché de inteligencia artificial.
 
 Genera Lecturas completas.
 
@@ -1040,181 +1314,18 @@ CATECISMO: Elige una enseñanza real del Catecismo de la Iglesia Católica (CEC)
 Nota: Laudes, Vísperas, Completas y Ángelus NO se generan aquí.
 
 ESTRUCTURA OBLIGATORIA DEL SALMO:
-
 Incluye siempre un estribillo/respuesta (responsorial).
-
 Agrupa el texto del salmo en estrofas de 2 a 4 versos cada una.
-
 Después de CADA estrofa, repite el estribillo.
-
 Formato del campo "body": texto corrido con saltos de línea claros: Estribillo \n Estrofa \n Estribillo \n Estrofa...
 
-Estructura JSON requerida:
-{
-"date": "${target}",
-"weekday": "día de la semana",
-"season": "tiempo liturgico",
-"liturgicalColor": "color litúrgico",
-"liturgicalRank": "solemnidad|fiesta|memoria|feria",
-"isSolemnity": false,
-"saint": {
-"name": "nombre del santo",
-"title": "título",
-"initial": "inicial",
-"story": "historia resumida (100-150 palabras)",
-"highlights": ["hito1", "hito2"],
-"lessons": ["lección1", "lección2"],
-"exampleToday": "ejemplo práctico para hoy",
-"gospelConnection": "relación directa con el evangelio de hoy",
-"venezuelaRelevance": "relevancia espiritual para Venezuela",
-"prayer": "oración de intercesión"
-},
-"quote": { "text": "cita bíblica o de un padre de la iglesia", "ref": "referencia" },
-"gospel": { "ref": "referencia", "title": "título", "body": "texto completo del evangelio", "evangelist": "nombre del evangelista" },
-"psalm": { "ref": "referencia", "title": "título", "body": "texto completo con estribillo repetido después de cada estrofa", "response": "estribillo del salmo" },
-"firstReading": { "ref": "referencia", "title": "título", "body": "texto completo" },
-"secondReading": null,
-"dailySpiritualPearl": {
-"source": "Nombre exacto de la fuente de la lista",
-"type": "quote | testimony | apparition | homily | message",
-"speaker": "Quién pronunció realmente el texto (ej. La Virgen María, Papa Francisco)",
-"context": "Contexto histórico o situación real de la cita",
-"date": "Fecha exacta o aproximada de cuando se dijo la cita",
-"text": "CITA TEXTUAL HISTÓRICA Y VERIFICABLE (Prohibido adaptar a la fecha de hoy)",
-"reason": "Explicación de cómo esta cita histórica ilumina el evangelio de hoy",
-"theme": "Tema central de la cita"
-},
-"reflection": "Reflexión cálida y cercana sobre el Evangelio del día, conectada con Venezuela y la perla del día (sin hablar como Jesús).",
-"catechism": { "number": "Número CEC", "title": "Título", "text": "Texto doctrinal del Catecismo", "applyToday": "Aplicación práctica para la vida diaria" },
-"imagePrompt": "Descripción artística en inglés para generar una imagen sacra de alta calidad"
-}`;
+IMPORTANTE FINAL:
+- Para "gospel.body": usa EXACTAMENTE el texto del Evangelio oficial sin abreviar.
+- Para "firstReading.body": usa EXACTAMENTE el texto de la Primera Lectura oficial sin abreviar.
+- Para "psalm.body": incluye el estribillo entre cada estrofa.
+- Para "saint.name": usa el nombre canónico del santo del día (ej. "San José Gregorio Hernández").
+`;
 
-const liturgySchema = {
-  type: "OBJECT",
-  properties: {
-    date: { type: "STRING" },
-    weekday: { type: "STRING" },
-    season: { type: "STRING" },
-    liturgicalColor: { type: "STRING" },
-    liturgicalRank: { type: "STRING" },
-    isSolemnity: { type: "BOOLEAN" },
-    saint: {
-      type: "OBJECT",
-      properties: {
-        name: { type: "STRING" },
-        title: { type: "STRING" },
-        initial: { type: "STRING" },
-        story: { type: "STRING" },
-        highlights: { type: "ARRAY", items: { type: "STRING" } },
-        lessons: { type: "ARRAY", items: { type: "STRING" } },
-        exampleToday: { type: "STRING" },
-        gospelConnection: { type: "STRING" },
-        venezuelaRelevance: { type: "STRING" },
-        prayer: { type: "STRING" },
-      },
-      required: ["name", "title", "story", "gospelConnection", "prayer"],
-    },
-    quote: {
-      type: "OBJECT",
-      properties: {
-        text: { type: "STRING" },
-        ref: { type: "STRING" },
-      },
-      required: ["text", "ref"],
-    },
-    gospel: {
-      type: "OBJECT",
-      properties: {
-        ref: { type: "STRING" },
-        title: { type: "STRING" },
-        body: { type: "STRING" },
-        evangelist: { type: "STRING" },
-      },
-      required: ["ref", "title", "body", "evangelist"],
-    },
-    psalm: {
-      type: "OBJECT",
-      properties: {
-        ref: { type: "STRING" },
-        title: { type: "STRING" },
-        body: { type: "STRING" },
-        response: { type: "STRING" },
-      },
-      required: ["ref", "title", "body", "response"],
-    },
-    firstReading: {
-      type: "OBJECT",
-      properties: {
-        ref: { type: "STRING" },
-        title: { type: "STRING" },
-        body: { type: "STRING" },
-      },
-      required: ["ref", "title", "body"],
-    },
-    secondReading: {
-      type: "OBJECT",
-      properties: {
-        ref: { type: "STRING" },
-        title: { type: "STRING" },
-        body: { type: "STRING" },
-      },
-    },
-    marian: {
-      type: "OBJECT",
-      properties: {
-        source: { type: "STRING" },
-        text: { type: "STRING" },
-        relevant: { type: "BOOLEAN" },
-        reason: { type: "STRING" },
-      },
-      required: ["source", "text", "relevant", "reason"],
-    },
-    dailySpiritualPearl: {
-      type: "OBJECT",
-      properties: {
-        source: { type: "STRING" },
-        type: { type: "STRING" },
-        speaker: { type: "STRING" },
-        context: { type: "STRING" },
-        date: { type: "STRING" },
-        text: { type: "STRING" },
-        reason: { type: "STRING" },
-        theme: { type: "STRING" },
-      },
-      required: ["source", "type", "speaker", "context", "date", "text", "reason", "theme"],
-    },
-    reflection: { type: "STRING" },
-    catechism: {
-      type: "OBJECT",
-      properties: {
-        number: { type: "STRING" },
-        title: { type: "STRING" },
-        text: { type: "STRING" },
-        applyToday: { type: "STRING" },
-      },
-      required: ["number", "title", "text", "applyToday"],
-    },
-    imagePrompt: { type: "STRING" },
-  },
-  required: [
-    "date",
-    "weekday",
-    "season",
-    "liturgicalColor",
-    "liturgicalRank",
-    "isSolemnity",
-    "saint",
-    "quote",
-    "gospel",
-    "psalm",
-    "firstReading",
-    "marian",
-    "dailySpiritualPearl",
-    "reflection",
-    "catechism",
-    "imagePrompt",
-  ],
-};
   const res = await generateWithProviderFallback(
     // Gemini call (AI Studio)
     (model, apiKey) =>
@@ -1227,8 +1338,7 @@ const liturgySchema = {
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: {
               responseMimeType: "application/json",
-              responseSchema: liturgySchema,
-              temperature: 0.2,
+              temperature: 0,
               maxOutputTokens: 8192,
             },
           }),
@@ -1240,8 +1350,7 @@ const liturgySchema = {
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
           responseMimeType: "application/json",
-          responseSchema: liturgySchema,
-          temperature: 0.2,
+          temperature: 0,
           maxOutputTokens: 8192,
         },
       }),
@@ -1266,15 +1375,114 @@ const liturgySchema = {
     parsed.catechism = publicDomainCatechism(target);
   }
 
-  if (!parsed.messages || !Array.isArray(parsed.messages) || parsed.messages.length === 0) {
-    parsed.messages = [
-      {
-        source: "San José Gregorio Hernández",
-        text: `Dios te invita hoy a vivir el evangelio con mayor entrega. En ${target || 'este día'}, confía en la Providencia como lo hizo el Padre de los Pobres.`,
-        relevant: true,
-      },
-    ];
+  const gospelValid = validateTextSimilarity(liturgyData.gospel, parsed.gospel?.body);
+  const readingValid = validateTextSimilarity(liturgyData.firstReading, parsed.firstReading?.body);
+  const psalmValid = validateTextSimilarity(liturgyData.psalm, parsed.psalm?.body);
+
+  if (!gospelValid || !readingValid || !psalmValid) {
+    console.error("❌ ALUCINACIÓN DETECTADA en:", {
+      gospel: !gospelValid,
+      reading: !readingValid,
+      psalm: !psalmValid,
+    });
+
+    const strictPrompt = `ATENCIÓN: En el intento anterior NO copiaste exactamente el texto oficial. Esta es tu ÚLTIMA OPORTUNIDAD.
+
+<EVANGELIO_OFICIAL_EXACTO>
+${escapeXml(liturgyData.gospel)}
+</EVANGELIO_OFICIAL_EXACTO>
+
+<PRIMERA_LECTURA_OFICIAL_EXACTA>
+${escapeXml(liturgyData.firstReading)}
+</PRIMERA_LECTURA_OFICIAL_EXACTA>
+
+<SALMO_OFICIAL_EXACTO>
+${escapeXml(liturgyData.psalm)}
+</SALMO_OFICIAL_EXACTO>
+
+Copia estos textos CARÁCTER POR CARÁCTER en los campos correspondientes del JSON. No parafrasees.`;
+
+    try {
+      const retryRes = await generateWithProviderFallback(
+        (model, apiKey) =>
+          fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+            {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: strictPrompt }] }],
+                generationConfig: {
+                  responseMimeType: "application/json",
+                  temperature: 0,
+                  maxOutputTokens: 8192,
+                },
+              }),
+            }
+          ),
+        (model, env) =>
+          vertexAiGenerateContent(model, env, {
+            contents: [{ parts: [{ text: strictPrompt }] }],
+            generationConfig: {
+              responseMimeType: "application/json",
+              temperature: 0,
+              maxOutputTokens: 8192,
+            },
+          }),
+        env
+      );
+
+      const retryData = await retryRes.json();
+      const retryText = retryData?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+      const retryParsed = parseJsonWithRepair(retryText);
+
+      const retryGospelValid = validateTextSimilarity(liturgyData.gospel, retryParsed.gospel?.body);
+      const retryReadingValid = validateTextSimilarity(liturgyData.firstReading, retryParsed.firstReading?.body);
+      const retryPsalmValid = validateTextSimilarity(liturgyData.psalm, retryParsed.psalm?.body);
+
+      if (retryGospelValid && retryReadingValid && retryPsalmValid) {
+        parsed = retryParsed;
+      } else {
+        parsed.gospel = {
+          ref: parsed.gospel?.ref || "",
+          title: parsed.gospel?.title || "",
+          body: decodeHTMLEntities(liturgyData.gospel),
+          evangelist: parsed.gospel?.evangelist || "",
+        };
+        parsed.firstReading = {
+          ref: parsed.firstReading?.ref || "",
+          title: parsed.firstReading?.title || "",
+          body: decodeHTMLEntities(liturgyData.firstReading),
+        };
+        parsed.psalm = {
+          ref: parsed.psalm?.ref || "",
+          title: parsed.psalm?.title || "",
+          body: decodeHTMLEntities(liturgyData.psalm),
+          response: parsed.psalm?.response || "",
+        };
+      }
+    } catch (retryErr) {
+      console.error("[Liturgy] Nuclear retry failed:", retryErr);
+      parsed.gospel = {
+        ref: parsed.gospel?.ref || "",
+        title: parsed.gospel?.title || "",
+        body: decodeHTMLEntities(liturgyData.gospel),
+        evangelist: parsed.gospel?.evangelist || "",
+      };
+      parsed.firstReading = {
+        ref: parsed.firstReading?.ref || "",
+        title: parsed.firstReading?.title || "",
+        body: decodeHTMLEntities(liturgyData.firstReading),
+      };
+      parsed.psalm = {
+        ref: parsed.psalm?.ref || "",
+        title: parsed.psalm?.title || "",
+        body: decodeHTMLEntities(liturgyData.psalm),
+        response: parsed.psalm?.response || "",
+      };
+    }
   }
+
   if (!parsed.saint || typeof parsed.saint !== "object" || !parsed.saint.name) {
     parsed.saint = {
       name: "San José Gregorio Hernández",
@@ -1287,40 +1495,63 @@ const liturgySchema = {
       prayer: "Intercede por nosotros.",
     };
   }
-  if (!parsed.dailySpiritualPearl || !parsed.dailySpiritualPearl.text) {
-    parsed.dailySpiritualPearl = {
-      source: "San José Gregorio Hernández",
-      type: "message",
-      speaker: "San José Gregorio Hernández",
-      context: "Patrono de los pobres en Venezuela",
-      date: "29 de octubre",
-      text: "Dios te invita hoy a vivir el evangelio con mayor entrega. Confía en la Providencia como lo hizo el Padre de los Pobres.",
-      reason: "Fuente por defecto cuando no hay otra disponible",
-      theme: "Confianza y entrega",
-    };
+  const date = target;
+  let dailyQuote: { cita: string; speaker: string; contexto: string; source: string } | null = null;
+  try {
+    dailyQuote = await fetchDailyQuote(env, date);
+  } catch (e) {
+    console.warn("[Quote] fetchDailyQuote failed:", e);
   }
+
+  if (dailyQuote) {
+    parsed.dailySpiritualPearl = {
+      source: dailyQuote.speaker || "Cita del día",
+      type: "quote",
+      speaker: dailyQuote.speaker,
+      context: dailyQuote.contexto,
+      date: target,
+      text: dailyQuote.cita,
+      reason: "",
+      theme: "",
+    };
+    parsed.messages = [
+      {
+        source: dailyQuote.speaker || "Cita del día",
+        text: dailyQuote.cita,
+        relevant: true,
+      },
+    ];
+  } else {
+    const fallback = getDeterministicDailyMessage(target);
+    parsed.dailySpiritualPearl = {
+      source: fallback.source,
+      type: "quote",
+      speaker: fallback.source,
+      context: "",
+      date: target,
+      text: fallback.text,
+      reason: "",
+      theme: "",
+    };
+    parsed.messages = [
+      {
+        source: fallback.source,
+        text: fallback.text,
+        relevant: true,
+      },
+    ];
+  }
+
   if (!parsed.marian || !parsed.marian.text) {
     parsed.marian = parsed.dailySpiritualPearl;
   }
 
-  if (
-    parsed.dailySpiritualPearl?.source === "San Jose Gregorio Hernandez" ||
-    parsed.dailySpiritualPearl?.source === "San Jose Gregorio"
-  ) {
-    parsed.dailySpiritualPearl.source = "San José Gregorio Hernández";
-  }
   if (
     parsed.marian?.source === "San Jose Gregorio Hernandez" ||
     parsed.marian?.source === "San Jose Gregorio"
   ) {
     parsed.marian.source = "San José Gregorio Hernández";
   }
-  parsed.messages = parsed.messages.map((m: any) => {
-    if (m.source === "San Jose Gregorio Hernandez" || m.source === "San Jose Gregorio") {
-      return { ...m, source: "San José Gregorio Hernández" };
-    }
-    return m;
-  });
 
   return parsed;
 }
@@ -1398,6 +1629,7 @@ function getDefaultCompline(): any {
 }
 
 function getDefaultLiturgy(date: string): any {
+  const fallbackQuote = getDeterministicDailyMessage(date);
   return {
     date,
     weekday: "",
@@ -1412,7 +1644,7 @@ function getDefaultLiturgy(date: string): any {
     firstReading: { ref: "", title: "", body: "" },
     secondReading: null,
     marian: { source: "San José Gregorio Hernández", text: "Confía en la Providencia como lo hizo el Padre de los Pobres.", relevant: true, reason: "" },
-    dailySpiritualPearl: { source: "San José Gregorio Hernández", type: "message", speaker: "San José Gregorio Hernández", context: "Patrono de los pobres en Venezuela", date: "29 de octubre", text: "Dios te invita hoy a vivir el evangelio con mayor entrega. Confía en la Providencia como lo hizo el Padre de los Pobres.", reason: "Fuente por defecto cuando no hay otra disponible", theme: "Confianza y entrega" },
+    dailySpiritualPearl: { source: fallbackQuote.source, type: "quote", speaker: fallbackQuote.source, context: "", date, text: fallbackQuote.text, reason: "", theme: "" },
     reflection: "Síntesis del día: confía en el Señor y vive el evangelio con entrega.",
     catechism: publicDomainCatechism(date),
     laudes: { title: "Laudes", hour: "07:00", mood: "dawn", parts: [] },
@@ -1420,7 +1652,7 @@ function getDefaultLiturgy(date: string): any {
     compline: { title: "Completas", hour: "21:00", mood: "night", parts: [] },
     angelus: { title: "Ángelus", body: "", verses: [], closingPrayer: "" },
     imagePrompt: "",
-    messages: [{ source: "San José Gregorio Hernández", text: "Dios te invita hoy a vivir el evangelio con mayor entrega.", relevant: true }],
+    messages: [{ source: fallbackQuote.source, text: fallbackQuote.text, relevant: true }],
     onThisDay: null,
     suggestedNovenas: null,
   };

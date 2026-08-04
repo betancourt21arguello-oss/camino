@@ -9,7 +9,6 @@ import { useDailyPrayerPresence } from "../prayer/useDailyPrayerPresence";
 import { resolveCatholicImage, resolveDailyImage, resolveSaintImage } from "../media/imageResolver";
 import { useInstallPrompt } from "../pwa/useInstallPrompt";
 import { InstallBanner } from "../pwa/InstallBanner";
-import { BibliaShell } from "./biblia/BibliaShell";
 import { caracasNow } from "../utils/caracas";
 
 export type ReaderTarget =
@@ -58,41 +57,12 @@ export const CaminoScreen: React.FC<Props> = ({
   const [saintOpen, setSaintOpen] = useState(false);
   const [cateOpen, setCateOpen] = useState(false);
   const [onThisOpen, setOnThisOpen] = useState(false);
-  const [bibliaOpen, setBibliaOpen] = useState(false);
   const [resolvedSaint, setResolvedSaint] = useState<string | null>(null);
   const [resolvedDaily, setResolvedDaily] = useState<string>("/images/daily.jpg");
-  const [catechismDone, setCatechismDone] = useState<Set<string>>(new Set());
   const laudesAudio = assetsByTag("laudes", assets)[0];
   const angelusAudio = assetsByTag("angelus", assets)[0];
   const todayDay = todayDayFromLiturgy(L);
 
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("camino_catechism_done");
-      if (saved) setCatechismDone(new Set(JSON.parse(saved)));
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  const markCatechismDone = () => {
-    if (!L?.date) return;
-    setCatechismDone((prev) => {
-      const next = new Set(prev);
-      next.add(L.date);
-      try { localStorage.setItem("camino_catechism_done", JSON.stringify([...next])); } catch {
-        // ignore
-      }
-      return next;
-    });
-  };
-
-  const openCatechesis = () => {
-    if (L?.catechism?.text) {
-      setCateOpen(true);
-      markCatechismDone();
-    }
-  };
   useEffect(() => {
     let active = true;
     const run = async () => {
@@ -359,34 +329,6 @@ export const CaminoScreen: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Biblia y Catequesis */}
-      <div className="mt-8 px-6">
-        <div className="text-[11px] font-semibold tracking-[0.18em] text-[#9a9a9f]">
-          RECURSOS
-        </div>
-        <div className="mt-3 grid grid-cols-2 gap-3 landscape:grid-cols-3">
-          <button
-            onClick={() => setBibliaOpen(true)}
-            className="flex flex-col items-center gap-2 rounded-2xl border border-[#e6e3db] bg-white p-4 text-center transition active:scale-[0.98]"
-          >
-            <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[#1c1c1e] text-white text-lg">📖</span>
-            <span className="text-sm font-medium text-[#1c1c1e]">Biblia</span>
-            <span className="text-[10px] text-[#8a8a90]">Lectura y plan</span>
-          </button>
-          <button
-            onClick={openCatechesis}
-            disabled={!L?.catechism?.text}
-            className="flex flex-col items-center gap-2 rounded-2xl border border-[#e6e3db] bg-white p-4 text-center transition active:scale-[0.98] disabled:opacity-50"
-          >
-            <span className="relative flex h-11 w-11 items-center justify-center rounded-full bg-[#3f6e7a] text-white text-lg">✝</span>
-            <span className="text-sm font-medium text-[#1c1c1e]">Catequesis del día</span>
-            {L?.date && catechismDone.has(L.date) && (
-              <span className="text-[10px] font-medium text-[#3f6e7a]">Leído ✓</span>
-            )}
-          </button>
-        </div>
-      </div>
-
        {/* Quick actions: read Gospel/Psalm, pray Laudes/Ángelus */}
       <div className="mt-8 px-6">
         <div className="text-[11px] font-semibold tracking-[0.18em] text-[#9a9a9f]">
@@ -503,18 +445,6 @@ export const CaminoScreen: React.FC<Props> = ({
           ))}
         </div>
       </div>
-
-      {bibliaOpen && (
-        <div className="absolute inset-0 z-50 bg-black">
-          <div className="flex items-center justify-between px-6 pt-8">
-            <span className="text-lg font-semibold tracking-[0.3em] text-white">BIBLIA</span>
-            <button onClick={() => setBibliaOpen(false)} className="text-white/60 text-2xl leading-none">✕</button>
-          </div>
-          <div className="h-[calc(100%-60px)]">
-            <BibliaShell />
-          </div>
-        </div>
-      )}
 
       {saintOpen && L?.saint && (
         <div className="absolute inset-0 z-50 flex items-end bg-black/45 p-4 backdrop-blur-sm">
