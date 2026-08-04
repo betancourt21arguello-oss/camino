@@ -781,23 +781,6 @@ async function getAuthoritativeLiturgy(env: any, targetDate: string, locale: str
   }
 }
 
-function validateTextSimilarity(official: string, generated: string): boolean {
-  if (!official || official.length < 30) return true;
-
-  const normalize = (s: string) =>
-    s.toLowerCase()
-      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-      .replace(/[.,;:«»"']/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
-
-  const officialNorm = normalize(official);
-  const generatedNorm = normalize(generated || "");
-
-  const substring = officialNorm.substring(0, 60);
-  return generatedNorm.includes(substring);
-}
-
 function handleVapidKey(_request: Request, env: any): Response {
   return jsonResponse({ vapidPublicKey: env.VAPID_PUBLIC_KEY || "" });
 }
@@ -1287,6 +1270,16 @@ INSTRUCCIÓN CRÍTICA DE DEDUCCIÓN:
 - Temperatura = 0.0 (máxima precisión).
 </REGLAS_INQUEBRANTABLES>
 
+<INSTRUCCIÓN_DE_TRADUCCIÓN>
+Los textos oficiales están en INGLÉS. Traduce CADA UNO al ESPAÑOL HISPANO LATINO (Venezuela).
+- Usa lenguaje natural, pastoral y cercano al habla hispanoamericana.
+- No uses español de España (ej. "ordenador", "coche", "vosotros").
+- Prefiere términos usados en Venezuela y Latinoamérica en contextos litúrgicos.
+- Conserva EXACTAMENTE el sentido teológico y bíblico.
+- No resumas, no parafrasees, no acortes.
+- El resultado debe sonar como una traducción litúrgica oficial hispanoamericana.
+</INSTRUCCIÓN_DE_TRADUCCIÓN>
+
 ${datosOficialesXML}
 
 Fuente: ${liturgyData.source} | Confianza: ${liturgyData.confidence}/100 | Fecha: ${target}
@@ -1373,114 +1366,6 @@ IMPORTANTE FINAL:
 
   if (!parsed.catechism || typeof parsed.catechism !== "object") {
     parsed.catechism = publicDomainCatechism(target);
-  }
-
-  const gospelValid = validateTextSimilarity(liturgyData.gospel, parsed.gospel?.body);
-  const readingValid = validateTextSimilarity(liturgyData.firstReading, parsed.firstReading?.body);
-  const psalmValid = validateTextSimilarity(liturgyData.psalm, parsed.psalm?.body);
-
-  if (!gospelValid || !readingValid || !psalmValid) {
-    console.error("❌ ALUCINACIÓN DETECTADA en:", {
-      gospel: !gospelValid,
-      reading: !readingValid,
-      psalm: !psalmValid,
-    });
-
-    const strictPrompt = `ATENCIÓN: En el intento anterior NO copiaste exactamente el texto oficial. Esta es tu ÚLTIMA OPORTUNIDAD.
-
-<EVANGELIO_OFICIAL_EXACTO>
-${escapeXml(liturgyData.gospel)}
-</EVANGELIO_OFICIAL_EXACTO>
-
-<PRIMERA_LECTURA_OFICIAL_EXACTA>
-${escapeXml(liturgyData.firstReading)}
-</PRIMERA_LECTURA_OFICIAL_EXACTA>
-
-<SALMO_OFICIAL_EXACTO>
-${escapeXml(liturgyData.psalm)}
-</SALMO_OFICIAL_EXACTO>
-
-Copia estos textos CARÁCTER POR CARÁCTER en los campos correspondientes del JSON. No parafrasees.`;
-
-    try {
-      const retryRes = await generateWithProviderFallback(
-        (model, apiKey) =>
-          fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-            {
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify({
-                contents: [{ parts: [{ text: strictPrompt }] }],
-                generationConfig: {
-                  responseMimeType: "application/json",
-                  temperature: 0,
-                  maxOutputTokens: 8192,
-                },
-              }),
-            }
-          ),
-        (model, env) =>
-          vertexAiGenerateContent(model, env, {
-            contents: [{ parts: [{ text: strictPrompt }] }],
-            generationConfig: {
-              responseMimeType: "application/json",
-              temperature: 0,
-              maxOutputTokens: 8192,
-            },
-          }),
-        env
-      );
-
-      const retryData = await retryRes.json();
-      const retryText = retryData?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-      const retryParsed = parseJsonWithRepair(retryText);
-
-      const retryGospelValid = validateTextSimilarity(liturgyData.gospel, retryParsed.gospel?.body);
-      const retryReadingValid = validateTextSimilarity(liturgyData.firstReading, retryParsed.firstReading?.body);
-      const retryPsalmValid = validateTextSimilarity(liturgyData.psalm, retryParsed.psalm?.body);
-
-      if (retryGospelValid && retryReadingValid && retryPsalmValid) {
-        parsed = retryParsed;
-      } else {
-        parsed.gospel = {
-          ref: parsed.gospel?.ref || "",
-          title: parsed.gospel?.title || "",
-          body: decodeHTMLEntities(liturgyData.gospel),
-          evangelist: parsed.gospel?.evangelist || "",
-        };
-        parsed.firstReading = {
-          ref: parsed.firstReading?.ref || "",
-          title: parsed.firstReading?.title || "",
-          body: decodeHTMLEntities(liturgyData.firstReading),
-        };
-        parsed.psalm = {
-          ref: parsed.psalm?.ref || "",
-          title: parsed.psalm?.title || "",
-          body: decodeHTMLEntities(liturgyData.psalm),
-          response: parsed.psalm?.response || "",
-        };
-      }
-    } catch (retryErr) {
-      console.error("[Liturgy] Nuclear retry failed:", retryErr);
-      parsed.gospel = {
-        ref: parsed.gospel?.ref || "",
-        title: parsed.gospel?.title || "",
-        body: decodeHTMLEntities(liturgyData.gospel),
-        evangelist: parsed.gospel?.evangelist || "",
-      };
-      parsed.firstReading = {
-        ref: parsed.firstReading?.ref || "",
-        title: parsed.firstReading?.title || "",
-        body: decodeHTMLEntities(liturgyData.firstReading),
-      };
-      parsed.psalm = {
-        ref: parsed.psalm?.ref || "",
-        title: parsed.psalm?.title || "",
-        body: decodeHTMLEntities(liturgyData.psalm),
-        response: parsed.psalm?.response || "",
-      };
-    }
   }
 
   if (!parsed.saint || typeof parsed.saint !== "object" || !parsed.saint.name) {
